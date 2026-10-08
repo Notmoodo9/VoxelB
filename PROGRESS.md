@@ -2,7 +2,7 @@
 
 ## Current state
 **Milestone 2: OpenGL 4.6 core context via WGL, GL loader, clear color, vsync
-toggle, timing/FPS: DONE** (pending green Windows CI; see below)
+toggle, timing/FPS: DONE** (Windows CI green: run #2)
 
 Also done: GitHub Actions Windows CI with smoke tests, a per-commit artifact,
 and the "Latest build" release on pushes to `main` (DECISIONS.md D9).
@@ -47,6 +47,18 @@ loading/hot-reload, debug text overlay.**
   window to 800×500 updated the viewport. `--novsync` works. The release
   build runs, and both configs exit cleanly with code 0.
 
+### Verified on Windows (GitHub Actions `windows-latest`, Mesa 26.2.4 llvmpipe)
+* CI run https://github.com/Notmoodo9/VoxelB/actions/runs/37849222432 is green:
+  build.bat debug and release, and both smoke tests passed.
+* Got an **OpenGL 4.6 core** context (pixel format 123, GLSL 4.60), with
+  debug output on in the debug build.
+* **Vsync on gave 62–63 FPS** (16.0 ms average), so vsync really caps the rate.
+* Per-monitor-v2 DPI awareness succeeded. Closing took about 4 ms (the 2 s
+  delay seen under Wine is Wine-only). Exit code 0.
+* The runner's screen is 1024×768, so Windows shrank the window to a
+  1028×720 client area. That is expected; the window isn't clamped to the
+  screen yet (see Deferred).
+
 ### Performance (software rendering; no GPU in this environment)
 | Case | FPS | Frame time avg (min / max) |
 |---|---|---|
@@ -58,13 +70,14 @@ expect a locked refresh rate with vsync on and thousands of FPS with it off
 for a clear-only frame. Chunk gen/mesh timings start in M5.
 
 ### Known issues
-* Real-GPU behaviour (4.6 context, vsync cap) is not yet observed. CI uses
-  software GL. Please run `build.bat run` on your PC and read the title bar.
-* Under Wine/Xvfb, `DestroyWindow` takes about 2 s (Wine quirk, see M1).
+* Not yet run on a real GPU (CI uses software GL). Please run the game on
+  your PC and read the title bar.
 
 ### Deferred
 * Debug text overlay: M3 (stats are in the title bar until then).
 * F8/Esc become rebindable bindings in M3.
+* Fit the default window size to small screens (currently Windows clips
+  it). This will come with window settings in M17.
 * Multisampling and an sRGB back buffer are intentionally not used (HDR
   pipeline in M14, DECISIONS.md D12).
 
@@ -109,10 +122,10 @@ No rendering yet. The idle main loop runs about 270–450 iterations/s under Win
 starts in M2.
 
 ### Known issues
-* Under Wine/Xvfb (no window manager), `DestroyWindow` takes about 2 s. This
-  is a Wine/X11 quirk; it is not expected on Windows. Confirm on real Windows.
-* Not yet run on real Windows. Please run `build.bat run` once and check
-  that the window opens and Esc closes it.
+* Under Wine/Xvfb (no window manager), `DestroyWindow` takes about 2 s.
+  This is Wine-only; on Windows CI it takes about 4 ms.
+* Since confirmed on real Windows by CI (window, Esc/autoclose path, exit
+  code 0).
 
 ### Deferred
 * SEH unwind info (`.pdata`) for our procedures; see DECISIONS.md D4.
