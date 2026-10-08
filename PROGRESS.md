@@ -5,7 +5,7 @@
 toggle, timing/FPS: DONE** (Windows CI green: run #2)
 
 Also done: GitHub Actions Windows CI with smoke tests, a per-commit artifact,
-and the "Latest build" release on pushes to `main` (DECISIONS.md D9).
+and the public "Latest build" release on pushes to the default branch (DECISIONS.md D9).
 
 Next: **Milestone 3: Raw input, rebindable keys, fly camera, shader
 loading/hot-reload, debug text overlay.**

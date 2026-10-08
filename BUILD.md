@@ -70,8 +70,8 @@ failure (debug builds).
 Every push and pull request runs `.github/workflows/build.yml` on a Windows
 runner. It builds debug and release with `build.bat`, smoke-tests both
 (`tools/smoke_test.ps1`, using Mesa's software OpenGL because the runner has
-no GPU), and uploads a `voxelb-<sha>` artifact. Pushes to `main` also update
-the public **Latest build** release:
+no GPU), and uploads a `voxelb-<sha>` artifact. Pushes to the default branch
+(currently `claude/keen-lovelace-3ysglx`) also update the public **Latest build** release:
 https://github.com/Notmoodo9/VoxelB/releases/download/latest/voxelb-windows.zip
 
 Locally on Windows: `powershell -ExecutionPolicy Bypass -File tools\smoke_test.ps1 -Config debug`.

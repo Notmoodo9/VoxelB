@@ -76,7 +76,9 @@ environment (`ilammy/msvc-dev-cmd`; not used by the build itself, but
 available), and puts LLVM's `lld-link` on PATH. It runs `build.bat` for debug
 and release, smoke-tests both with `tools/smoke_test.ps1`, and uploads
 `voxelb-<short sha>` (the release exe plus `data/`, `shaders/`, `assets/`).
-Pushes to `main` replace the public **"Latest build"** release (tag `latest`)
+Pushes to the repository's **default branch** (currently
+`claude/keen-lovelace-3ysglx`, by the owner's choice) replace the public
+**"Latest build"** release (tag `latest`)
 with `voxelb-windows.zip`, a stable name for the README link, and
 `voxelb-<sha>.zip`.
 
