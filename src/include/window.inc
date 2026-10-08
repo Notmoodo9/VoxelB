@@ -6,6 +6,6 @@
 
 extern window_init, window_pump, window_shutdown
 extern g_hwnd, g_hinstance, g_client_w, g_client_h, g_window_active, g_exit_code
-extern g_close_requested, g_vsync_toggle_requested
+extern g_close_requested
 
 %endif

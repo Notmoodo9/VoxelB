@@ -27,7 +27,7 @@
 %include "window.inc"
 
 global gl_init, gl_shutdown, gl_swap, gl_set_vsync
-global g_gl_major, g_gl_minor, g_vsync_on, g_vsync_supported
+global g_gl_major, g_gl_minor, g_vsync_on, g_vsync_supported, g_gl_renderer
 
 IMPORT GetModuleHandleA, GetProcAddress, GetLastError
 IMPORT RegisterClassExA, UnregisterClassA, CreateWindowExA, DestroyWindow
@@ -55,6 +55,8 @@ g_gl_major:                     resd 1
 g_gl_minor:                     resd 1
 g_vsync_on:                     resd 1
 g_vsync_supported:              resd 1
+alignb 8
+g_gl_renderer:                  resq 1      ; glGetString(GL_RENDERER)
 
 ; ---- loader table: { name, slot, required } per GLFN entry ------------------------
 section .rdata
@@ -187,7 +189,8 @@ PROC gl_bootstrap_wgl, WNDCLASSEXA_size + PIXELFORMATDESCRIPTOR_size, rbx, rsi, 
     RETURN
 .class_ok:
     lea rdx, [rel str_dummy_class]
-    API CreateWindowExA, 0, rdx, rdx, WS_OVERLAPPEDWINDOW, 0, 0, 16, 16, 0, 0, [rel g_hinstance], 0
+    mov r8, rdx                         ; window title = class name
+    API CreateWindowExA, 0, rdx, r8, WS_OVERLAPPEDWINDOW, 0, 0, 16, 16, 0, 0, [rel g_hinstance], 0
     mov rbx, rax
     test rbx, rbx
     jnz .wnd_ok
@@ -446,6 +449,8 @@ PROC gl_init, PIXELFORMATDESCRIPTOR_size + 16, rbx, rsi, rdi
     INVOKE log_gl_string, rcx, GL_VENDOR
     lea rcx, [rel str_renderer]
     INVOKE log_gl_string, rcx, GL_RENDERER
+    GL glGetString, GL_RENDERER
+    mov [rel g_gl_renderer], rax
     lea rcx, [rel str_version]
     INVOKE log_gl_string, rcx, GL_VERSION
     lea rcx, [rel str_glsl]

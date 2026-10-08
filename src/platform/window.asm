@@ -10,15 +10,16 @@
 ;   g_close_requested   set by WM_CLOSE (close button, Alt+F4, Esc, autoclose);
 ;                       the main loop then shuts down while the window and GL
 ;                       context still exist, and window_shutdown destroys it
-;   g_vsync_toggle_requested   set by F8 (until M3's rebindable input exists)
+; Keyboard, mouse-button and WM_INPUT messages are forwarded to input.asm.
 ; =============================================================================
 %include "macros.inc"
 %include "win32.inc"
 %include "log.inc"
+%include "input.inc"
 
 global window_init, window_pump, window_shutdown
 global g_hwnd, g_hinstance, g_client_w, g_client_h, g_window_active, g_exit_code
-global g_close_requested, g_vsync_toggle_requested
+global g_close_requested
 
 IMPORT GetModuleHandleA, GetLastError
 IMPORT SetProcessDpiAwarenessContext, RegisterClassExA, UnregisterClassA
@@ -43,7 +44,6 @@ g_client_h:         resd 1
 g_window_active:    resd 1
 g_exit_code:        resd 1
 g_close_requested:  resd 1
-g_vsync_toggle_requested: resd 1
 alignb 8
 g_background_brush: resq 1
 
@@ -283,8 +283,23 @@ PROC window_proc, 0, rbx, rsi, rdi, r12
     je .on_destroy
     cmp esi, WM_SIZE
     je .on_size
+    cmp esi, WM_INPUT
+    je .on_input
     cmp esi, WM_KEYDOWN
     je .on_keydown
+    cmp esi, WM_KEYUP
+    je .on_keyup
+    cmp esi, WM_SYSKEYDOWN
+    je .on_syskeydown
+    cmp esi, WM_SYSKEYUP
+    je .on_syskeyup
+    cmp esi, WM_LBUTTONDOWN
+    jb .not_mouse
+    cmp esi, WM_MBUTTONUP
+    jbe .on_mouse_button
+.not_mouse:
+    cmp esi, WM_KILLFOCUS
+    je .on_killfocus
     cmp esi, WM_TIMER
     je .on_timer
     cmp esi, WM_ACTIVATE
@@ -332,23 +347,76 @@ PROC window_proc, 0, rbx, rsi, rdi, r12
     xor eax, eax
     RETURN
 
+.on_input:
+    mov rcx, r12
+    call input_on_raw_input
+    jmp .default                        ; DefWindowProc must see WM_INPUT
+
 .on_keydown:
-    cmp rdi, VK_F8
-    je .on_f8
-    cmp rdi, VK_ESCAPE
-    jne .default
-    LOG_INFO "escape pressed, closing"
-    API PostMessageA, rbx, WM_CLOSE, 0, 0
+    INVOKE input_on_key, rdi, 1
     xor eax, eax
     RETURN
 
-.on_f8:
-    test r12d, 0x40000000               ; bit 30: key was already down (repeat)
-    jnz .handled
-    mov dword [rel g_vsync_toggle_requested], 1
-.handled:
+.on_keyup:
+    INVOKE input_on_key, rdi, 0
     xor eax, eax
     RETURN
+
+.on_syskeydown:
+    ; Alt/F10 combos: track them, but only Alt+F4 goes to DefWindowProc
+    ; (closing); anything else would open the (nonexistent) system menu
+    ; and pause the game.
+    INVOKE input_on_key, rdi, 1
+    cmp rdi, VK_F4
+    je .default
+    xor eax, eax
+    RETURN
+
+.on_syskeyup:
+    INVOKE input_on_key, rdi, 0
+    xor eax, eax
+    RETURN
+
+.on_mouse_button:
+    ; WM_LBUTTONDOWN 0x201 .. WM_MBUTTONUP 0x208: map to VK_L/R/MBUTTON
+    lea eax, [rsi - WM_LBUTTONDOWN]     ; 0..7
+    cmp eax, 6                          ; 0x207 WM_MBUTTONDOWN
+    je .mbutton_down
+    cmp eax, 7
+    je .mbutton_up
+    cmp eax, 3
+    je .rbutton_down
+    cmp eax, 4
+    je .rbutton_up
+    cmp eax, 0
+    je .lbutton_down
+    cmp eax, 1
+    je .lbutton_up
+    jmp .default                        ; double-clicks (not enabled)
+.lbutton_down:
+    INVOKE input_on_key, VK_LBUTTON, 1
+    jmp .button_done
+.lbutton_up:
+    INVOKE input_on_key, VK_LBUTTON, 0
+    jmp .button_done
+.rbutton_down:
+    INVOKE input_on_key, VK_RBUTTON, 1
+    jmp .button_done
+.rbutton_up:
+    INVOKE input_on_key, VK_RBUTTON, 0
+    jmp .button_done
+.mbutton_down:
+    INVOKE input_on_key, VK_MBUTTON, 1
+    jmp .button_done
+.mbutton_up:
+    INVOKE input_on_key, VK_MBUTTON, 0
+.button_done:
+    xor eax, eax
+    RETURN
+
+.on_killfocus:
+    call input_on_focus_lost
+    jmp .default
 
 .on_timer:
     cmp rdi, AUTOCLOSE_TIMER_ID

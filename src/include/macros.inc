@@ -117,9 +117,30 @@ default rel
         %assign %%i %%i + 1
         %rotate 1
     %endrep
-    ; pass 2: register arguments 1..4
+    ; pass 2: register arguments 1..4 (assemble-time check: a source register
+    ; must not already have been overwritten by an earlier argument)
     %assign %%i 0
     %rep %0
+        %if %%i >= 1 && %%i <= 3
+            %ifidni %1, rcx
+                %error "call argument reads rcx after it was overwritten"
+            %endif
+        %endif
+        %if %%i >= 2 && %%i <= 3
+            %ifidni %1, rdx
+                %error "call argument reads rdx after it was overwritten"
+            %endif
+        %endif
+        %if %%i == 3
+            %ifidni %1, r8
+                %error "call argument reads r8 after it was overwritten"
+            %endif
+        %endif
+        %if %%i >= 4
+            %ifidni %1, r11
+                %error "stack call argument cannot be r11 (used as scratch)"
+            %endif
+        %endif
         %if %%i == 0
             SETREG rcx, %1
         %elif %%i == 1

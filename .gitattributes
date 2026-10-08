@@ -4,3 +4,5 @@
 *.asm text eol=lf
 *.inc text eol=lf
 *.sh text eol=lf
+*.vxf binary
+*.png binary

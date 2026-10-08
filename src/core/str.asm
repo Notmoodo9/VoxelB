@@ -5,6 +5,7 @@
 %include "macros.inc"
 
 global str_len, str_find, str_parse_u64, str_copy, fmt_u64, fmt_hex64, fmt_decimal
+global str_ieq, str_parse_float, fmt_signed_decimal, str_append_dec, str_append_sdec
 
 section .text
 
@@ -219,5 +220,158 @@ PROC fmt_decimal, 0, rbx, rsi, rdi, r12
     add rsi, rax
 .done:
     mov rax, rsi
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; str_ieq — compare two zero-terminated strings, ignoring ASCII case.
+;   in:  rcx = string a, rdx = string b
+;   out: eax = 1 if equal, 0 otherwise
+;   clobbers: rax, rcx, rdx, r8, r9
+; -----------------------------------------------------------------------------
+str_ieq:
+.loop:
+    movzx r8d, byte [rcx]
+    movzx r9d, byte [rdx]
+    lea eax, [r8 - 'a']
+    cmp eax, 25
+    ja .a_ok
+    sub r8d, 32
+.a_ok:
+    lea eax, [r9 - 'a']
+    cmp eax, 25
+    ja .b_ok
+    sub r9d, 32
+.b_ok:
+    cmp r8d, r9d
+    jne .ne
+    test r8d, r8d
+    jz .eq
+    inc rcx
+    inc rdx
+    jmp .loop
+.eq:
+    mov eax, 1
+    ret
+.ne:
+    xor eax, eax
+    ret
+
+; -----------------------------------------------------------------------------
+; str_parse_float — parse "[-]digits[.digits]" (leading spaces skipped).
+;   in:  rcx = text
+;   out: xmm0 = value (float), rdx = pointer after the number,
+;        eax = 1 if at least one digit was read, else 0
+;   clobbers: rax, rcx, rdx, r8, r9, r10, r11, xmm0, xmm1
+; -----------------------------------------------------------------------------
+str_parse_float:
+    mov rdx, rcx
+.skip:
+    cmp byte [rdx], ' '
+    je .sp
+    cmp byte [rdx], 9
+    jne .sign
+.sp:
+    inc rdx
+    jmp .skip
+.sign:
+    xor r10d, r10d                      ; r10 = negative flag
+    cmp byte [rdx], '-'
+    jne .int
+    mov r10d, 1
+    inc rdx
+.int:
+    xor eax, eax                        ; mantissa
+    xor r11d, r11d                      ; digit count
+    mov r8d, 1                          ; fraction divisor (10^fraction digits)
+    xor ecx, ecx                        ; in-fraction flag
+.digit:
+    movzx r9d, byte [rdx]
+    cmp r9d, '.'
+    jne .not_dot
+    test ecx, ecx
+    jnz .done
+    mov ecx, 1
+    inc rdx
+    jmp .digit
+.not_dot:
+    sub r9d, '0'
+    cmp r9d, 9
+    ja .done
+    cmp r11d, 17                        ; ignore digits beyond int64 precision
+    jae .skip_digit
+    imul rax, rax, 10
+    add rax, r9
+    test ecx, ecx
+    jz .counted
+    imul r8, r8, 10
+.counted:
+    inc r11d
+.skip_digit:
+    inc rdx
+    jmp .digit
+.done:
+    cvtsi2sd xmm0, rax
+    cvtsi2sd xmm1, r8
+    divsd xmm0, xmm1
+    test r10d, r10d
+    jz .pos
+    xorpd xmm1, xmm1
+    subsd xmm1, xmm0
+    movapd xmm0, xmm1
+.pos:
+    cvtsd2ss xmm0, xmm0
+    xor eax, eax
+    test r11d, r11d
+    setnz al
+    ret
+
+; -----------------------------------------------------------------------------
+; fmt_signed_decimal — like fmt_decimal for a signed value ("-12.50").
+;   in:  rcx = destination (not terminated), rdx = signed value,
+;        r8 = fraction digits
+;   out: rax = bytes written
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC fmt_signed_decimal, 0, rbx
+    xor ebx, ebx
+    test rdx, rdx
+    jns .positive
+    mov byte [rcx], '-'
+    inc rcx
+    neg rdx
+    mov ebx, 1
+.positive:
+    call fmt_decimal
+    add rax, rbx
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; str_append_dec — write a fixed-point unsigned number at a string cursor and
+; terminate it (for building strings with str_copy-style chaining).
+;   in:  rcx = cursor, rdx = value, r8 = fraction digits
+;   out: rax = new cursor (points at the terminator)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC str_append_dec, 0, rbx
+    mov rbx, rcx
+    call fmt_decimal
+    add rax, rbx
+    mov byte [rax], 0
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; str_append_sdec — like str_append_dec for a signed value.
+;   in:  rcx = cursor, rdx = signed value, r8 = fraction digits
+;   out: rax = new cursor (points at the terminator)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC str_append_sdec, 0, rbx
+    mov rbx, rcx
+    call fmt_signed_decimal
+    add rax, rbx
+    mov byte [rax], 0
     RETURN
 ENDPROC

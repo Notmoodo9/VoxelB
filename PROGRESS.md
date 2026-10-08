@@ -1,14 +1,85 @@
 # Progress
 
 ## Current state
-**Milestone 2: OpenGL 4.6 core context via WGL, GL loader, clear color, vsync
-toggle, timing/FPS: DONE** (Windows CI green: run #2)
+**Milestone 3: Raw input, rebindable keys, fly camera, shader
+loading/hot-reload, debug text overlay: DONE** (pending green Windows CI)
 
-Also done: GitHub Actions Windows CI with smoke tests, a per-commit artifact,
-and the public "Latest build" release on pushes to the default branch (DECISIONS.md D9).
+Next: **Milestone 4: Memory arenas/pools, job system with worker threads.**
 
-Next: **Milestone 3: Raw input, rebindable keys, fly camera, shader
-loading/hot-reload, debug text overlay.**
+---
+
+## Milestone 3 — done (2026-10-08)
+
+### What was built
+* **Input** (`src/platform/input.asm`): key/button state, a per-frame
+  "pressed" latch, **Raw Input** mouse deltas, mouse capture (hide + clip
+  cursor, released on focus loss), and an **action** layer with up to 2 keys
+  per action loaded from **`data/config/controls.cfg`**. The parser has
+  `#` comments, case-insensitive names and a named key table (A–Z, 0–9,
+  F1–F12, arrows, modifiers, Mouse1–3, …), plus mouse sensitivity, invert
+  Y, fly speed and sprint multiplier. Bad lines are warned about and
+  skipped. Format documented in **DATA_FORMAT.md**.
+* **Fly camera** (`src/render/camera.asm`): mouse look (pitch clamped to
+  ±89°), WASD/arrows, Space/Shift up/down, Ctrl ×5, frame-rate independent
+  (dt clamped). Reverse-Z infinite projection, camera-relative rendering
+  (DECISIONS.md D20).
+* **Shaders** (`src/render/shader.asm`): programs loaded from `shaders/`,
+  **hot reload** on file change (250 ms poll) plus F5. A failed compile
+  keeps the old program; errors go to the log and the overlay.
+* **Debug text overlay** (`src/ui/debug_overlay.asm`, `src/render/text.asm`):
+  our own bitmap font (misc-fixed 8×13 → `assets/fonts/debug_8x13.vxf` via
+  `tools/make_font.py`), drawn from SSBO glyph records. Shows FPS and frame
+  times, vsync, GL version and renderer, position, yaw/pitch/facing, mouse
+  state, shader status and the live key bindings. F3 toggles it.
+* **Debug test scene** (`shaders/test_scene.*`): 32×32 coloured block
+  columns on a checkered ground, generated in the vertex shader (removed
+  in M5).
+* Files and paths (`src/platform/file.asm`): finds the data root (release
+  or dev layout), whole-file reads, file timestamps.
+* `SETARGS` now catches call-argument register clobbers at assemble time
+  (D21). It caught one real bug.
+* GL loader: 49 functions. New string helpers: case-insensitive compare,
+  float parse, signed fixed-point formatting, string-builder appends.
+
+### Verified (Wine 9 + Xvfb + Mesa llvmpipe, scripted with xdotool)
+* 0 errors and 0 warnings in both configs. The headless test passes for both
+  (window, GL context, shaders + text renderer, perf line, clean exit).
+* Start view as designed (yaw 0, pitch −20°). Holding **W** for 1 s moved
+  the camera 12.8 blocks (12 blocks/s). **Mouse** motion turned it to
+  yaw 36°, pitch −24.9°. Positions are shown live in the overlay.
+* **F3** hides and shows the overlay, **F8** toggles vsync, **Esc** releases
+  the mouse, and **Esc** again quits cleanly (exit code 0).
+* **Hot reload**: editing `test_scene.frag` reloaded within about 1 s, and
+  the tint was visible. Appending invalid GLSL logged both compiler errors
+  and kept the previous program ("reload failed, keeping the previous
+  version"). Restoring the file reloaded again.
+* **Bad config lines** (unknown action, a third key, an unknown key name,
+  a line without `=`, a non-number) each give one warning; the game runs
+  normally.
+* The **release zip layout** (exe + data/shaders/assets in one folder) finds
+  its data next to the exe. A lone exe shows "data folder not found" and
+  exits.
+
+### Performance (software rendering via llvmpipe; no GPU here)
+| Scene (1280×720, test field ≈ 37k vertices) | FPS | Frame avg |
+|---|---|---|
+| Start view, vsync on (Xvfb, no vblank) | 51–57 | 17.5–19.6 ms |
+| Inside the field, most of the screen covered | 26–29 | 34–39 ms |
+On llvmpipe, the frame time is all CPU rasterisation of the test scene.
+On a real GPU this scene costs well under 1 ms. Chunk gen/mesh times start
+in M5.
+
+### Known issues
+* Not yet seen on a real GPU (CI uses software GL).
+
+### Deferred
+* Rebinding from inside the game (settings menu, M17). For now, edit
+  `controls.cfg` and restart.
+* Pause menu (M17). Until then, Esc with the mouse free quits.
+* Static buffers (shader source 256 KB, config 64 KB, font 64 KB) become
+  arena allocations in M4.
+* SDF font for the in-game UI (M17). The debug overlay keeps the bitmap
+  font.
 
 ---
 

@@ -121,7 +121,79 @@ is integer: no floating point on the timing path.
 GL context while the window still exists, and only then destroys the window.
 This avoids tearing down a context whose window is already gone.
 
-## D15 — Temporary hardwired keys (M2)
-F8 toggles vsync and Esc quits. Both are hardwired in the WndProc until M3's
-rebindable input system replaces them with bindings. `--novsync` starts with
-vsync off.
+## D15 — Temporary hardwired keys (M2; superseded by D16 in M3)
+F8 toggled vsync and Esc quit, hardwired in the WndProc. M3 replaced both
+with rebindable actions. `--novsync` still starts with vsync off.
+
+## D16 — Input: actions, Raw Input mouse, per-frame press latch (M3)
+* The game asks about **actions** (`move_forward`, `menu`, …), never keys.
+  Each action has up to 2 keys or mouse buttons, loaded from
+  `data/config/controls.cfg`. Adding an action means adding an `ACT_*` id
+  and a name in `input.asm`'s table (an engine change); rebinding is data
+  only.
+* Keyboard comes from `WM_KEYDOWN/UP` (plus `WM_SYS*`, so Alt combos are
+  seen; only Alt+F4 reaches DefWindowProc, so Alt/F10 never open a system
+  menu that would pause the game). Mouse buttons come from `WM_*BUTTON*`.
+  Mouse motion comes from **Raw Input** (`WM_INPUT`, relative), so mouse
+  acceleration and the screen edges don't affect it.
+* "Pressed" is a latch set on an up→down transition and cleared every
+  frame. A tap shorter than one frame is still seen; auto-repeat is not a
+  press.
+* Capture: hide the cursor (`ShowCursor`) and confine it to the client area
+  (`ClipCursor`, refreshed every frame). The mouse is captured at start and on
+  a left click. The `menu` action (Esc) releases it; pressing `menu` again
+  while the mouse is free quits (until the pause menu exists in M17). Focus
+  loss releases it and clears held keys. Mouse deltas are ignored for 3
+  frames after capturing, because some platforms (Wine) report the cursor
+  jump as motion.
+
+## D17 — Data root discovery (M3)
+`paths_init` uses the exe's folder if it contains `data\` (the release
+zip layout), else `..\..\` (the `build\<config>\` dev layout). All data,
+shader and asset paths are built from that root. Without it the game shows
+a clear error and exits.
+
+## D18 — Shader hot reload (M3)
+Programs are registered by (vertex, fragment) file path. Every 250 ms the
+files' last-write times are checked. A changed program is recompiled and
+relinked, and swapped in only if that succeeds. On failure, the compiler log
+goes to `voxel.log`, the overlay shows a red "SHADER ERROR" line, and the old
+program keeps rendering. `reload_shaders` (F5) forces a reload. Uniforms use
+explicit `layout(location)` and `glProgramUniform*` (DSA), so no name
+lookups are needed. Shader sources are read through a static 256 KB buffer
+(arenas come in M4).
+
+## D19 — Text rendering (M3)
+Our own bitmap font: X11 misc-fixed 8×13 (public domain), converted by
+`tools/make_font.py` into a tiny raw atlas (`assets/fonts/debug_8x13.vxf`,
+format documented in the tool). Glyphs and solid rectangles are 32-byte
+records in an SSBO, expanded to quads in the vertex shader (vertex pulling,
+the same technique planned for chunk meshes). The fragment shader uses
+`texelFetch` on an R8 atlas, so text is pixel-exact. One upload and one draw
+call per frame. Integer scale is 1× below 1000 px tall, 2× up to 1999 px,
+and so on. An SDF font can be added later for the in-game UI (M17).
+
+## D20 — Camera conventions and projection (M3)
+Right-handed, +Y up. Yaw 0 looks toward −Z ("north") and yaw grows turning
+right (east = +X). The projection is **reverse-Z with an infinite far
+plane** (`glClipControl(LOWER_LEFT, ZERO_TO_ONE)`, depth cleared to 0,
+`GL_GREATER`), which gives the best depth precision at long view distances
+(LOD terrain to 256 chunks). Rendering is **camera-relative**: the matrix
+holds rotation and projection only, and shaders transform `world − cam_pos`.
+This avoids float jitter far from the origin. Today `g_cam_pos` is a float.
+It becomes chunk + local offset when the world streams (M6).
+`sin`/`cos` use x87 `fsincos`: it runs once per frame, so precision beats
+speed here.
+
+## D21 — Assemble-time call-argument check (M3)
+`SETARGS` (used by `INVOKE`/`API`/`GL`) now fails assembly if an argument
+reads `rcx`/`rdx`/`r8` after an earlier argument has already overwritten it,
+or if a stack argument uses `r11`. M3 hit this bug once
+(`glCreateTextures`). Passing the same register for two slots is also
+rejected; copy it to the target register first.
+
+## D22 — Debug test scene (M3)
+Until there is a world (M5), the renderer draws a 32×32 field of coloured
+block columns on a checkered ground, generated entirely in the vertex
+shader (no vertex data). It exists only to check the camera, depth,
+shading and shader hot reload. It is not game content and is removed in M5.

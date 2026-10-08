@@ -39,15 +39,33 @@ compile all of that out and link with `/opt:ref /opt:icf`.
 ## Run
 
 ```
-build\debug\voxelb.exe                    normal run; Esc or the close button quits
+build\debug\voxelb.exe                    normal run (Esc twice, Alt+F4 or the close button quits)
 build\debug\voxelb.exe --autoclose 3000   closes itself after 3 s (automated tests)
 build\debug\voxelb.exe --novsync          start with vsync off
 ```
 
-Keys (temporary until rebindable input in M3): **F8** toggles vsync, **Esc** quits.
-The title bar shows FPS and frame time (avg/min/max over 0.5 s), the vsync
-state and the OpenGL version. Requires an OpenGL 4.6 driver (4.5 is accepted
-with a warning, e.g. for software renderers).
+Default controls (rebind in `data/config/controls.cfg`, format in `DATA_FORMAT.md`):
+
+| Key | Action |
+|---|---|
+| Mouse | look (while captured) |
+| W A S D / arrows | fly |
+| Space / Shift | up / down |
+| Ctrl | fly faster |
+| F3 | debug overlay on/off |
+| F5 | reload all shaders (they also reload automatically when saved) |
+| F8 | vsync on/off |
+| Esc | release the mouse; press again (mouse free) to quit |
+| Left click | capture the mouse again |
+
+The game needs its `data`, `shaders` and `assets` folders. It looks for them
+next to `voxelb.exe` (the release zip layout) or two folders up (the
+`build\<config>\` dev layout). Edit any file in `shaders/` while the game
+runs and it reloads within a quarter second. Errors are shown in the overlay
+and written to the log, and the last good version keeps running.
+
+Requires an OpenGL 4.6 driver (4.5 is accepted with a warning, e.g. for
+software renderers).
 
 Every run writes `voxel.log` next to the executable. When started from a
 console, the same lines are echoed to it. They also go to the debugger

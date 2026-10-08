@@ -33,6 +33,8 @@ $text = if (Test-Path $log) { Get-Content $log -Raw } else { '' }
 if ($code -ne 0) { Write-Host "FAIL: exit code $code"; exit 1 }
 if ($text -notmatch 'window created, client area') { Write-Host 'FAIL: window was not created'; exit 1 }
 if ($text -notmatch 'OpenGL core context created') { Write-Host 'FAIL: no OpenGL context'; exit 1 }
+if ($text -notmatch 'text renderer ready') { Write-Host 'FAIL: text renderer/shaders did not start'; exit 1 }
+if ($text -match 'ERROR') { Write-Host 'FAIL: errors in the log'; exit 1 }
 if ($text -notmatch 'perf: ') { Write-Host 'FAIL: no frame timing (perf) line'; exit 1 }
 if ($text -notmatch 'clean exit, code = 0') { Write-Host 'FAIL: no clean exit in log'; exit 1 }
 Write-Host "PASS ($Config)"

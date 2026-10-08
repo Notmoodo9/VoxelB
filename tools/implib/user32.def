@@ -3,26 +3,31 @@
 LIBRARY user32.dll
 EXPORTS
     AdjustWindowRectEx
+    ClipCursor
     CreateWindowExA
     DefWindowProcA
     DestroyWindow
     DispatchMessageA
     GetClientRect
     GetDC
+    GetRawInputData
     GetSystemMetrics
     KillTimer
     LoadCursorA
     LoadIconA
+    MapWindowPoints
     MessageBoxA
     PeekMessageA
     PostMessageA
     PostQuitMessage
     RegisterClassExA
+    RegisterRawInputDevices
     ReleaseDC
     SetProcessDpiAwarenessContext
     SetTimer
     SetWindowPos
     SetWindowTextA
+    ShowCursor
     ShowWindow
     TranslateMessage
     UnregisterClassA

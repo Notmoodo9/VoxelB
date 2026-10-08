@@ -8,14 +8,18 @@ EXPORTS
     CreateFileA
     ExitProcess
     GetCommandLineA
+    GetFileAttributesA
+    GetFileAttributesExA
     GetLastError
     GetModuleFileNameA
     GetModuleHandleA
     GetProcAddress
     GetStdHandle
+    GetTickCount64
     OutputDebugStringA
     QueryPerformanceCounter
     QueryPerformanceFrequency
+    ReadFile
     ReleaseSRWLockExclusive
     Sleep
     WriteFile

@@ -42,13 +42,19 @@
 %define WM_ACTIVATE                 0x0006
 %define WM_CLOSE                    0x0010
 %define WM_QUIT                     0x0012
+%define WM_KILLFOCUS                0x0008
+%define WM_INPUT                    0x00FF
 %define WM_KEYDOWN                  0x0100
+%define WM_KEYUP                    0x0101
 %define WM_SYSKEYDOWN               0x0104
+%define WM_SYSKEYUP                 0x0105
+%define WM_LBUTTONDOWN              0x0201
+%define WM_MBUTTONUP                0x0208
 %define WM_TIMER                    0x0113
 %define WM_DPICHANGED               0x02E0
 %define PM_REMOVE                   0x0001
 %define VK_ESCAPE                   0x1B
-%define VK_F8                       0x77
+%define VK_F4                       0x73
 
 ; ---- message boxes ---------------------------------------------------------
 %define MB_OK                       0x00000000
