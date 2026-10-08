@@ -22,7 +22,10 @@ session. Your job is to WRITE, BUILD, RUN and FIX code — not to plan or descri
    next. Keep each milestone small enough to finish in one session. Split if needed.
 5. **Keep `PROGRESS.md` updated** at the end of every milestone: what was done, what
    works, known bugs, deferred items, next milestone. This is your memory across sessions.
-6. **Commit to git** after each working milestone with a clear message.
+6. **Commit to git** after each working milestone with a clear message. After
+   committing, **push to GitHub and check the Actions run** (`.github/workflows/build.yml`).
+   A milestone isn't done until the Windows CI build is green. If it fails, read
+   the log, fix it, and push again until it passes.
 7. **I design the game, you engineer it.** Split every open question into two kinds:
    - **Technical** (data structures, algorithms, shaders, file formats, threading):
      decide yourself, choosing what best serves *vibrant visuals* and *performance*,
@@ -336,4 +339,5 @@ finished ones.
 - [ ] Runs and the new feature visibly/measurably works (verified by you).
 - [ ] No placeholders; deferred items listed.
 - [ ] FPS/timing numbers recorded if rendering or world code changed.
-- [ ] `PROGRESS.md` updated; committed to git.
+- [ ] `PROGRESS.md` updated; committed and pushed to GitHub.
+- [ ] Windows CI build (GitHub Actions) is green for the pushed commit.

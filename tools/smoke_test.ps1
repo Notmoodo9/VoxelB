@@ -1,0 +1,37 @@
+# Windows smoke test: launch the game with --autoclose, wait for it to quit,
+# and check the exit code and voxel.log. Used by CI; also runnable locally:
+#   powershell -ExecutionPolicy Bypass -File tools\smoke_test.ps1 -Config debug
+param(
+    [ValidateSet('debug', 'release')] [string] $Config = 'release',
+    [int] $AutocloseMs = 3000,
+    [int] $TimeoutMs = 60000
+)
+$ErrorActionPreference = 'Stop'
+Set-Location (Split-Path -Parent $PSScriptRoot)
+
+$exe = "build\$Config\voxelb.exe"
+$log = "build\$Config\voxel.log"
+if (-not (Test-Path $exe)) { Write-Error "missing $exe - run build.bat $Config first" }
+if (Test-Path $log) { Remove-Item $log }
+
+Write-Host "launching $exe --autoclose $AutocloseMs"
+$p = Start-Process -FilePath $exe -ArgumentList "--autoclose $AutocloseMs" -PassThru
+$null = $p.Handle                       # keep the handle so ExitCode is available
+if (-not $p.WaitForExit($TimeoutMs)) {
+    $p.Kill()
+    Write-Host "FAIL: did not exit within $TimeoutMs ms"
+    if (Test-Path $log) { Get-Content $log }
+    exit 1
+}
+$code = $p.ExitCode
+Write-Host "---- $log ----"
+if (Test-Path $log) { Get-Content $log } else { Write-Host "(no log written)" }
+Write-Host "--------------"
+Write-Host "exit code: $code"
+
+$text = if (Test-Path $log) { Get-Content $log -Raw } else { '' }
+if ($code -ne 0) { Write-Host "FAIL: exit code $code"; exit 1 }
+if ($text -notmatch 'window created, client area') { Write-Host 'FAIL: window was not created'; exit 1 }
+if ($text -notmatch 'clean exit, code = 0') { Write-Host 'FAIL: no clean exit in log'; exit 1 }
+Write-Host "PASS ($Config)"
+exit 0
