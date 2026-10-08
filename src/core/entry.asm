@@ -5,10 +5,14 @@
 ;   --autoclose <ms>   close the window automatically after <ms> milliseconds
 ;                      (automated test runs; exit code stays 0)
 ;   --novsync          start with vsync off (toggle_vsync action at runtime)
+;   --workers <n>      number of job worker threads (default: CPUs - 1)
+;   --selftest         run the arena/pool/job self test at start (always on
+;                      in debug builds); a failure exits with code 4
 ;
-; Startup: log -> paths (find data\) -> controls.cfg -> window -> OpenGL ->
+; Startup: log -> CPU check -> memory arenas -> job workers -> self test ->
+; paths (find data\) -> controls.cfg -> window -> OpenGL ->
 ; input -> renderer -> text -> camera -> timer.
-; Frame loop: new input frame -> pump messages -> actions (menu, capture,
+; Frame loop: reset frame arena -> new input frame -> pump messages -> actions (menu, capture,
 ; vsync, overlay, shader reload) -> shader hot-reload poll -> camera ->
 ; render -> overlay -> swap -> timing.
 ; Every stats window (0.5 s) the title bar shows FPS and frame times; every
@@ -23,6 +27,7 @@
 %include "input.inc"
 %include "shader.inc"
 %include "text.inc"
+%include "jobs.inc"
 
 global main_entry
 
@@ -30,6 +35,7 @@ extern str_find, str_parse_u64, str_copy, str_append_dec
 extern renderer_init, renderer_frame, renderer_shutdown
 extern camera_init, camera_update
 extern overlay_draw, overlay_toggle
+extern cpu_detect, selftest_run
 extern timer_init, timer_frame, timer_reset, timer_elapsed_us
 extern g_total_frames, g_stat_fps_x10, g_stat_avg_us, g_stat_min_us, g_stat_max_us
 
@@ -45,6 +51,12 @@ window_title:       db "VoxelB", 0
 opt_autoclose:      db "--autoclose", 0
 opt_autoclose_len   equ $ - opt_autoclose - 1
 opt_novsync:        db "--novsync", 0
+opt_workers:        db "--workers", 0
+opt_workers_len     equ $ - opt_workers - 1
+opt_selftest:       db "--selftest", 0
+str_cpu_fail:       db "This CPU lacks SSE4.2, which VoxelB requires.", 0
+str_mem_fail:       db "Could not reserve memory. See voxel.log for details.", 0
+str_jobs_fail:      db "Could not start worker threads. See voxel.log for details.", 0
 str_cmdline:        db "command line: ", 0
 str_paths_fail:     db "The data folder was not found next to voxelb.exe.", 13, 10
                     db "Keep voxelb.exe together with its data, shaders and assets folders.", 0
@@ -159,6 +171,50 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     xor r13d, r13d
 .vsync_opt_done:
 
+    ; ---- CPU, memory, jobs, self test --------------------------------------------------
+    call cpu_detect
+    test eax, eax
+    jnz .cpu_ok
+    lea rcx, [rel str_cpu_fail]
+    call log_fatal
+.cpu_ok:
+    call mem_init
+    test eax, eax
+    jnz .mem_ok
+    lea rcx, [rel str_mem_fail]
+    call log_fatal
+.mem_ok:
+    xor esi, esi                        ; requested workers (0 = auto)
+    lea rdx, [rel opt_workers]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .workers_auto
+    lea rcx, [rax + opt_workers_len]
+    call str_parse_u64
+    mov esi, eax
+.workers_auto:
+    INVOKE jobs_init, rsi
+    test eax, eax
+    jnz .jobs_ok
+    lea rcx, [rel str_jobs_fail]
+    call log_fatal
+.jobs_ok:
+    call timer_init                     ; the self test measures time
+%if BUILD_DEBUG
+    jmp .run_selftest
+%endif
+    lea rdx, [rel opt_selftest]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .selftest_done
+.run_selftest:
+    call selftest_run
+    test eax, eax
+    jnz .selftest_done
+    mov dword [rel g_exit_code], 4
+    jmp .shutdown_core
+.selftest_done:
+
     ; ---- data -----------------------------------------------------------------------
     call paths_init
     test eax, eax
@@ -211,6 +267,8 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     xor edi, edi                        ; rdi = stats windows since last perf log
     LOG_INFO "entering main loop"
 .loop:
+    lea rcx, [rel g_arena_frame]
+    call arena_reset
     call input_new_frame
     call window_pump
     test eax, eax
@@ -350,6 +408,9 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     call shader_shutdown
     call gl_shutdown
     call window_shutdown
+.shutdown_core:
+    call jobs_shutdown
+    call mem_shutdown
     mov eax, [rel g_exit_code]
     LOG_VAL LOG_LEVEL_INFO, "clean exit, code =", rax
     call log_shutdown

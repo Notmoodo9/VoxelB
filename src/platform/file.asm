@@ -5,6 +5,8 @@
 ;   paths_init() -> eax 1/0          find the root dir that contains data\
 ;   path_make(dst, rel)              dst = root + rel (dst >= PATH_CAP bytes)
 ;   file_read_all(path, buf, cap) -> rax bytes (or -1); buf zero-terminated
+;   file_load(path, arena) -> rax ptr (0 on failure), rdx size; the data is
+;                                    zero-terminated and lives in the arena
 ;   file_mtime(path) -> rax          last-write FILETIME, 0 if missing
 ;   g_root_dir                       root path with trailing separator
 ; =============================================================================
@@ -13,13 +15,14 @@
 %include "win32.inc"
 %include "log.inc"
 %include "file.inc"
+%include "memory.inc"
 
-global paths_init, path_make, file_read_all, file_mtime, g_root_dir
+global paths_init, path_make, file_read_all, file_load, file_mtime, g_root_dir
 
 extern str_copy
 
 IMPORT GetModuleFileNameA, GetFileAttributesA, GetFileAttributesExA
-IMPORT CreateFileA, ReadFile, CloseHandle
+IMPORT CreateFileA, ReadFile, CloseHandle, GetFileSizeEx
 
 %define GENERIC_READ                0x80000000
 %define FILE_SHARE_WRITE            0x00000002
@@ -167,6 +170,54 @@ PROC file_read_all, 16, rbx, rsi, rdi, r12
     RETURN
 .fail:
     mov rax, -1
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; file_load — read a whole file into memory allocated from an arena.
+;   in:  rcx = path, rdx = ARENA*
+;   out: rax = data (zero-terminated), rdx = size in bytes;
+;        rax = 0 on failure (missing/locked file, > 1 GB, arena full)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC file_load, 16, rbx, rsi, rdi, r12, r13
+    mov rbx, rcx                        ; path
+    mov r13, rdx                        ; arena
+    API CreateFileA, rbx, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
+    cmp rax, INVALID_HANDLE_VALUE
+    je .fail
+    mov r12, rax                        ; handle
+    lea rdx, [LOCAL(0)]
+    API GetFileSizeEx, r12, rdx
+    test eax, eax
+    jz .fail_close
+    mov rsi, [LOCAL(0)]                 ; size
+    cmp rsi, GB(1)
+    ja .fail_close
+    lea rdx, [rsi + 1]
+    INVOKE arena_try_alloc, r13, rdx, 16
+    test rax, rax
+    jz .fail_close
+    mov rdi, rax                        ; buffer
+    mov dword [LOCAL(8)], 0
+    lea r9, [LOCAL(8)]
+    API ReadFile, r12, rdi, rsi, r9, 0
+    mov ebx, eax
+    API CloseHandle, r12
+    test ebx, ebx
+    jz .fail
+    mov eax, [LOCAL(8)]
+    cmp rax, rsi
+    jne .fail                           ; short read
+    mov byte [rdi + rsi], 0
+    mov rax, rdi
+    mov rdx, rsi
+    RETURN
+.fail_close:
+    API CloseHandle, r12
+.fail:
+    xor eax, eax
+    xor edx, edx
     RETURN
 ENDPROC
 

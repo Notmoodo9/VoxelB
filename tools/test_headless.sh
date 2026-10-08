@@ -22,7 +22,7 @@ if [ -z "${DISPLAY:-}" ]; then
     fi
 fi
 
-timeout 60 wine "$EXE" --autoclose "$MS" >/dev/null 2>&1 &
+timeout 60 wine "$EXE" --selftest --autoclose "$MS" >/dev/null 2>&1 &
 PID=$!
 sleep "$(awk "BEGIN{print ($MS/1000)*0.8}")"
 if command -v import >/dev/null; then
@@ -36,6 +36,7 @@ set -e
 echo "exit code: $RC"
 grep -q "window created, client area" "$LOG" || { echo "FAIL: window was not created"; exit 1; }
 grep -q "OpenGL core context created" "$LOG" || { echo "FAIL: no OpenGL context"; exit 1; }
+grep -q "selftest: PASS" "$LOG"           || { echo "FAIL: self test"; exit 1; }
 grep -q "text renderer ready" "$LOG"       || { echo "FAIL: text renderer/shaders did not start"; exit 1; }
 grep -q "perf: " "$LOG"                     || { echo "FAIL: no frame timing (perf) line"; exit 1; }
 grep -q "clean exit, code = 0" "$LOG"        || { echo "FAIL: no clean exit in log"; exit 1; }

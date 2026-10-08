@@ -42,6 +42,8 @@ compile all of that out and link with `/opt:ref /opt:icf`.
 build\debug\voxelb.exe                    normal run (Esc twice, Alt+F4 or the close button quits)
 build\debug\voxelb.exe --autoclose 3000   closes itself after 3 s (automated tests)
 build\debug\voxelb.exe --novsync          start with vsync off
+build\debug\voxelb.exe --workers 2        use 2 job worker threads (default: CPU threads - 1)
+build\debug\voxelb.exe --selftest         run the memory/job self test (always on in debug builds)
 ```
 
 Default controls (rebind in `data/config/controls.cfg`, format in `DATA_FORMAT.md`):
@@ -72,7 +74,7 @@ console, the same lines are echoed to it. They also go to the debugger
 (e.g. DebugView or Visual Studio's Output window).
 
 Exit codes: `0` clean exit, `1` fatal error (message box + log), `3` assertion
-failure (debug builds).
+failure (debug builds), `4` self test failed (see log).
 
 ## Adding things
 

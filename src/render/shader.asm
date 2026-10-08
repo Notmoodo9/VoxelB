@@ -19,6 +19,7 @@
 %include "gl.inc"
 %include "file.inc"
 %include "shader.inc"
+%include "memory.inc"
 
 global shader_create, shader_program, shader_poll, shader_reload_all, shader_shutdown
 global g_shader_count, g_shader_reloads, g_shader_failures, g_shader_last_ok
@@ -26,7 +27,6 @@ global g_shader_count, g_shader_reloads, g_shader_failures, g_shader_last_ok
 IMPORT GetTickCount64
 
 %define MAX_PROGRAMS    16
-%define SOURCE_CAP      262144
 %define INFO_LOG_CAP    8192
 %define POLL_MS         250
 
@@ -60,8 +60,7 @@ alignb 8
 g_last_poll_ms:     resq 1
 g_src_ptr:          resq 1
 alignb 16
-g_src_buf:          resb SOURCE_CAP
-g_info_log:         resb INFO_LOG_CAP
+g_info_log:         resq 1                  ; INFO_LOG_CAP bytes in scratch
 g_path_buf:         resb PATH_CAP
 
 section .text
@@ -137,16 +136,19 @@ ENDPROC
 ;   out: eax = shader name, 0 on failure (errors logged)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC compile_shader, 16, rbx, rsi, rdi
+PROC compile_shader, 16, rbx, rsi, rdi, r12
     mov edi, ecx
     mov rsi, rdx
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov r12, rax                        ; r12 = scratch mark (reset on exit)
     lea rcx, [rel g_path_buf]
     INVOKE path_make, rcx, rsi
     lea rcx, [rel g_path_buf]
-    lea rdx, [rel g_src_buf]
-    INVOKE file_read_all, rcx, rdx, SOURCE_CAP
-    cmp rax, -1
-    jne .read_ok
+    lea rdx, [rel g_arena_scratch]
+    call file_load
+    test rax, rax
+    jnz .read_ok
     mov ecx, LOG_LEVEL_ERROR
     call log_begin
     lea rcx, [rel str_read_fail]
@@ -155,12 +157,11 @@ PROC compile_shader, 16, rbx, rsi, rdi
     call log_append_str
     call log_end
     xor eax, eax
-    RETURN
+    jmp .out
 .read_ok:
+    mov [rel g_src_ptr], rax
     GL glCreateShader, rdi
     mov ebx, eax
-    lea rax, [rel g_src_buf]
-    mov [rel g_src_ptr], rax
     lea r8, [rel g_src_ptr]
     GL glShaderSource, rbx, 1, r8, 0
     GL glCompileShader, rbx
@@ -169,7 +170,11 @@ PROC compile_shader, 16, rbx, rsi, rdi
     GL glGetShaderiv, rbx, GL_COMPILE_STATUS, r8
     cmp dword [LOCAL(0)], 0
     jne .ok
-    lea r9, [rel g_info_log]
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_alloc, rcx, INFO_LOG_CAP, 16
+    mov [rel g_info_log], rax
+    mov byte [rax], 0
+    mov r9, rax
     GL glGetShaderInfoLog, rbx, INFO_LOG_CAP, 0, r9
     mov ecx, LOG_LEVEL_ERROR
     call log_begin
@@ -178,12 +183,17 @@ PROC compile_shader, 16, rbx, rsi, rdi
     mov rcx, rsi
     call log_append_str
     call log_end
-    lea rdx, [rel g_info_log]
+    mov rdx, [rel g_info_log]
     INVOKE log_text_lines, LOG_LEVEL_ERROR, rdx
     GL glDeleteShader, rbx
     xor eax, eax
-    RETURN
+    jmp .out
 .ok:
+    mov eax, ebx
+.out:
+    mov ebx, eax
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, r12
     mov eax, ebx
     RETURN
 ENDPROC
@@ -217,12 +227,21 @@ PROC build_program, 16, rbx, rsi, rdi, r12, r13
     GL glGetProgramiv, rdi, GL_LINK_STATUS, r8
     cmp dword [LOCAL(0)], 0
     jne .linked
-    lea r9, [rel g_info_log]
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov rbx, rax                        ; shaders are gone: reuse rbx as mark
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_alloc, rcx, INFO_LOG_CAP, 16
+    mov [rel g_info_log], rax
+    mov byte [rax], 0
+    mov r9, rax
     GL glGetProgramInfoLog, rdi, INFO_LOG_CAP, 0, r9
     lea rdx, [rel str_link_fail]
     INVOKE log_pair, LOG_LEVEL_ERROR, rdx, r12, r13
-    lea rdx, [rel g_info_log]
+    mov rdx, [rel g_info_log]
     INVOKE log_text_lines, LOG_LEVEL_ERROR, rdx
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, rbx
     GL glDeleteProgram, rdi
     xor eax, eax
     RETURN

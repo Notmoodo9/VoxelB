@@ -197,3 +197,63 @@ Until there is a world (M5), the renderer draws a 32×32 field of coloured
 block columns on a checkered ground, generated entirely in the vertex
 shader (no vertex data). It exists only to check the camera, depth,
 shading and shader hot reload. It is not game content and is removed in M5.
+
+## D23 — Memory: virtual-memory arenas and lock-free pools (M4)
+* **Arenas** reserve a large address range up front (`VirtualAlloc
+  MEM_RESERVE`) and commit it in 64 KB steps as the bump pointer grows. That
+  gives us huge capacities (perm 1 GB, scratch 256 MB, frame 64 MB, 64 MB
+  per worker) for free: untouched space costs no RAM, and pointers never
+  move. Arenas are single-owner, not locked. They are freed wholesale with
+  `arena_reset` or `arena_reset_to(mark)`; there is no per-object free.
+  Allocations past the reserve fail cleanly (logged).
+* Global arenas: **perm** (lives until exit), **frame** (reset at the
+  start of every frame: per-frame scratch, no heap churn), **scratch**
+  (main-thread temporaries via mark/reset: file loads, shader sources,
+  compiler logs). Every worker has its own scratch arena, reset
+  automatically after each job.
+* **Pools**: fixed-size blocks for objects that come and go across threads
+  (chunk sections in M5/M6). The free list is a Treiber stack updated with
+  `lock cmpxchg16b` on a {pointer, tag} pair. The tag counter defeats ABA,
+  and blocks are never decommitted, so reading a stale `next` is harmless.
+  Fresh blocks come from an atomic bump index; blocks past the pre-committed
+  part are committed individually (`VirtualAlloc` is idempotent and
+  thread-safe, so two blocks sharing a page are fine).
+* `g_mem_committed` tracks the total committed bytes for the overlay.
+* No CRT `malloc`/`HeapAlloc` anywhere.
+
+## D24 — Job system (M4)
+* Workers: logical CPUs − 1 (at least 1, at most 31; `--workers N`
+  overrides). The main thread is context 0 and runs jobs while it waits
+  (`job_wait`), so waiting never idles a core or deadlocks.
+* Queue: bounded lock-free MPMC ring (Vyukov), 4096 cells of 32 bytes,
+  with head and tail on separate cache lines. If it's full, `job_submit` runs
+  the job inline (back-pressure).
+* Jobs are `fn(arg, WORKER*)` and get a per-thread scratch arena. Completion
+  is tracked by counters (`lock dec` when done, so results are visible when
+  a counter reads 0). The streaming code (M6) will *poll* counters; the main
+  thread will never block on chunk work.
+* Sleeping: after about 50–100 µs of spinning, workers wait on a semaphore.
+  Submitters claim sleepers with a CAS on `g_sleeping` and release exactly
+  that many tokens, and `job_dispatch` (parallel-for) wakes them in batches.
+  The first version, with one wake per job, was 8× slower than serial under
+  Wine; this one scales almost linearly (D26).
+* Workers are named "VoxelB worker" (`SetThreadDescription`) for debuggers
+  and profilers.
+* No priorities yet. Distance-ordered scheduling of chunk work comes with
+  streaming (M6).
+
+## D25 — CPU baseline (M4)
+`cpu_detect` uses CPUID/XGETBV: SSE4.2 is required (clear error otherwise).
+AVX2 is used only if both the CPU and the OS (XCR0 YMM state) support it,
+recorded in `g_cpu_avx2` for later fast paths (M5 meshing). The brand
+string, logical CPU count and features are logged at start.
+
+## D26 — Start-up self test (M4)
+`src/core/selftest.asm` checks arenas (alignment, mark/reset, refusing
+allocations past the reserve), the job system (4096 jobs of busy work via
+`job_dispatch`; results must equal a serial run, and the speed-up is
+logged), and pools (8192 jobs submitted one by one, each allocating,
+stamping, verifying and freeing 8 blocks concurrently; there must be no
+corruption and no leaked blocks). It runs in every debug start and with
+`--selftest`, which CI and the headless test always pass. A failure exits
+with code 4 and no dialog.

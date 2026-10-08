@@ -17,6 +17,7 @@
 %include "input.inc"
 %include "shader.inc"
 %include "text.inc"
+%include "jobs.inc"
 
 global overlay_draw, overlay_toggle, g_overlay_visible
 
@@ -61,6 +62,14 @@ s_programs:     db " programs, ", 0
 s_reloads:      db " reloads, last ", 0
 s_ok:           db "ok", 10, 0
 s_failed:       db "FAILED", 10, 0
+s_memory:       db "memory  committed ", 0
+s_mb:           db " MB   perm ", 0
+s_frame_kb:     db " MB   frame ", 0
+s_kb_peak:      db " KB (peak ", 0
+s_kb_close:     db " KB)", 10, 0
+s_jobs:         db "jobs    ", 0
+s_workers:      db " workers + main   completed ", 0
+s_queue:        db "   queued ", 0
 s_controls:     db 10, "controls (data/config/controls.cfg):", 10, 0
 s_indent:       db "  ", 0
 s_comma:        db ", ", 0
@@ -78,7 +87,8 @@ align 4
 g_overlay_visible:  dd 1
 
 section .bss
-g_ov_text:      resb TEXT_CAP
+alignb 8
+g_ov_text:      resq 1                  ; TEXT_CAP bytes from the frame arena
 
 section .text
 
@@ -95,7 +105,7 @@ overlay_toggle:
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC build_text, 0, rbx, rsi, rdi, r12
-    lea rbx, [rel g_ov_text]            ; rbx = cursor
+    mov rbx, [rel g_ov_text]            ; rbx = cursor
 %macro PUT 1                            ; append a static string
     lea rdx, [rel %1]
     INVOKE str_copy, rbx, rdx
@@ -223,6 +233,40 @@ PROC build_text, 0, rbx, rsi, rdi, r12
     INVOKE str_copy, rbx, rdx
     mov rbx, rax
 
+    ; memory (MB with 1 decimal = bytes / 104858 as tenths)
+    PUT s_memory
+    mov rax, [rel g_mem_committed]
+    xor edx, edx
+    mov ecx, 104858
+    div rcx
+    PUTNUM rax, 1
+    PUT s_mb
+    mov rax, [rel g_arena_perm + ARENA.used]
+    xor edx, edx
+    mov ecx, 104858
+    div rcx
+    PUTNUM rax, 1
+    PUT s_frame_kb
+    mov rax, [rel g_arena_frame + ARENA.used]
+    shr rax, 10
+    PUTNUM rax, 0
+    PUT s_kb_peak
+    mov rax, [rel g_arena_frame + ARENA.peak]
+    shr rax, 10
+    PUTNUM rax, 0
+    PUT s_kb_close
+
+    ; jobs
+    PUT s_jobs
+    mov eax, [rel g_job_worker_count]
+    PUTNUM rax, 0
+    PUT s_workers
+    PUTNUM [rel g_jobs_completed], 0
+    PUT s_queue
+    call job_queue_depth
+    PUTNUM rax, 0
+    PUT s_nl
+
     ; bindings
     PUT s_controls
     xor esi, esi                        ; action
@@ -312,9 +356,14 @@ PROC overlay_draw, 0, rbx, rsi, rdi, r12
     mov [rel g_text_scale], eax
     mov r12d, eax                       ; r12 = scale
 
+    lea rcx, [rel g_arena_frame]
+    INVOKE arena_alloc, rcx, TEXT_CAP, 16
+    test rax, rax
+    jz .hidden
+    mov [rel g_ov_text], rax
     call build_text
     call text_begin
-    lea rcx, [rel g_ov_text]
+    mov rcx, [rel g_ov_text]
     call measure_text
     mov ebx, edx                        ; lines
     ; panel: (chars * cell_w + 2*PAD) x (lines * cell_h + 2*PAD), scaled
@@ -334,7 +383,7 @@ PROC overlay_draw, 0, rbx, rsi, rdi, r12
     call text_rect
     imul edx, r12d, PAD
     mov r8d, edx                        ; y = x = padding
-    lea rcx, [rel g_ov_text]
+    mov rcx, [rel g_ov_text]
     INVOKE text_add, rcx, rdx, r8, COLOR_TEXT
 
     cmp dword [rel g_shader_last_ok], 0

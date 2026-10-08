@@ -14,8 +14,8 @@ $log = "build\$Config\voxel.log"
 if (-not (Test-Path $exe)) { Write-Error "missing $exe - run build.bat $Config first" }
 if (Test-Path $log) { Remove-Item $log }
 
-Write-Host "launching $exe --autoclose $AutocloseMs"
-$p = Start-Process -FilePath $exe -ArgumentList "--autoclose $AutocloseMs" -PassThru
+Write-Host "launching $exe --selftest --autoclose $AutocloseMs"
+$p = Start-Process -FilePath $exe -ArgumentList "--selftest --autoclose $AutocloseMs" -PassThru
 $null = $p.Handle                       # keep the handle so ExitCode is available
 if (-not $p.WaitForExit($TimeoutMs)) {
     $p.Kill()
@@ -33,6 +33,7 @@ $text = if (Test-Path $log) { Get-Content $log -Raw } else { '' }
 if ($code -ne 0) { Write-Host "FAIL: exit code $code"; exit 1 }
 if ($text -notmatch 'window created, client area') { Write-Host 'FAIL: window was not created'; exit 1 }
 if ($text -notmatch 'OpenGL core context created') { Write-Host 'FAIL: no OpenGL context'; exit 1 }
+if ($text -notmatch 'selftest: PASS') { Write-Host 'FAIL: arena/pool/job self test did not pass'; exit 1 }
 if ($text -notmatch 'text renderer ready') { Write-Host 'FAIL: text renderer/shaders did not start'; exit 1 }
 if ($text -match 'ERROR') { Write-Host 'FAIL: errors in the log'; exit 1 }
 if ($text -notmatch 'perf: ') { Write-Host 'FAIL: no frame timing (perf) line'; exit 1 }

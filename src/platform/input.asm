@@ -12,6 +12,7 @@
 %include "win32.inc"
 %include "log.inc"
 %include "file.inc"
+%include "memory.inc"
 %include "input.inc"
 %include "window.inc"
 
@@ -34,7 +35,6 @@ IMPORT ShowCursor, ClipCursor, GetClientRect, MapWindowPoints
 %define RAW_MOUSE_FLAGS         24      ; offsets inside RAWINPUT (x64)
 %define RAW_MOUSE_LASTX         36
 %define RAW_MOUSE_LASTY         40
-%define CONFIG_CAP              65536
 %define CAPTURE_SETTLE_FRAMES   3       ; ignore motion caused by the cursor jump
 
 section .rdata
@@ -102,7 +102,8 @@ g_mouse_dy:         resd 1
 g_mouse_captured:   resd 1
 g_capture_settle:   resd 1                  ; frames to ignore deltas after capture
 alignb 16
-g_config_buf:       resb CONFIG_CAP
+alignb 8
+g_config_mark:      resq 1                  ; scratch arena mark while parsing
 g_config_path:      resb PATH_CAP
 
 section .text
@@ -297,16 +298,21 @@ PROC input_load_bindings, 0, rbx, rsi, rdi, r12, r13, r14, r15
     lea rcx, [rel g_config_path]
     lea rdx, [rel STR_CONTROLS]
     call path_make
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [rel g_config_mark], rax
     lea rcx, [rel g_config_path]
-    lea rdx, [rel g_config_buf]
-    INVOKE file_read_all, rcx, rdx, CONFIG_CAP
-    cmp rax, -1
-    jne .read_ok
+    lea rdx, [rel g_arena_scratch]
+    call file_load
+    test rax, rax
+    jnz .read_ok
     LOG_ERROR "could not read data/config/controls.cfg"
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [rel g_config_mark]
     xor eax, eax
     RETURN
 .read_ok:
-    lea rsi, [rel g_config_buf]         ; rsi = line start
+    mov rsi, rax                        ; rsi = line start (scratch memory)
 .line:
     cmp byte [rsi], 0
     je .finished
@@ -412,6 +418,8 @@ PROC input_load_bindings, 0, rbx, rsi, rdi, r12, r13, r14, r15
     lea rsi, [r15 + 1]
     jmp .line
 .finished:
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [rel g_config_mark]
     call log_bindings
     mov eax, 1
     RETURN

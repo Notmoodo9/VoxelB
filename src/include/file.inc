@@ -7,7 +7,7 @@
 %define PATH_CAP    520                 ; bytes for any absolute path we build
 
 %ifndef FILE_IMPL
-extern paths_init, path_make, file_read_all, file_mtime, g_root_dir
+extern paths_init, path_make, file_read_all, file_load, file_mtime, g_root_dir
 %endif
 
 %endif

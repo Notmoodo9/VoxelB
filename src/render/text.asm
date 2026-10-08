@@ -24,13 +24,13 @@
 %include "file.inc"
 %include "shader.inc"
 %include "text.inc"
+%include "memory.inc"
 
 global text_init, text_shutdown, text_begin, text_add, text_rect, text_flush
 global g_text_scale, g_font_cell_w, g_font_cell_h
 
 %define MAX_GLYPHS      8192
 %define GLYPH_SIZE      32
-%define FONT_CAP        65536
 
 struc GLYPH
     .x      resd 1
@@ -65,8 +65,8 @@ g_text_prog:    resd 1                  ; shader handle
 g_glyph_count:  resd 1
 alignb 16
 g_uniform_tmp:  resd 4
-g_glyphs:       resb MAX_GLYPHS * GLYPH_SIZE
-g_font_file:    resb FONT_CAP
+alignb 8
+g_glyphs:       resq 1                  ; MAX_GLYPHS records (perm arena)
 g_font_path:    resb PATH_CAP
 
 section .text
@@ -77,25 +77,31 @@ section .text
 ;   out: eax = 1 on success, 0 on failure (logged)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC text_init, 16, rbx
+PROC text_init, 16, rbx, rsi
+    lea rcx, [rel g_arena_perm]
+    INVOKE arena_alloc, rcx, MAX_GLYPHS * GLYPH_SIZE, 64
+    mov [rel g_glyphs], rax
+    test rax, rax
+    jz .fail
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov rsi, rax                        ; scratch mark (font file is temporary)
     lea rcx, [rel g_font_path]
     lea rdx, [rel str_font_file]
     call path_make
     lea rcx, [rel g_font_path]
-    lea rdx, [rel g_font_file]
-    INVOKE file_read_all, rcx, rdx, FONT_CAP
-    cmp rax, 16
-    jge .read_ok
+    lea rdx, [rel g_arena_scratch]
+    call file_load
+    cmp rdx, 16
+    jae .read_ok
     LOG_ERROR "could not read assets/fonts/debug_8x13.vxf"
-    xor eax, eax
-    RETURN
+    jmp .fail_reset
 .read_ok:
-    lea rbx, [rel g_font_file]
+    mov rbx, rax
     cmp dword [rbx], 'VXF1'
     je .magic_ok
     LOG_ERROR "font file has a bad header (expected VXF1)"
-    xor eax, eax
-    RETURN
+    jmp .fail_reset
 .magic_ok:
     movzx eax, word [rbx + 4]
     mov [rel g_font_cell_w], eax
@@ -137,6 +143,8 @@ PROC text_init, 16, rbx
     GL glTextureParameteri, [rel g_text_tex], GL_TEXTURE_MAG_FILTER, GL_NEAREST
     GL glTextureParameteri, [rel g_text_tex], GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE
     GL glTextureParameteri, [rel g_text_tex], GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, rsi     ; font data is in the texture now
 
     ; ---- glyph storage buffer + empty VAO ----------------------------------------
     lea rdx, [rel g_text_buf]
@@ -157,6 +165,12 @@ PROC text_init, 16, rbx
     mov [rel g_text_prog], eax
     LOG_INFO "text renderer ready"
     mov eax, 1
+    RETURN
+.fail_reset:
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, rsi
+.fail:
+    xor eax, eax
     RETURN
 ENDPROC
 
@@ -195,7 +209,7 @@ push_record:
     inc dword [rel g_glyph_count]
     shl eax, 5
     push rbx
-    lea rbx, [rel g_glyphs]
+    mov rbx, [rel g_glyphs]
     add rbx, rax
     cvtsi2ss xmm0, ecx
     movss [rbx + GLYPH.x], xmm0
@@ -299,7 +313,7 @@ PROC text_flush, 0, rbx, rsi
 
     mov r8d, esi
     shl r8d, 5
-    lea r9, [rel g_glyphs]
+    mov r9, [rel g_glyphs]
     GL glNamedBufferSubData, [rel g_text_buf], 0, r8, r9
 
     mov ecx, [rel g_text_prog]

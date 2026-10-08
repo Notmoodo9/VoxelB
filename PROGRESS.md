@@ -1,10 +1,71 @@
 # Progress
 
 ## Current state
-**Milestone 3: Raw input, rebindable keys, fly camera, shader
-loading/hot-reload, debug text overlay: DONE** (Windows CI green: run #5)
+**Milestone 4: Memory arenas/pools, job system with worker threads: DONE**
+(pending green Windows CI)
 
-Next: **Milestone 4: Memory arenas/pools, job system with worker threads.**
+Next: **Milestone 5: Chunk/section data structures (palette compression),
+flat test world, mesher, render.**
+
+---
+
+## Milestone 4 — done (2026-10-08)
+
+### What was built
+* **Memory** (`src/core/memory.asm`, D23): virtual-memory **arenas**
+  (reserve big, commit in 64 KB steps, bump allocation, mark/reset) and
+  lock-free fixed-size **pools** (`cmpxchg16b` Treiber stack with an ABA
+  tag, atomic bump for fresh blocks). Global arenas: perm 1 GB, frame 64 MB
+  (reset every frame), scratch 256 MB (mark/reset temporaries), plus 64 MB
+  scratch per worker. The committed total is tracked.
+* **Jobs** (`src/core/jobs.asm`, D24): worker threads (CPUs − 1, or
+  `--workers N`), a lock-free MPMC job queue, `job_submit`,
+  `job_dispatch` (parallel-for), counters, and `job_wait`, where the main
+  thread helps. Idle workers spin, then sleep on a semaphore. Wake-ups are
+  claimed and batched. Threads are named.
+* **CPU detection** (`src/core/cpu.asm`, D25): requires SSE4.2, detects AVX2
+  (CPU + OS), logs the brand and thread count.
+* **Self test** (`src/core/selftest.asm`, D26): arenas, parallel compute
+  (checked against a serial run, speed-up logged), and a concurrent pool
+  storm. It runs in debug builds and with `--selftest`; CI and the headless
+  test require "selftest: PASS".
+* The M3 static buffers now use arenas: controls.cfg, shader sources and
+  compiler logs, and the font file are loaded into the scratch arena
+  (`file_load`, sized from the file, so no fixed cap). The glyph buffer is
+  in perm, and the overlay text is in the frame arena.
+* Overlay: new **memory** line (committed MB, perm MB, frame KB and peak)
+  and **jobs** line (workers, completed, queued).
+
+### Verified (Wine 9 + Xvfb, 4-core Xeon, AVX2)
+* 0 errors and 0 warnings in both configs. The headless test passes for both.
+* **10 of 10** repeated self-test runs pass with 1–4 workers. Parallel
+  results always equal serial.
+* **Scaling** (release, 4096 jobs ≈ 15 µs each, 61 ms serial):
+
+  | Threads (workers + main) | 2 | 3 | 4 | 5 (oversubscribed) |
+  |---|---|---|---|---|
+  | Speed-up | 1.96–2.12× | 2.25–2.91× | 3.46–3.62× | 3.46–3.59× |
+* **Pool storm**: 8192 jobs × 8 blocks, submitted one by one: 11–32 ms,
+  no corruption, 0 blocks in use afterwards. Only 10–31 fresh blocks were
+  ever needed, so the free list recycles under contention.
+* A bug found and fixed while testing: one semaphore wake per submitted job
+  made the parallel run 8× *slower* than serial under Wine. Claimed,
+  batched wake-ups fixed it (D24).
+* Memory at run time: 0.6 MB committed. Arena peaks: perm 256 KB, frame
+  4 KB, scratch 32 KB.
+
+### Performance
+Frame cost is unchanged from M3 (rendering is still the llvmpipe-bound test
+scene). The job system is idle during frames until M5/M6 give it chunk
+work.
+
+### Known issues
+* Not yet seen on a real GPU (CI uses software GL).
+
+### Deferred
+* Job priorities / distance-ordered scheduling: with chunk streaming (M6).
+* A per-thread frame arena for workers (each worker has a per-job scratch
+  arena today, which covers the planned uses).
 
 ---
 
