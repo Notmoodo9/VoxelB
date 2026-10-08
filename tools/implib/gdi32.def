@@ -1,0 +1,6 @@
+; Import definitions for gdi32.dll. build.bat turns this into an import
+; library, so no Windows SDK is needed. Add a line for each new import.
+LIBRARY gdi32.dll
+EXPORTS
+    CreateSolidBrush
+    DeleteObject

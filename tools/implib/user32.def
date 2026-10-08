@@ -1,0 +1,25 @@
+; Import definitions for user32.dll. build.bat turns this into an import
+; library, so no Windows SDK is needed. Add a line for each new import.
+LIBRARY user32.dll
+EXPORTS
+    AdjustWindowRectEx
+    CreateWindowExA
+    DefWindowProcA
+    DestroyWindow
+    DispatchMessageA
+    GetClientRect
+    GetSystemMetrics
+    KillTimer
+    LoadCursorA
+    LoadIconA
+    MessageBoxA
+    PeekMessageA
+    PostMessageA
+    PostQuitMessage
+    RegisterClassExA
+    SetProcessDpiAwarenessContext
+    SetTimer
+    SetWindowPos
+    ShowWindow
+    TranslateMessage
+    UnregisterClassA

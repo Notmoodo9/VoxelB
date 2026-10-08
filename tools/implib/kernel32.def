@@ -1,0 +1,20 @@
+; Import definitions for kernel32.dll. build.bat turns this into an import
+; library, so no Windows SDK is needed. Add a line for each new import.
+LIBRARY kernel32.dll
+EXPORTS
+    AcquireSRWLockExclusive
+    AttachConsole
+    CloseHandle
+    CreateFileA
+    ExitProcess
+    GetCommandLineA
+    GetLastError
+    GetModuleFileNameA
+    GetModuleHandleA
+    GetStdHandle
+    OutputDebugStringA
+    QueryPerformanceCounter
+    QueryPerformanceFrequency
+    ReleaseSRWLockExclusive
+    Sleep
+    WriteFile
