@@ -2,7 +2,7 @@
 
 ## Current state
 **Milestone 3: Raw input, rebindable keys, fly camera, shader
-loading/hot-reload, debug text overlay: DONE** (pending green Windows CI)
+loading/hot-reload, debug text overlay: DONE** (Windows CI green: run #5)
 
 Next: **Milestone 4: Memory arenas/pools, job system with worker threads.**
 
@@ -60,9 +60,18 @@ Next: **Milestone 4: Memory arenas/pools, job system with worker threads.**
   its data next to the exe. A lone exe shows "data folder not found" and
   exits.
 
+### Verified on Windows (GitHub Actions, Mesa 26.2.4 llvmpipe, GL 4.6 core)
+* CI run https://github.com/Notmoodo9/VoxelB/actions/runs/37852698522 is
+  green. Both smoke tests pass, and they now fail on any ERROR line in the
+  log. The game root was found in the dev layout, all 11 bindings loaded,
+  49 GL functions resolved, both shader programs built, the text renderer
+  started, the mouse was captured, and it exited cleanly with code 0.
+* The "Latest build" release was republished from this commit.
+
 ### Performance (software rendering via llvmpipe; no GPU here)
 | Scene (1280×720, test field ≈ 37k vertices) | FPS | Frame avg |
 |---|---|---|
+| Windows CI start view (1028×720, llvmpipe) | 36–38 | 26.1 ms |
 | Start view, vsync on (Xvfb, no vblank) | 51–57 | 17.5–19.6 ms |
 | Inside the field, most of the screen covered | 26–29 | 34–39 ms |
 On llvmpipe, the frame time is all CPU rasterisation of the test scene.
