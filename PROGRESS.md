@@ -2,7 +2,7 @@
 
 ## Current state
 **Milestone 4: Memory arenas/pools, job system with worker threads: DONE**
-(pending green Windows CI)
+(Windows CI green: run #7)
 
 Next: **Milestone 5: Chunk/section data structures (palette compression),
 flat test world, mesher, render.**
@@ -53,6 +53,15 @@ flat test world, mesher, render.**
   batched wake-ups fixed it (D24).
 * Memory at run time: 0.6 MB committed. Arena peaks: perm 256 KB, frame
   4 KB, scratch 32 KB.
+
+### Verified on Windows (GitHub Actions, AMD EPYC 7763, 4 logical CPUs)
+* CI run https://github.com/Notmoodo9/VoxelB/actions/runs/37859514598 is
+  green. Both smoke tests require "selftest: PASS".
+* **Speed-up 3.94× with 4 threads** (61.3 ms serial → 15.6 ms parallel),
+  which is close to ideal. Results match serial.
+* Pool storm: 8192 jobs in 12.2 ms, no corruption, no leaks, 32 fresh
+  blocks.
+* Even load: main + 3 workers ran 3031 / 3149 / 3058 / 3050 jobs.
 
 ### Performance
 Frame cost is unchanged from M3 (rendering is still the llvmpipe-bound test
