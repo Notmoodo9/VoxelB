@@ -11,6 +11,7 @@ EXPORTS
     GetLastError
     GetModuleFileNameA
     GetModuleHandleA
+    GetProcAddress
     GetStdHandle
     OutputDebugStringA
     QueryPerformanceCounter

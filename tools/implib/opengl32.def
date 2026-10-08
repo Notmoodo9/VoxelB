@@ -1,0 +1,9 @@
+; Import definitions for opengl32.dll. build.bat turns this into an import
+; library, so no Windows SDK is needed. Only WGL entry points are imported;
+; GL functions are loaded at runtime (src/include/gl_funcs.inc).
+LIBRARY opengl32.dll
+EXPORTS
+    wglCreateContext
+    wglDeleteContext
+    wglGetProcAddress
+    wglMakeCurrent

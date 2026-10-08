@@ -1,10 +1,72 @@
 # Progress
 
 ## Current state
-**Milestone 1 — Toolchain + build.bat; Win32 window, message loop, clean exit; logging: DONE**
+**Milestone 2: OpenGL 4.6 core context via WGL, GL loader, clear color, vsync
+toggle, timing/FPS: DONE** (pending green Windows CI; see below)
 
-Next: **Milestone 2: OpenGL 4.6 core context via WGL, GL loader, clear color,
-vsync toggle, timing/FPS.**
+Also done: GitHub Actions Windows CI with smoke tests, a per-commit artifact,
+and the "Latest build" release on pushes to `main` (DECISIONS.md D9).
+
+Next: **Milestone 3: Raw input, rebindable keys, fly camera, shader
+loading/hot-reload, debug text overlay.**
+
+---
+
+## Milestone 2 — done (2026-10-08)
+
+### What was built
+* `src/render/gl_context.asm`: WGL bootstrap (a hidden dummy window and
+  legacy context to fetch the ARB entry points), `wglChoosePixelFormatARB`
+  (RGBA8 / D24S8, double buffered, full acceleration preferred), a
+  **4.6 core** context with a 4.5 core fallback, a debug context in debug
+  builds. Also the GL loader driven by `src/include/gl_funcs.inc` (12
+  functions so far), `KHR_debug` messages routed into the log, vsync via
+  `WGL_EXT_swap_control`, swap, and shutdown.
+* `src/render/renderer.asm`: viewport tracking on resize; clears to a vivid
+  sky blue each frame.
+* `src/core/timing.asm`: QPC frame timer with 0.5 s stats windows (FPS, and
+  avg/min/max frame time).
+* `src/core/entry.asm`: frame loop (pump → requests → render → swap →
+  timing), FPS and frame times in the title bar, a `perf:` log line every
+  2 s, a run summary on exit, and `--novsync`.
+* Window: `WM_CLOSE` is now a request, so GL is released before the window
+  is destroyed. F8 toggles vsync. Minimised windows don't render.
+* `str_copy`, `fmt_decimal` string helpers.
+* CI: Mesa llvmpipe is installed for the GPU-less runner's smoke test, the
+  smoke test checks for the GL context and the perf line, and game logs are
+  printed at the end of every run.
+
+### Verified (Wine 9 + Xvfb + Mesa 25.2 llvmpipe)
+* 0 errors and 0 warnings in both configs.
+* Context: llvmpipe offers no 4.6, so the logged warning and the 4.5 core
+  fallback worked as designed. Pixel format 3, all 12 functions resolved,
+  debug output enabled, vsync set.
+* The window shows the clear colour: pixel sampled as rgb(84,158,250), which
+  is exactly (0.33, 0.62, 0.98). The title shows live stats.
+* F8 toggles vsync off/on (logged and shown in the title). Resizing the
+  window to 800×500 updated the viewport. `--novsync` works. The release
+  build runs, and both configs exit cleanly with code 0.
+
+### Performance (software rendering; no GPU in this environment)
+| Case | FPS | Frame time avg (min / max) |
+|---|---|---|
+| 1280×720, vsync off (llvmpipe) | ~333–391 | 2.6–3.0 ms (1.5 / 7.5) |
+| 800×500, vsync off (llvmpipe) | ~893 | 1.12 ms (0.70 / 2.67) |
+
+Xvfb has no vblank, so "vsync on" doesn't cap the rate here. On a real GPU,
+expect a locked refresh rate with vsync on and thousands of FPS with it off
+for a clear-only frame. Chunk gen/mesh timings start in M5.
+
+### Known issues
+* Real-GPU behaviour (4.6 context, vsync cap) is not yet observed. CI uses
+  software GL. Please run `build.bat run` on your PC and read the title bar.
+* Under Wine/Xvfb, `DestroyWindow` takes about 2 s (Wine quirk, see M1).
+
+### Deferred
+* Debug text overlay: M3 (stats are in the title bar until then).
+* F8/Esc become rebindable bindings in M3.
+* Multisampling and an sRGB back buffer are intentionally not used (HDR
+  pipeline in M14, DECISIONS.md D12).
 
 ---
 

@@ -2,5 +2,9 @@
 ; library, so no Windows SDK is needed. Add a line for each new import.
 LIBRARY gdi32.dll
 EXPORTS
+    ChoosePixelFormat
     CreateSolidBrush
     DeleteObject
+    DescribePixelFormat
+    SetPixelFormat
+    SwapBuffers

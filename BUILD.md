@@ -10,7 +10,7 @@
 
 **Linker choice:** `lld-link` (LLVM). MSVC `link.exe` is not used. You do **not** need
 Visual Studio or the Windows SDK: `build.bat` generates the import libraries for
-`kernel32`, `user32` and `gdi32` from the `.def` files in `tools/implib/`.
+`kernel32`, `user32`, `gdi32` and `opengl32` from the `.def` files in `tools/implib/`.
 
 Check your tools from a fresh terminal:
 
@@ -41,7 +41,13 @@ compile all of that out and link with `/opt:ref /opt:icf`.
 ```
 build\debug\voxelb.exe                    normal run; Esc or the close button quits
 build\debug\voxelb.exe --autoclose 3000   closes itself after 3 s (automated tests)
+build\debug\voxelb.exe --novsync          start with vsync off
 ```
+
+Keys (temporary until rebindable input in M3): **F8** toggles vsync, **Esc** quits.
+The title bar shows FPS and frame time (avg/min/max over 0.5 s), the vsync
+state and the OpenGL version. Requires an OpenGL 4.6 driver (4.5 is accepted
+with a warning, e.g. for software renderers).
 
 Every run writes `voxel.log` next to the executable. When started from a
 console, the same lines are echoed to it. They also go to the debugger
@@ -59,13 +65,24 @@ failure (debug builds).
   `tools/implib/<dll>.def`, then `IMPORT` it in the module. For a new DLL, add a
   new `.def` file; it is linked automatically.
 
-## Linux / CI (cross-build and headless test)
+## Continuous integration
+
+Every push and pull request runs `.github/workflows/build.yml` on a Windows
+runner. It builds debug and release with `build.bat`, smoke-tests both
+(`tools/smoke_test.ps1`, using Mesa's software OpenGL because the runner has
+no GPU), and uploads a `voxelb-<sha>` artifact. Pushes to `main` also update
+the public **Latest build** release:
+https://github.com/Notmoodo9/VoxelB/releases/download/latest/voxelb-windows.zip
+
+Locally on Windows: `powershell -ExecutionPolicy Bypass -File tools\smoke_test.ps1 -Config debug`.
+
+## Linux (cross-build and headless test)
 
 The same build runs on Linux with the Linux builds of NASM and lld-link:
 
 ```
 tools/build.sh [debug|release] [clean]
-tools/test_headless.sh [debug|release] [ms]   # needs wine + Xvfb; checks for a clean exit, takes a screenshot
+tools/test_headless.sh [debug|release] [ms]   # needs wine + Xvfb + Mesa; checks window, GL context, perf line, clean exit; takes a screenshot
 ```
 
 `tools/build.sh` mirrors `build.bat` flag for flag. If you change one, change

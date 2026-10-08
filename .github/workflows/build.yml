@@ -45,12 +45,31 @@ jobs:
         shell: cmd
         run: call build.bat release clean
 
+      # The runner has no GPU, so its OpenGL is GDI's 1.1. For the smoke test
+      # only, drop Mesa's llvmpipe (software GL 4.5 core) next to the exe.
+      # These DLLs are never packaged.
+      - name: Install Mesa llvmpipe for the smoke test
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R pal1000/mesa-dist-win --pattern "mesa3d-*-release-msvc.7z" -D mesa
+          $archive = (Get-ChildItem mesa\*.7z | Select-Object -First 1).FullName
+          Write-Host "Mesa archive: $archive"
+          7z x $archive -omesa\x -y | Out-Null
+          foreach ($c in 'debug', 'release') { Copy-Item mesa\x\x64\*.dll "build\$c\" }
+          Get-ChildItem build\release\*.dll | ForEach-Object { Write-Host $_.Name }
+
       - name: Smoke test (debug)
         shell: pwsh
+        env:
+          GALLIUM_DRIVER: llvmpipe
         run: ./tools/smoke_test.ps1 -Config debug
 
       - name: Smoke test (release)
         shell: pwsh
+        env:
+          GALLIUM_DRIVER: llvmpipe
         run: ./tools/smoke_test.ps1 -Config release
 
       - name: Package
@@ -92,3 +111,12 @@ jobs:
             --notes "Automatic Windows build of main at $sha. Download voxelb-windows.zip, unzip, run VoxelB\voxelb.exe." `
             --target "${{ github.sha }}" `
             --latest
+
+      - name: Show game logs
+        if: always()
+        shell: pwsh
+        run: |
+          foreach ($c in 'debug', 'release') {
+            Write-Host "==== build/$c/voxel.log ===="
+            if (Test-Path "build/$c/voxel.log") { Get-Content "build/$c/voxel.log" } else { Write-Host "(none)" }
+          }

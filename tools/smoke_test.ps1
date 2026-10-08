@@ -3,7 +3,7 @@
 #   powershell -ExecutionPolicy Bypass -File tools\smoke_test.ps1 -Config debug
 param(
     [ValidateSet('debug', 'release')] [string] $Config = 'release',
-    [int] $AutocloseMs = 3000,
+    [int] $AutocloseMs = 4000,
     [int] $TimeoutMs = 60000
 )
 $ErrorActionPreference = 'Stop'
@@ -32,6 +32,8 @@ Write-Host "exit code: $code"
 $text = if (Test-Path $log) { Get-Content $log -Raw } else { '' }
 if ($code -ne 0) { Write-Host "FAIL: exit code $code"; exit 1 }
 if ($text -notmatch 'window created, client area') { Write-Host 'FAIL: window was not created'; exit 1 }
+if ($text -notmatch 'OpenGL core context created') { Write-Host 'FAIL: no OpenGL context'; exit 1 }
+if ($text -notmatch 'perf: ') { Write-Host 'FAIL: no frame timing (perf) line'; exit 1 }
 if ($text -notmatch 'clean exit, code = 0') { Write-Host 'FAIL: no clean exit in log'; exit 1 }
 Write-Host "PASS ($Config)"
 exit 0

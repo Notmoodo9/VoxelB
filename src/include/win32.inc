@@ -48,6 +48,7 @@
 %define WM_DPICHANGED               0x02E0
 %define PM_REMOVE                   0x0001
 %define VK_ESCAPE                   0x1B
+%define VK_F8                       0x77
 
 ; ---- message boxes ---------------------------------------------------------
 %define MB_OK                       0x00000000

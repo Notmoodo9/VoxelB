@@ -7,6 +7,10 @@
 ;   window_pump()                                   -> eax 1 running / 0 quit
 ;   window_shutdown()
 ;   g_hwnd, g_hinstance, g_client_w, g_client_h, g_window_active, g_exit_code
+;   g_close_requested   set by WM_CLOSE (close button, Alt+F4, Esc, autoclose);
+;                       the main loop then shuts down while the window and GL
+;                       context still exist, and window_shutdown destroys it
+;   g_vsync_toggle_requested   set by F8 (until M3's rebindable input exists)
 ; =============================================================================
 %include "macros.inc"
 %include "win32.inc"
@@ -14,6 +18,7 @@
 
 global window_init, window_pump, window_shutdown
 global g_hwnd, g_hinstance, g_client_w, g_client_h, g_window_active, g_exit_code
+global g_close_requested, g_vsync_toggle_requested
 
 IMPORT GetModuleHandleA, GetLastError
 IMPORT SetProcessDpiAwarenessContext, RegisterClassExA, UnregisterClassA
@@ -37,6 +42,8 @@ g_client_w:         resd 1
 g_client_h:         resd 1
 g_window_active:    resd 1
 g_exit_code:        resd 1
+g_close_requested:  resd 1
+g_vsync_toggle_requested: resd 1
 alignb 8
 g_background_brush: resq 1
 
@@ -206,7 +213,8 @@ __?SECT?__
 ; -----------------------------------------------------------------------------
 ; window_pump — dispatch all pending messages without blocking.
 ;   in:  none
-;   out: eax = 1 to keep running, 0 if WM_QUIT was received (g_exit_code set)
+;   out: eax = 1 to keep running, 0 if a close was requested or WM_QUIT was
+;        received (g_exit_code set for WM_QUIT)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC window_pump, MSG_size, rbx
@@ -226,7 +234,9 @@ PROC window_pump, MSG_size, rbx
     xor eax, eax
     RETURN
 .idle:
-    mov eax, 1
+    xor eax, eax
+    cmp dword [rel g_close_requested], 0
+    sete al
     RETURN
 ENDPROC
 
@@ -287,7 +297,7 @@ PROC window_proc, 0, rbx, rsi, rdi, r12
 
 .on_close:
     LOG_INFO "close requested"
-    API DestroyWindow, rbx
+    mov dword [rel g_close_requested], 1
     xor eax, eax
     RETURN
 
@@ -323,10 +333,20 @@ PROC window_proc, 0, rbx, rsi, rdi, r12
     RETURN
 
 .on_keydown:
+    cmp rdi, VK_F8
+    je .on_f8
     cmp rdi, VK_ESCAPE
     jne .default
     LOG_INFO "escape pressed, closing"
     API PostMessageA, rbx, WM_CLOSE, 0, 0
+    xor eax, eax
+    RETURN
+
+.on_f8:
+    test r12d, 0x40000000               ; bit 30: key was already down (repeat)
+    jnz .handled
+    mov dword [rel g_vsync_toggle_requested], 1
+.handled:
     xor eax, eax
     RETURN
 

@@ -68,3 +68,58 @@ screenshot. `build.bat` was exercised under Wine's `cmd`: argument parsing,
 the toolchain check, the import-lib, assemble and link command lines, and
 the usage error. A full end-to-end `build.bat` run still needs real Windows
 (see PROGRESS.md).
+
+## D9 — Continuous integration on GitHub Actions (CI setup)
+`.github/workflows/build.yml` runs on every push and PR on `windows-latest`.
+It installs NASM (`ilammy/setup-nasm`), sets up the MSVC developer
+environment (`ilammy/msvc-dev-cmd`; not used by the build itself, but
+available), and puts LLVM's `lld-link` on PATH. It runs `build.bat` for debug
+and release, smoke-tests both with `tools/smoke_test.ps1`, and uploads
+`voxelb-<short sha>` (the release exe plus `data/`, `shaders/`, `assets/`).
+Pushes to `main` replace the public **"Latest build"** release (tag `latest`)
+with `voxelb-windows.zip`, a stable name for the README link, and
+`voxelb-<sha>.zip`.
+
+## D10 — OpenGL 4.6 core, with a 4.5 core fallback (M2)
+We ask for 4.6 core first. If the driver refuses, we take 4.5 core and log a
+warning. Real GPUs on current drivers give 4.6. The fallback exists so the
+game also runs on software renderers (Mesa llvmpipe stops at 4.5), which is
+how CI and the headless tests render without a GPU. Rule for later
+milestones: core rendering paths must only use 4.5 features or extensions
+we check for (e.g. `ARB_indirect_parameters`, `ARB_gl_spirv`). Cost to
+change: none; it is one attribute list.
+
+## D11 — GL loader as an X-macro list (M2)
+`src/include/gl_funcs.inc` lists every GL function once, with a
+required/optional flag. The loader generates the pointer slots, the name
+strings and a `{name, slot, required}` table from it. Other modules call
+`GL glFoo, args` through the pointer of the same name. A missing required
+function fails startup with a clear log line and message box. Optional ones
+stay 0 and are checked before use. Only WGL entry points are imported from
+`opengl32.dll`; GL 1.1 functions are resolved through `GetProcAddress`
+because `wglGetProcAddress` returns NULL for them.
+
+## D12 — Pixel format and framebuffer (M2)
+`wglChoosePixelFormatARB` with RGBA8, 24-bit depth, 8-bit stencil, double
+buffered, full acceleration preferred (retried without it). The back buffer
+is **not** sRGB-capable: from M14 we render in HDR to our own targets and
+the tonemap pass writes sRGB-encoded values itself. Until then, the clear
+colour is given in sRGB directly.
+
+## D13 — Frame timing and stats display (M2)
+QPC-based frame timer (`src/core/timing.asm`). Stats are gathered over
+0.5 s windows: FPS, plus average, min and max frame time in µs. They are
+shown in the window title until the debug text overlay exists (M3), and
+logged every 2 s as a `perf:` line. CI and the headless tests check for that
+line. Minimised windows skip rendering and sleep 16 ms per loop. All maths
+is integer: no floating point on the timing path.
+
+## D14 — Shutdown ordering (M2)
+`WM_CLOSE` only sets `g_close_requested`. The main loop exits, releases the
+GL context while the window still exists, and only then destroys the window.
+This avoids tearing down a context whose window is already gone.
+
+## D15 — Temporary hardwired keys (M2)
+F8 toggles vsync and Esc quits. Both are hardwired in the WndProc until M3's
+rebindable input system replaces them with bindings. `--novsync` starts with
+vsync off.

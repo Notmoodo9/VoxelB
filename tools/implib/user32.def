@@ -8,6 +8,7 @@ EXPORTS
     DestroyWindow
     DispatchMessageA
     GetClientRect
+    GetDC
     GetSystemMetrics
     KillTimer
     LoadCursorA
@@ -17,9 +18,11 @@ EXPORTS
     PostMessageA
     PostQuitMessage
     RegisterClassExA
+    ReleaseDC
     SetProcessDpiAwarenessContext
     SetTimer
     SetWindowPos
+    SetWindowTextA
     ShowWindow
     TranslateMessage
     UnregisterClassA

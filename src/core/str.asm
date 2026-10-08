@@ -4,7 +4,7 @@
 ; =============================================================================
 %include "macros.inc"
 
-global str_len, str_find, str_parse_u64, fmt_u64, fmt_hex64
+global str_len, str_find, str_parse_u64, str_copy, fmt_u64, fmt_hex64, fmt_decimal
 
 section .text
 
@@ -163,3 +163,61 @@ fmt_hex64:
     jns .loop
     mov eax, 16
     ret
+
+; -----------------------------------------------------------------------------
+; str_copy — copy a zero-terminated string, including the terminator.
+;   in:  rcx = destination, rdx = source
+;   out: rax = pointer to the terminator written in the destination (so
+;        calls can be chained to build a string)
+;   clobbers: rax, rcx, rdx
+; -----------------------------------------------------------------------------
+str_copy:
+    mov rax, rcx
+.loop:
+    mov cl, [rdx]
+    mov [rax], cl
+    test cl, cl
+    jz .done
+    inc rax
+    inc rdx
+    jmp .loop
+.done:
+    ret
+
+; -----------------------------------------------------------------------------
+; fmt_decimal — format a fixed-point value: value / 10^frac with exactly
+; `frac` digits after the point (e.g. 16667, 3 -> "16.667").
+;   in:  rcx = destination buffer (not terminated), rdx = value,
+;        r8 = number of fraction digits (0..9)
+;   out: rax = number of bytes written
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC fmt_decimal, 0, rbx, rsi, rdi, r12
+    mov rbx, rcx                        ; rbx = destination
+    mov rax, rdx
+    mov rdi, r8                         ; rdi = fraction digits
+    mov ecx, 1
+    mov r9, rdi
+.pow:
+    test r9, r9
+    jz .pow_done
+    imul rcx, rcx, 10
+    dec r9
+    jmp .pow
+.pow_done:
+    xor edx, edx
+    div rcx
+    mov r12, rdx                        ; r12 = fraction part
+    INVOKE fmt_u64, rbx, rax, 0, ' '
+    mov rsi, rax                        ; rsi = bytes written
+    test rdi, rdi
+    jz .done
+    mov byte [rbx + rsi], '.'
+    inc rsi
+    lea rcx, [rbx + rsi]
+    INVOKE fmt_u64, rcx, r12, rdi, '0'
+    add rsi, rax
+.done:
+    mov rax, rsi
+    RETURN
+ENDPROC
