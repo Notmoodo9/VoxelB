@@ -40,7 +40,7 @@ c_zero:         dd 0.0
 ; start position: south of the block gallery and the test structures,
 ; looking north, slightly down
 align 8
-c_start_pos:    dq 0.5, 118.0, 262.0       ; doubles
+c_start_pos:    dq 0.5, 118.0, 462.0       ; doubles
 c_start_pitch:  dd -0.35
 
 section .bss

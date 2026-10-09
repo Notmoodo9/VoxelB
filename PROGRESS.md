@@ -1,13 +1,85 @@
 # Progress
 
 ## Current state
-**Milestone 7: Data-driven block registry + parser + texture array: DONE**
-(Windows CI green: run #13)
+**Milestone 7b: Shaped blocks: DONE** (Windows CI: see below)
 
-Next: **Milestone 7b: Shaped blocks** (slabs, stairs, fences, doors,
-trapdoors). The owner added it during the M7 interview, to come right after
-M7. It starts with a short design interview: which shapes go with which
-materials, and how doors and trapdoors behave.
+Next: **Milestone 8: 🎨 DESIGN — Terrain** (heightmap noise and splines,
+tiered mountains, rare giant ranges). It starts with a design interview.
+
+---
+
+## Milestone 7b — done (2026-10-09)
+
+### Design interview
+Two rounds plus approval, recorded in `design/blocks/shaped_blocks.md`.
+* All 19 woods get 10 shapes: slab, stairs, fence, fence gate, door,
+  trapdoor, ladder, sign, wall sign, pressure plate.
+* The 8 stone-family materials get slab, stairs, wall and a stacking
+  pillar.
+* The 16 terracottas get slab and stairs.
+* 18 glass panes.
+* Stair corners are automatic.
+* Each wood has a unique door and trapdoor design.
+* Later: signs show typed text; pressure plates open doors and feed a
+  future mechanism system.
+
+### What was built
+* **Block states** (D41): `shape = …` reserves one id per state. There are
+  272 new shaped blocks, 2075 block ids in all. `upper_textures` sets the
+  door's upper half.
+* **Shape geometry** (`src/render/shapes.asm`, D42): boxes in 1/16 units,
+  rotated by facing. Neighbour-dependent parts are worked out at mesh time:
+  stair inner/outer corners, fence/wall/pane connections, walls without a
+  post on straight runs, and pillar base/shaft/capital.
+* **Model quads** in the same quad stream and shader as the cubes. Faces
+  are culled against opaque neighbours. Sections without shapes skip the
+  pass.
+* **Textures**: 98 new ones (19 unique door designs as top and bottom
+  halves with glow layers where needed, 19 trapdoors, 19 ladders, 8 pillar
+  side/top pairs). 415 textures in all.
+* **Data**: `data/blocks/60_shapes.blocks` (templates and families).
+* **Gallery** shows every state and connection (D43). It now starts at
+  z 440, and the start position moved to z 462.
+
+### How to see it
+Start the game and fly north over the gallery. Rows 17–28 hold the wood
+shapes, then stone shapes, terracotta and panes. Close views:
+* `voxelb.exe --pos 4 104 357 --look 0 -30` — wood shapes (doors,
+  fences, ladders, trapdoors, stairs);
+* `voxelb.exe --pos 6 106 311 --look 0 -32` — walls, pillars and stair
+  corners;
+* `voxelb.exe --pos 6 104 289 --look 0 -30` — terracotta stairs and
+  glass panes.
+
+### Bugs found and fixed while testing
+* Shaped blocks were marked opaque (their layer is opaque), which culled
+  the ground's top face under them. Only full cubes are opaque now.
+
+### Verified (Wine 9 + Xvfb + Mesa llvmpipe)
+* Debug and release headless tests pass: 2075 blocks, 415 textures, none
+  missing, no warnings (except the GL 4.5 fallback), clean exit.
+* Screenshots: doors (open/closed, both hinges, upper halves), fences
+  joining in a T, gates, trapdoors, ladders, signs, plates; stair corners
+  forming; walls without posts on straight runs; pillars with base, shaft
+  and capital; translucent connected panes.
+
+### Performance (release, llvmpipe, render distance 16)
+| | |
+|---|---|
+| FPS flying (`--flytest`) | 129–136 (7.4–7.8 ms) |
+| Column meshing | avg 1.25 ms (shapes included) |
+| Column generation | avg 0.5–0.8 ms |
+| `stream_update` | avg 57–157 µs |
+
+### Known issues
+* Ladders, wall signs and doors in the gallery stand on their own (they
+  are meant to be attached to walls; placement rules come with M16).
+* Inside faces between boxes of one shaped block are drawn (a little
+  overdraw, invisible).
+
+### Deferred
+* Placing, opening doors and gates, typing on signs, pressure plates: M16+.
+* A mechanism/wiring system for plates: its own design later.
 
 ---
 

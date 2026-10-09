@@ -21,6 +21,29 @@
 %define LAYER_TRANSLUCENT   2           ; blended, back to front (glass, ice)
 %define BLOCKF_SWAY         1           ; g_block_flags: vertex sway (leaves)
 
+; mesher output capacity per section (greedy worst case is 98304 quads;
+; the rest is room for shaped-block quads)
+%define MESH_MAX_QUADS      131072
+
+; block shapes (g_block_shape); each has a fixed number of states, stored as
+; consecutive block ids starting at the base block (g_block_state = index)
+%define SHAPE_CUBE          0
+%define SHAPE_SLAB          1           ; bit 0: top
+%define SHAPE_STAIRS        2           ; bits 0-1 facing, bit 2: upside down
+%define SHAPE_FENCE         3
+%define SHAPE_FENCE_GATE    4           ; bits 0-1 facing, bit 2: open
+%define SHAPE_DOOR          5           ; 0-1 facing, 2 upper, 3 open, 4 hinge right
+%define SHAPE_TRAPDOOR      6           ; 0-1 facing, 2 top, 3 open
+%define SHAPE_LADDER        7           ; 0-1 facing
+%define SHAPE_SIGN          8           ; 0-1 rotation
+%define SHAPE_WALL_SIGN     9           ; 0-1 facing
+%define SHAPE_PLATE         10          ; bit 0: pressed
+%define SHAPE_WALL          11
+%define SHAPE_PILLAR        12
+%define SHAPE_PANE          13
+%define SHAPE_COUNT         14
+; facings: 0 north (-Z), 1 east (+X), 2 south (+Z), 3 west (-X)
+
 ; Neighbour sentinel for the mesher: a solid boundary (below the world).
 %define NEIGHBOR_SOLID      -1
 

@@ -15,7 +15,8 @@ yet; each item gets its own doc in `design/` when we interview it.
 | todo | Fantasy biomes: mushroom fields, crystal caves, floating islands, glowing forests | M10 | |
 | todo | Trees and vegetation per biome | M10 | |
 | done | Block set v1 and texture style | M7 | `design/blocks/block_set.md` (262 blocks, 16x16 vibrant shaded) |
-| todo | Shaped blocks: slabs, stairs, fences, doors, trapdoors for every wood and stone | M7b | owner chose: next milestone after M7; shapes per material to confirm |
+| done | Shaped blocks | M7b | `design/blocks/shaped_blocks.md` |
+| todo | Sign text, pressure plate mechanisms (wiring) | M16+ | from the M7b interview |
 | todo | Items, inventory, chests, crafting, tool tiers, smelting | M18 | |
 | todo | Passive animals | M19 | one mob at a time |
 | todo | Survival: health, hunger, damage, death, difficulty levels, Hardcore | M20 | |

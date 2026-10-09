@@ -96,3 +96,17 @@ glow = purple_lamp_glow
 glow = magenta_lamp_glow
 [texture pink_lamp]
 glow = pink_lamp_glow
+
+# glowing doors (milestone 7b)
+[texture glowwood_door_top]
+glow = glowwood_door_top_glow
+[texture glowwood_door_bottom]
+glow = glowwood_door_bottom_glow
+[texture emberwood_door_top]
+glow = emberwood_door_top_glow
+[texture emberwood_door_bottom]
+glow = emberwood_door_bottom_glow
+[texture glowing_mushroom_door_top]
+glow = glowing_mushroom_door_top_glow
+[texture glowing_mushroom_door_bottom]
+glow = glowing_mushroom_door_bottom_glow

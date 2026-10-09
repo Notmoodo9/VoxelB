@@ -24,7 +24,12 @@
 ;     g_block_tex (u16 texture index per face: -X +X -Y +Y -Z +Z)
 ;   Mesher tables, 64 K entries so any u16 id can be looked up:
 ;     g_block_opaque (hides neighbour faces), g_block_layer (LAYER_*),
-;     g_block_cullself (faces between two equal blocks are hidden)
+;     g_block_cullself (faces between two equal blocks are hidden),
+;     g_block_shape (SHAPE_*), g_block_state (state index within the block)
+;   Shaped blocks (`shape = stairs`, ...) get one id per state: the base id
+;   is state 0 and the next ids are the other states (g_block_nstates on
+;   the base). Every setting applies to all states; `upper_textures` sets
+;   the textures of a door's upper half.
 ;   Textures: g_tex_count, g_tex_names, g_tex_frame_ms (u32, 0 = default),
 ;     g_tex_glow (u16 glow texture + 1, 0 = none), g_tex_interp (u8)
 ; =============================================================================
@@ -39,6 +44,7 @@
 global blocks_load, block_find, tex_find
 global g_block_count, g_block_names, g_block_colors, g_block_opaque
 global g_block_layer, g_block_cullself, g_block_light, g_block_flags, g_block_tex
+global g_block_shape, g_block_state, g_block_nstates
 global g_tex_count, g_tex_names, g_tex_frame_ms, g_tex_glow, g_tex_interp
 
 extern str_ieq, str_len, str_copy, str_parse_u64
@@ -81,6 +87,27 @@ k_textures:     db "textures", 0
 k_render:       db "render", 0
 k_light:        db "light", 0
 k_sway:         db "sway", 0
+k_shape:        db "shape", 0
+k_upper_tex:    db "upper_textures", 0
+s_cube:         db "cube", 0
+s_slab:         db "slab", 0
+s_stairs:       db "stairs", 0
+s_fence:        db "fence", 0
+s_gate:         db "fence_gate", 0
+s_door:         db "door", 0
+s_trapdoor:     db "trapdoor", 0
+s_ladder:       db "ladder", 0
+s_sign:         db "sign", 0
+s_wall_sign:    db "wall_sign", 0
+s_plate:        db "pressure_plate", 0
+s_wall:         db "wall", 0
+s_pillar:       db "pillar", 0
+s_pane:         db "pane", 0
+align 8
+shape_names:    dq s_cube, s_slab, s_stairs, s_fence, s_gate, s_door, s_trapdoor
+                dq s_ladder, s_sign, s_wall_sign, s_plate, s_wall, s_pillar, s_pane
+shape_states:   db 1, 2, 8, 1, 8, 32, 16, 4, 4, 4, 2, 1, 1, 1
+str_shape_late:     db "shape must be the first setting of a new block: ", 0
 k_templates:    db "templates", 0
 k_members:      db "members", 0
 k_frame_ms:     db "frame_ms", 0
@@ -143,12 +170,16 @@ g_fam_tpl:          resd MAX_FAM_TEMPLATES
 g_block_light:      resw MAX_BLOCK_TYPES
 g_tex_glow:         resw MAX_TEXTURES
 g_block_tex:        resw MAX_BLOCK_TYPES * 6
+g_block_utex:       resw MAX_BLOCK_TYPES * 6    ; door upper-half textures
+g_block_nstates:    resw MAX_BLOCK_TYPES
 g_block_flags:      resb MAX_BLOCK_TYPES
 g_tex_interp:       resb MAX_TEXTURES
 alignb 16
 g_block_opaque:     resb 65536
 g_block_layer:      resb 65536
 g_block_cullself:   resb 65536
+g_block_shape:      resb 65536
+g_block_state:      resb 65536
 g_subst_name:       resb SUBST_CAP
 g_subst_val:        resb SUBST_CAP * 2
 g_path:             resb PATH_CAP
@@ -313,6 +344,16 @@ PROC block_get, 0, rbx, rsi
     mov dword [rcx + rax], (TEX_UNSET << 16) | TEX_UNSET
     mov dword [rcx + rax + 4], (TEX_UNSET << 16) | TEX_UNSET
     mov dword [rcx + rax + 8], (TEX_UNSET << 16) | TEX_UNSET
+    lea rcx, [rel g_block_utex]
+    mov dword [rcx + rax], (TEX_UNSET << 16) | TEX_UNSET
+    mov dword [rcx + rax + 4], (TEX_UNSET << 16) | TEX_UNSET
+    mov dword [rcx + rax + 8], (TEX_UNSET << 16) | TEX_UNSET
+    lea rcx, [rel g_block_nstates]
+    mov word [rcx + rbx * 2], 1
+    lea rcx, [rel g_block_shape]
+    mov byte [rcx + rbx], SHAPE_CUBE
+    lea rcx, [rel g_block_state]
+    mov byte [rcx + rbx], 0
     inc dword [rel g_block_count]
     mov eax, ebx
 .done:
@@ -385,11 +426,12 @@ ENDPROC
 
 ; -----------------------------------------------------------------------------
 ; set_textures — apply "face: texture, face: texture, ..." or "texture".
-;   in:  ecx = block id, rdx = value (modified: tokens are terminated)
+;   in:  rcx = texture row (6 u16), rdx = value (modified: tokens are
+;        terminated)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC set_textures, 0, rbx, rsi, rdi, r12, r13
-    mov ebx, ecx
+    mov rbx, rcx                        ; row
     mov rsi, rdx                        ; cursor
 .token:
     test rsi, rsi
@@ -441,9 +483,7 @@ PROC set_textures, 0, rbx, rsi, rdi, r12, r13
     mov rcx, rdi
     call tex_intern
     ; store into every face of the mask
-    lea rcx, [rel g_block_tex]
-    imul rdx, rbx, 12
-    add rcx, rdx
+    mov rcx, rbx
     xor edx, edx
 .store:
     bt r12d, edx
@@ -464,11 +504,159 @@ PROC set_textures, 0, rbx, rsi, rdi, r12, r13
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; block_apply — apply one setting to a block.
+; sync_states — copy a block's settings to its other states.
+;   in:  ecx = base block id
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC sync_states, 0, rbx, rsi, rdi
+    mov ebx, ecx
+    lea rax, [rel g_block_nstates]
+    movzx esi, word [rax + rbx * 2]     ; states
+    mov edi, 1
+.state:
+    cmp edi, esi
+    jae .done
+    lea r8d, [ebx + edi]                ; state id
+    lea rax, [rel g_block_layer]
+    mov cl, [rax + rbx]
+    mov [rax + r8], cl
+    lea rax, [rel g_block_flags]
+    mov cl, [rax + rbx]
+    mov [rax + r8], cl
+    lea rax, [rel g_block_light]
+    mov cx, [rax + rbx * 2]
+    mov [rax + r8 * 2], cx
+    ; textures: a door's upper half uses upper_textures when set
+    imul r9, rbx, 12
+    lea r10, [rel g_block_tex]
+    add r10, r9                         ; source row
+    lea rax, [rel g_block_shape]
+    cmp byte [rax + rbx], SHAPE_DOOR
+    jne .copy_tex
+    test edi, 4
+    jz .copy_tex
+    lea rax, [rel g_block_utex]
+    cmp word [rax + r9], TEX_UNSET
+    je .copy_tex
+    lea r10, [rax + r9]
+.copy_tex:
+    imul r9, r8, 12
+    lea rax, [rel g_block_tex]
+    add r9, rax
+    mov rax, [r10]
+    mov [r9], rax
+    mov eax, [r10 + 8]
+    mov [r9 + 8], eax
+    inc edi
+    jmp .state
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; block_apply — apply one setting to a block and all of its states.
 ;   in:  ecx = block id, rdx = key, r8 = value (modifiable copy)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC block_apply, 0, rbx, rsi, rdi, r12, r13
+PROC block_apply, 0, rbx
+    mov ebx, ecx
+    call block_apply_one
+    mov ecx, ebx
+    call sync_states
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; set_shape — make a block shaped: allocate the ids of its other states.
+;   in:  ecx = block id, rdx = shape name
+;   out: eax = 1 ok, 0 (warned)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC set_shape, 0, rbx, rsi, rdi, r12
+    mov ebx, ecx
+    mov rsi, rdx
+    xor edi, edi
+.find:
+    cmp edi, SHAPE_COUNT
+    jae .bad
+    lea rax, [rel shape_names]
+    INVOKE str_ieq, [rax + rdi * 8], rsi
+    test eax, eax
+    jnz .found
+    inc edi
+    jmp .find
+.found:
+    lea rax, [rel shape_states]
+    movzx r12d, byte [rax + rdi]        ; states
+    lea rax, [rel g_block_shape]
+    cmp [rax + rbx], dil
+    je .ok                              ; same shape again: nothing to do
+    ; only a block that was just created (last id, one state) can grow
+    mov eax, [rel g_block_count]
+    dec eax
+    cmp eax, ebx
+    jne .late
+    lea rax, [rel g_block_nstates]
+    cmp word [rax + rbx * 2], 1
+    jne .late
+    mov eax, [rel g_block_count]
+    add eax, r12d
+    dec eax
+    cmp eax, MAX_BLOCK_TYPES
+    ja .full
+    lea rax, [rel g_block_nstates]
+    mov [rax + rbx * 2], r12w
+    xor ecx, ecx                        ; state
+.state:
+    cmp ecx, r12d
+    jae .grown
+    lea edx, [ebx + ecx]
+    lea rax, [rel g_block_shape]
+    mov [rax + rdx], dil
+    lea rax, [rel g_block_state]
+    mov [rax + rdx], cl
+    test ecx, ecx
+    jz .next_state
+    lea rax, [rel g_block_names]
+    mov r8, [rax + rbx * 8]
+    mov [rax + rdx * 8], r8             ; states share the base name
+    lea rax, [rel g_block_nstates]
+    mov word [rax + rdx * 2], 0         ; (only the base holds the count)
+.next_state:
+    inc ecx
+    jmp .state
+.grown:
+    lea eax, [ebx + r12d]
+    mov [rel g_block_count], eax
+.ok:
+    mov eax, 1
+    RETURN
+.late:
+    lea rcx, [rel str_shape_late]
+    mov rdx, rsi
+    call warn
+    xor eax, eax
+    RETURN
+.full:
+    lea rcx, [rel str_too_many]
+    lea rdx, [rel k_block]
+    call warn
+    xor eax, eax
+    RETURN
+.bad:
+    lea rcx, [rel str_bad_value]
+    lea rdx, [rel k_shape]
+    call warn
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; block_apply_one — apply one setting to a block (its base id only).
+;   in:  ecx = block id, rdx = key, r8 = value (modifiable copy)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC block_apply_one, 0, rbx, rsi, rdi, r12, r13
     mov ebx, ecx
     mov rsi, rdx
     mov rdi, r8
@@ -488,13 +676,37 @@ PROC block_apply, 0, rbx, rsi, rdi, r12, r13
     INVOKE str_ieq, rsi, rdx
     test eax, eax
     jnz .sway
+    lea rdx, [rel k_shape]
+    INVOKE str_ieq, rsi, rdx
+    test eax, eax
+    jnz .shape
+    lea rdx, [rel k_upper_tex]
+    INVOKE str_ieq, rsi, rdx
+    test eax, eax
+    jnz .upper
     lea rcx, [rel str_unknown_key]
     mov rdx, rsi
     call warn
     RETURN
 
 .textures:
-    INVOKE set_textures, rbx, rdi
+    imul rcx, rbx, 12
+    lea rax, [rel g_block_tex]
+    add rcx, rax
+    mov rdx, rdi
+    call set_textures
+    RETURN
+
+.upper:
+    imul rcx, rbx, 12
+    lea rax, [rel g_block_utex]
+    add rcx, rax
+    mov rdx, rdi
+    call set_textures
+    RETURN
+
+.shape:
+    INVOKE set_shape, rbx, rdi
     RETURN
 
 .render:
@@ -1090,10 +1302,16 @@ PROC finalize, 0, rbx, rsi, rdi
     mov byte [rax + rbx], LAYER_OPAQUE
     xor ecx, ecx
 .layer_ok:
+    ; only full opaque cubes hide their neighbours' faces
     lea rax, [rel g_block_opaque]
     xor edx, edx
     cmp ecx, LAYER_OPAQUE
     sete dl
+    lea r8, [rel g_block_shape]
+    cmp byte [r8 + rbx], SHAPE_CUBE
+    je .opaque_store
+    xor edx, edx
+.opaque_store:
     mov [rax + rbx], dl
     lea rax, [rel g_block_cullself]
     xor edx, edx
@@ -1115,8 +1333,8 @@ PROC blocks_load, 0, rbx, rdi
     ; reset: air (id 0) and the built-in "missing" texture (index 0)
     lea rdi, [rel g_block_opaque]
     xor eax, eax
-    mov ecx, 65536 * 3 / 8
-    rep stosq                           ; opaque, layer, cullself
+    mov ecx, 65536 * 5 / 8
+    rep stosq                           ; opaque, layer, cullself, shape, state
     lea rax, [rel g_block_opaque]
     mov byte [rax + 0xFFFF], 1          ; mesher's "solid boundary" id
     lea rax, [rel str_air]

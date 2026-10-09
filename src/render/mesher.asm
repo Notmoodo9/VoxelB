@@ -24,7 +24,7 @@
 ; Public API:
 ;   mesh_section(sect, neighbors[6], out u64[], scratch ARENA*)
 ;       -> rax quads, rdx = opaque count | cutout count << 32
-;   MESH_MAX_QUADS (worst case: 3D checkerboard)
+;   MESH_MAX_QUADS (world.inc): output capacity per section
 ; =============================================================================
 %include "macros.inc"
 %include "memory.inc"
@@ -32,11 +32,13 @@
 
 global mesh_section
 
-extern g_block_opaque, g_block_layer
+extern g_block_opaque, g_block_layer, g_block_shape
+extern shapes_emit
 
-; g_block_opaque, g_block_layer and g_block_cullself are consecutive 64 KB
-; tables (src/world/block.asm)
+; g_block_opaque, g_block_layer, g_block_cullself and g_block_shape are
+; consecutive 64 KB tables (src/world/block.asm)
 %define CULLSELF_OFS    (2 * 65536)
+%define SHAPE_OFS       (3 * 65536)
 
 %define PAD             34
 %define PAD2            (PAD * PAD)
@@ -102,6 +104,44 @@ all_opaque:
     ret
 
 ; -----------------------------------------------------------------------------
+; has_shapes — could a section contain shaped blocks? (uniform: its id;
+; palette sections: any palette entry; raw 16-bit sections: assumed yes)
+;   in:  rcx = SECT*      out: eax = 1 if yes
+;   clobbers: rax, rcx, rdx, r8
+; -----------------------------------------------------------------------------
+has_shapes:
+    lea r8, [rel g_block_shape]
+    movzx eax, byte [rcx + SECT.bits]
+    test eax, eax
+    jnz .palette
+    movzx eax, word [rcx + SECT.uniform_id]
+    movzx eax, byte [r8 + rax]
+    test eax, eax
+    setnz al
+    ret
+.palette:
+    cmp eax, 16
+    je .yes
+    movzx edx, word [rcx + SECT.pal_count]
+    mov rcx, [rcx + SECT.palette]
+    test rcx, rcx
+    jz .no
+.entry:
+    test edx, edx
+    jz .no
+    dec edx
+    movzx eax, word [rcx + rdx * 2]
+    cmp byte [r8 + rax], 0
+    jne .yes
+    jmp .entry
+.yes:
+    mov eax, 1
+    ret
+.no:
+    xor eax, eax
+    ret
+
+; -----------------------------------------------------------------------------
 ; covered — does neighbour n fully cover the adjacent face with opaque blocks?
 ;   in:  rcx = neighbour (0 air, -1 solid, else SECT*)
 ;   out: eax = 1 if it is the solid boundary or an all-opaque section
@@ -141,7 +181,8 @@ covered:
 %define L_W         88
 %define L_H         96
 %define L_ID        104
-%define L_LOCALS    112
+%define L_SHAPES    112                   ; section holds shaped blocks
+%define L_LOCALS    120
 PROC mesh_section, L_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [LOCAL(L_SECT)], rcx
     mov [LOCAL(L_NB)], rdx
@@ -169,6 +210,9 @@ PROC mesh_section, L_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     RETURN
 
 .full_mesh:
+    mov rcx, [LOCAL(L_SECT)]
+    call has_shapes
+    mov [LOCAL(L_SHAPES)], rax
     ; ---- scratch: volume + decode buffer + mask -------------------------------------
     INVOKE arena_alloc, [LOCAL(L_ARENA)], VOL_SIZE * 2, 64
     test rax, rax
@@ -282,6 +326,8 @@ PROC mesh_section, L_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     movzx eax, word [r12 + rsi * 2]     ; block
     test eax, eax
     jz .mask_store
+    cmp byte [r14 + rax + SHAPE_OFS], 0
+    jne .mask_hidden                    ; shaped: drawn by shapes_emit
     mov rdx, rsi
     add rdx, [r15 + 24]
     movzx edx, word [r12 + rdx * 2]     ; neighbour block
@@ -430,6 +476,13 @@ PROC mesh_section, L_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     inc qword [LOCAL(L_FACE)]
     cmp qword [LOCAL(L_FACE)], 6
     jb .dir
+
+    ; ---- shaped blocks (slabs, stairs, ...) -------------------------------------------
+    cmp qword [LOCAL(L_SHAPES)], 0
+    je .no_shapes
+    INVOKE shapes_emit, [LOCAL(L_VOL)], [LOCAL(L_OUT)], [LOCAL(L_COUNT)]
+    mov [LOCAL(L_COUNT)], rax
+.no_shapes:
 
     ; ---- order by render layer: opaque, cutout, translucent ----------------------
     mov rsi, [LOCAL(L_OUT)]

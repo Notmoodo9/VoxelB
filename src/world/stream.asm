@@ -46,7 +46,6 @@ extern g_quad_buffer, g_cam_pos
 IMPORT VirtualAlloc, VirtualFree
 
 %define MAX_LOADED          16384
-%define MESH_MAX_QUADS      98304
 %define UPLOAD_BUDGET       (2 * 1024 * 1024)   ; bytes per frame
 %define STAT_LOG_US         2000000
 %define MEM_COMMIT          0x1000

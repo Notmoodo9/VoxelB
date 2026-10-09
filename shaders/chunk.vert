@@ -1,6 +1,6 @@
 #version 450 core
 // World sections: vertex pulling from packed greedy quads (format in
-// src/render/mesher.asm). 6 vertices per quad, no vertex buffers. Rendering
+// src/render/mesher.asm) and model quads of shaped blocks (src/render/shapes.asm). 6 vertices per quad, no vertex buffers. Rendering
 // is camera-relative (u_origin_rel = section origin - camera).
 // Textures: block face -> texture (binding 1), texture -> array layers and
 // animation (binding 2); see src/render/block_textures.asm.
@@ -30,15 +30,33 @@ const uint CORNERS[12] = uint[](0u, 1u, 2u, 0u, 2u, 3u,
 void main() {
     uvec2 q = quads[u_quad_base + uint(gl_VertexID) / 6u];
     uint lo = q.x;
-    vec3 p = vec3(float(lo & 63u), float((lo >> 6) & 63u), float((lo >> 12) & 63u));
-    float w = float(((lo >> 18) & 31u) + 1u);
-    float h = float(((lo >> 23) & 31u) + 1u);
     uint face = (lo >> 28) & 7u;
     bool flip = (face == 1u || face == 3u || face == 4u);
     uint c = CORNERS[(flip ? 6u : 0u) + uint(gl_VertexID) % 6u];
+    vec3 p;      // block-space position of the face's first corner
+    float w, h;  // extent along u and v
+    float side;  // offset of the face plane along its axis
+    if ((lo & 0x80000000u) == 0u) {
+        // greedy cube quad: whole blocks
+        p = vec3(float(lo & 63u), float((lo >> 6) & 63u), float((lo >> 12) & 63u));
+        w = float(((lo >> 18) & 31u) + 1u);
+        h = float(((lo >> 23) & 31u) + 1u);
+        side = float(face & 1u);
+    } else {
+        // model quad: one face of a box inside a block, in 1/16 units
+        vec3 blk = vec3(float(lo & 31u), float((lo >> 5) & 31u), float((lo >> 10) & 31u));
+        vec3 bmin = vec3(float((lo >> 15) & 15u), float((lo >> 19) & 15u), float((lo >> 23) & 15u));
+        vec3 bsize = vec3(float(((q.y >> 16) & 15u) + 1u), float(((q.y >> 20) & 15u) + 1u),
+                          float(((q.y >> 24) & 15u) + 1u)) / 16.0;
+        p = blk + bmin / 16.0;
+        uint ax = face >> 1;
+        side = (face & 1u) != 0u ? bsize[ax] : 0.0;
+        if (ax == 0u)      { w = bsize.z; h = bsize.y; }
+        else if (ax == 1u) { w = bsize.x; h = bsize.z; }
+        else               { w = bsize.x; h = bsize.y; }
+    }
     float du = (c == 1u || c == 2u) ? w : 0.0;
     float dv = (c >= 2u) ? h : 0.0;
-    float side = float(face & 1u);
     uint axis = face >> 1;
     if (axis == 0u)      { p.x += side; p.z += du; p.y += dv; }   // u = z, v = y
     else if (axis == 1u) { p.y += side; p.x += du; p.z += dv; }   // u = x, v = z

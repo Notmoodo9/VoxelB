@@ -436,3 +436,32 @@ highlights), per-texture deterministic noise, and patterns per material
 Voronoi cobbles, bricks, glass frames, weave). The output PNGs are
 committed and are the source of truth from now on; the script is a
 starting point, not a build step.
+
+## D41 — Block states as consecutive ids (M7b)
+Shaped blocks need state (facing, half, open, hinge). A shape reserves one
+id per state, right after its base id (Minecraft's "flattened" ids):
+`base + state`. Sections stay plain u16 arrays, the mesher and the
+renderer need no extra storage, and each state can have its own textures
+(the door's upper half). States that depend only on neighbours (stair
+corners, fence/wall/pane connections, pillar parts) are not stored; the
+mesher works them out. The 272 shaped blocks use 1813 ids (2075 in all,
+of 4096). Names are shared by all states; `block_find` returns the base.
+
+## D42 — Model quads for shaped blocks (M7b)
+Shapes are lists of boxes in 1/16 units, described for facing north and
+rotated about Y (src/render/shapes.asm). They are engine code, like the
+render layers; which blocks have which shape and texture is data. Each
+visible box face is one "model quad" in the same 8-byte quad stream (bit 31
+set; block position, box min and size in 4-bit fields). The vertex shader
+expands both kinds, so there is still one buffer, one shader and one draw
+per section and layer. Box faces on the block boundary are culled against
+opaque neighbours; shaped blocks never count as opaque. Sections without
+shaped blocks (checked from the palette) skip the shape pass entirely.
+MESH_MAX_QUADS is now 131072 (greedy worst case 98304 plus room for
+shapes); the shape pass stops at the cap instead of overflowing.
+
+## D43 — Gallery shows states (M7b)
+The debug gallery now lists base blocks only, and lays shaped blocks out
+so their states and connections are visible: a 3×3 grid of states, a T of
+fences/walls/panes, a stacked and a lone pillar, and doors with their upper
+halves. It moved to z 440..270 (start position z 462), away from the hills.

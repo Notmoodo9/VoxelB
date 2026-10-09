@@ -33,7 +33,7 @@ global g_world_gen_count, g_world_gen_total_us, g_world_gen_max_us
 
 extern str_ieq, str_parse_float, str_parse_u64
 extern blocks_load, block_find
-extern g_block_count
+extern g_block_count, g_block_shape, g_block_state, g_block_nstates
 extern timer_elapsed_us
 
 %define MAX_LAYERS          16
@@ -63,13 +63,14 @@ str_unknown:    db "unknown setting: ", 0
 str_bad_block:  db "unknown block: ", 0
 str_bad_value:  db "bad value for: ", 0
 name_columns:   db "columns", 0
+door_lower:     db 0, 1, 2, 3, 8, 9, 10, 11, 16   ; door states shown in the gallery
 
 section .data
 align 4
 g_gal_enabled:      dd 0
 g_gal_ox:           dd -40              ; first block's x
 g_gal_oy:           dd 100              ; bottom y
-g_gal_oz:           dd 240              ; first row's z (rows go towards -Z)
+g_gal_oz:           dd 440              ; first row's z (rows go towards -Z)
 g_gal_columns:      dd 16
 g_gal_size:         dd 3
 g_gal_gap:          dd 2
@@ -83,11 +84,13 @@ g_struct_enabled:   resd 1
 g_struct_ids:       resd MAX_STRUCT_BLOCKS
 g_struct_count:     resd 1
 g_pillar_id:        resd 1
+g_gal_count:        resd 1              ; base blocks shown
 g_gal_x1:           resd 1              ; inclusive bounds
 g_gal_z0:           resd 1
 g_gal_y1:           resd 1
 alignb 8
 g_hash:             resq 1              ; HASH_SIZE x {key, COLUMN*}
+g_gal_ids:          resq 1              ; u16 base block ids, in id order
 g_cfg_mark:         resq 1
 alignb 64
 g_world_gen_count:      resq 1
@@ -770,13 +773,107 @@ PROC apply_structures, 48, rbx, rsi, rdi, r12, r13, r14, r15
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; gallery_block — which block goes at a local position inside one gallery
+; cell (debug layout for looking at the block set, not game content).
+;   cubes: a size^3 cube; fences, walls, panes: a T of 4 on the ground (shows
+;   connections); pillars: a stack of 3 plus a lone one; doors: 9 lower
+;   states with their upper halves; other shapes: states 0..8 in a 3x3 grid.
+;   in:  ecx = base block id, edx = lx, r8d = ly, r9d = lz
+;   out: eax = block id, 0 = nothing
+;   clobbers: rax, rcx, rdx, r8-r11
+; -----------------------------------------------------------------------------
+gallery_block:
+    lea rax, [rel g_block_shape]
+    movzx eax, byte [rax + rcx]
+    test eax, eax
+    jnz .shaped
+    mov eax, ecx                        ; cube
+    ret
+.shaped:
+    cmp eax, SHAPE_FENCE
+    je .tee
+    cmp eax, SHAPE_WALL
+    je .tee
+    cmp eax, SHAPE_PANE
+    je .tee
+    cmp eax, SHAPE_PILLAR
+    je .pillar
+    cmp eax, SHAPE_DOOR
+    je .door
+    ; states in a 3x3 grid on the ground
+    test r8d, r8d
+    jnz .none
+    cmp edx, 2
+    ja .none
+    cmp r9d, 2
+    ja .none
+    lea r10d, [r9d + r9d * 2]
+    add r10d, edx                       ; state
+    lea rax, [rel g_block_nstates]
+    movzx r11d, word [rax + rcx * 2]
+    cmp r10d, r11d
+    jae .none
+    lea eax, [ecx + r10d]
+    ret
+.tee:
+    test r8d, r8d
+    jnz .none
+    cmp edx, 2
+    ja .none
+    cmp r9d, 1
+    je .base
+    test r9d, r9d
+    jnz .none
+    cmp edx, 1
+    je .base
+    jmp .none
+.pillar:
+    cmp edx, 1
+    jne .pillar_lone
+    cmp r9d, 1
+    jne .none
+    cmp r8d, 2
+    jbe .base
+    jmp .none
+.pillar_lone:
+    test edx, edx
+    jnz .none
+    test r9d, r9d
+    jnz .none
+    test r8d, r8d
+    jz .base
+    jmp .none
+.door:
+    cmp r8d, 1
+    ja .none
+    cmp edx, 2
+    ja .none
+    cmp r9d, 2
+    ja .none
+    lea r10d, [r9d + r9d * 2]
+    add r10d, edx
+    lea rax, [rel door_lower]
+    movzx r10d, byte [rax + r10]        ; lower-half state
+    test r8d, r8d
+    jz .door_id
+    add r10d, 4                         ; upper half
+.door_id:
+    lea eax, [ecx + r10d]
+    ret
+.base:
+    mov eax, ecx
+    ret
+.none:
+    xor eax, eax
+    ret
+
+; -----------------------------------------------------------------------------
 ; apply_gallery — stamp the block gallery into a section's id array: every
-; registered block as a size^3 cube on a grid (debug layout for looking at
-; the block set, not game content).
+; base block (state 0) in its cell, in id order (see gallery_block).
 ;   in:  rcx = ids u16[32768], edx = cx, r8d = cz, r9d = y0 (section base)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC apply_gallery, 16, rbx, rsi, rdi, r12, r13, r14, r15
+PROC apply_gallery, 32, rbx, rsi, rdi, r12, r13, r14, r15
     mov rbx, rcx                        ; ids
     mov r14d, edx
     shl r14d, 5                         ; column x0
@@ -786,19 +883,6 @@ PROC apply_gallery, 16, rbx, rsi, rdi, r12, r13, r14, r15
     mov eax, [rel g_gal_size]
     add eax, [rel g_gal_gap]
     mov [LOCAL(4)], eax                 ; cell
-    ; y range inside this section: [max(oy, y0), min(oy + size, y0 + 32))
-    mov eax, [rel g_gal_oy]
-    cmp eax, r9d
-    cmovl eax, r9d
-    sub eax, r9d
-    mov [LOCAL(8)], eax                 ; local y start
-    mov eax, [rel g_gal_oy]
-    add eax, [rel g_gal_size]
-    lea ecx, [r9d + 32]
-    cmp eax, ecx
-    cmovg eax, ecx
-    sub eax, r9d
-    mov [LOCAL(12)], eax                ; local y end (exclusive)
     xor r12d, r12d                      ; z
 .z_loop:
     lea eax, [r15d + r12d]
@@ -811,6 +895,11 @@ PROC apply_gallery, 16, rbx, rsi, rdi, r12, r13, r14, r15
     cmp edx, [rel g_gal_size]
     jae .z_next
     mov esi, eax                        ; row
+    mov [LOCAL(16)], edx                ; lz (rows run towards -Z: flip)
+    mov eax, [rel g_gal_size]
+    dec eax
+    sub eax, edx
+    mov [LOCAL(16)], eax
     xor r13d, r13d                      ; x
 .x_loop:
     lea eax, [r14d + r13d]
@@ -822,25 +911,46 @@ PROC apply_gallery, 16, rbx, rsi, rdi, r12, r13, r14, r15
     jae .x_next
     cmp eax, [rel g_gal_columns]
     jae .x_next
+    mov [LOCAL(12)], edx                ; lx
     mov edi, esi
     imul edi, [rel g_gal_columns]
-    add edi, eax
-    inc edi                             ; block id
-    cmp edi, [rel g_block_count]
+    add edi, eax                        ; entry
+    cmp edi, [rel g_gal_count]
     jae .x_next
-    mov ecx, [LOCAL(8)]
+    mov rax, [rel g_gal_ids]
+    movzx edi, word [rax + rdi * 2]     ; base block
+    ; every y of the cube inside this section
+    mov eax, [LOCAL(0)]
+    mov [LOCAL(8)], eax
 .y_loop:
-    cmp ecx, [LOCAL(12)]
-    jge .x_next
-    mov eax, ecx
-    shl eax, 10
+    mov eax, [LOCAL(8)]                 ; world y
+    mov ecx, eax
+    sub ecx, [rel g_gal_oy]             ; ly
+    js .y_next
+    cmp ecx, [rel g_gal_size]
+    jae .y_next
+    mov r8d, ecx
+    mov ecx, edi
+    mov edx, [LOCAL(12)]
+    mov r9d, [LOCAL(16)]
+    call gallery_block
+    test eax, eax
+    jz .y_next
+    ; idx = (y - y0) << 10 | z << 5 | x
+    mov ecx, [LOCAL(8)]
+    sub ecx, [LOCAL(0)]
+    shl ecx, 10
     mov edx, r12d
     shl edx, 5
-    or eax, edx
-    or eax, r13d
-    mov [rbx + rax * 2], di
-    inc ecx
-    jmp .y_loop
+    or ecx, edx
+    or ecx, r13d
+    mov [rbx + rcx * 2], ax
+.y_next:
+    inc dword [LOCAL(8)]
+    mov eax, [LOCAL(8)]
+    sub eax, [LOCAL(0)]
+    cmp eax, 32
+    jb .y_loop
 .x_next:
     inc r13d
     cmp r13d, 32
@@ -1156,6 +1266,29 @@ PROC world_init, 0, rbx, rdi
     xor eax, eax
     RETURN
 .layers_ok:
+    ; gallery: list the base blocks (state 0)
+    mov eax, [rel g_block_count]
+    lea rdx, [rax * 2]
+    lea rcx, [rel g_arena_perm]
+    INVOKE arena_alloc, rcx, rdx, 8
+    test rax, rax
+    jz .fail
+    mov [rel g_gal_ids], rax
+    xor ecx, ecx                        ; count
+    mov edx, 1
+.gal_list:
+    cmp edx, [rel g_block_count]
+    jae .gal_listed
+    lea r8, [rel g_block_state]
+    cmp byte [r8 + rdx], 0
+    jne .gal_skip
+    mov [rax + rcx * 2], dx
+    inc ecx
+.gal_skip:
+    inc edx
+    jmp .gal_list
+.gal_listed:
+    mov [rel g_gal_count], ecx
     ; gallery bounds (inclusive)
     mov eax, [rel g_gal_size]
     add eax, [rel g_gal_gap]
@@ -1164,8 +1297,7 @@ PROC world_init, 0, rbx, rdi
     add eax, [rel g_gal_ox]
     dec eax
     mov [rel g_gal_x1], eax
-    mov eax, [rel g_block_count]
-    dec eax                             ; blocks to show
+    mov eax, [rel g_gal_count]          ; blocks to show
     add eax, [rel g_gal_columns]
     dec eax
     xor edx, edx

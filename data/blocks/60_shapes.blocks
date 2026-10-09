@@ -1,0 +1,129 @@
+# Shaped blocks (design/blocks/shaped_blocks.md). `shape` must come first
+# in a template: it gives the block one id per state (facing, half, open,
+# ...). Shapes: slab, stairs, fence, fence_gate, door, trapdoor, ladder,
+# sign, wall_sign, pressure_plate, wall, pillar, pane (DATA_FORMAT.md).
+
+# --- woods (16 trees + 3 mushrooms) -------------------------------------------
+[template wood_slab]
+name     = {}_slab
+shape    = slab
+textures = all: {}_planks
+
+[template wood_stairs]
+name     = {}_stairs
+shape    = stairs
+textures = all: {}_planks
+
+[template fence]
+name     = {}_fence
+shape    = fence
+textures = all: {}_planks
+
+[template fence_gate]
+name     = {}_fence_gate
+shape    = fence_gate
+textures = all: {}_planks
+
+[template door]
+name           = {}_door
+shape          = door
+render         = cutout
+textures       = all: {}_door_bottom
+upper_textures = all: {}_door_top
+
+[template trapdoor]
+name     = {}_trapdoor
+shape    = trapdoor
+render   = cutout
+textures = all: {}_trapdoor
+
+[template ladder]
+name     = {}_ladder
+shape    = ladder
+render   = cutout
+textures = all: {}_ladder
+
+[template sign]
+name     = {}_sign
+shape    = sign
+textures = all: {}_planks
+
+[template wall_sign]
+name     = {}_wall_sign
+shape    = wall_sign
+textures = all: {}_planks
+
+[template pressure_plate]
+name     = {}_pressure_plate
+shape    = pressure_plate
+textures = all: {}_planks
+
+[family wood_shapes]
+templates = wood_slab, wood_stairs, fence, fence_gate, door, trapdoor, ladder, sign, wall_sign, pressure_plate
+members   = oak, birch, spruce, jungle, acacia, dark_oak, cherry, redwood, palm, mangrove, willow, maple, glowwood, crystalwood, frostwood, emberwood, red_mushroom, brown_mushroom, glowing_mushroom
+
+# glowing doors keep their light (r, g, b 0..15; used from milestone 13)
+[block glowwood_door]
+light = 2, 7, 6
+[block emberwood_door]
+light = 7, 3, 1
+[block glowing_mushroom_door]
+light = 2, 4, 9
+
+# --- stone family ---------------------------------------------------------------
+[template stone_slab]
+name     = {}_slab
+shape    = slab
+textures = all: {}
+
+[template stone_stairs]
+name     = {}_stairs
+shape    = stairs
+textures = all: {}
+
+[template stone_wall]
+name     = {}_wall
+shape    = wall
+textures = all: {}
+
+[template pillar]
+name     = {}_pillar
+shape    = pillar
+textures = side: {}_pillar, end: {}_pillar_top
+
+[family stone_shapes]
+templates = stone_slab, stone_stairs, stone_wall, pillar
+members   = stone, cobblestone, mossy_cobblestone, smooth_stone, stone_bricks, deep_stone, sandstone, bricks
+
+[block sandstone_slab]
+textures = side: sandstone, top: sandstone_top, bottom: sandstone_bottom
+[block sandstone_stairs]
+textures = side: sandstone, top: sandstone_top, bottom: sandstone_bottom
+[block sandstone_wall]
+textures = side: sandstone, top: sandstone_top, bottom: sandstone_bottom
+
+# --- terracotta -------------------------------------------------------------------
+[template terracotta_slab]
+name     = {}_terracotta_slab
+shape    = slab
+textures = all: {}_terracotta
+
+[template terracotta_stairs]
+name     = {}_terracotta_stairs
+shape    = stairs
+textures = all: {}_terracotta
+
+[family terracotta_shapes]
+templates = terracotta_slab, terracotta_stairs
+members   = white, light_gray, gray, black, brown, red, orange, yellow, lime, green, cyan, light_blue, blue, purple, magenta, pink
+
+# --- glass panes ------------------------------------------------------------------
+[template pane]
+name     = {}_pane
+shape    = pane
+render   = translucent
+textures = all: {}
+
+[family panes]
+templates = pane
+members   = glass, tinted_glass, white_stained_glass, light_gray_stained_glass, gray_stained_glass, black_stained_glass, brown_stained_glass, red_stained_glass, orange_stained_glass, yellow_stained_glass, lime_stained_glass, green_stained_glass, cyan_stained_glass, light_blue_stained_glass, blue_stained_glass, purple_stained_glass, magenta_stained_glass, pink_stained_glass

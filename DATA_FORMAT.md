@@ -76,6 +76,29 @@ Defines a block, or changes one defined earlier (the later settings win).
 | `render` | `opaque` (default), `cutout`, `translucent` | `cutout`: alpha-tested, pixels are fully see-through or solid (leaves). `translucent`: blended (glass, ice); faces between two equal translucent blocks are hidden |
 | `light` | `r, g, b` (0–15 each) | coloured light the block emits (used from Milestone 13) |
 | `sway` | `0`/`1` | the block waves in the wind (leaves) |
+| `shape` | see below (default `cube`) | a non-cube shape. **Must be the first setting of a new block** (in a template: the first line after `name`), because it reserves one block id per state |
+| `upper_textures` | like `textures` | door shapes only: textures of the upper half |
+
+Shapes and their states (each state is its own block id, base id + state;
+every setting applies to all states):
+
+| Shape | States | Automatic from neighbours |
+|---|---|---|
+| `slab` | bottom, top | |
+| `stairs` | 4 facings × bottom/upside-down | inner/outer corners next to perpendicular stairs |
+| `fence` | 1 | joins fences, fence gates and solid blocks |
+| `fence_gate` | 4 facings × closed/open | |
+| `door` | 4 facings × lower/upper × closed/open × hinge left/right | |
+| `trapdoor` | 4 facings × bottom/top × closed/open | |
+| `ladder`, `wall_sign` | 4 facings | |
+| `sign` | 4 rotations | |
+| `pressure_plate` | up, pressed | |
+| `wall` | 1 | joins walls and solid blocks; no post on a straight run |
+| `pillar` | 1 | base / shaft / capital when stacked |
+| `pane` | 1 | joins panes, walls and solid blocks |
+
+Faces of a shape take the block's textures by direction, projected like
+a cube's (so a slab shows the lower half of its texture).
 
 The simplest block is one line: `[block stone]` uses `stone.png` everywhere.
 

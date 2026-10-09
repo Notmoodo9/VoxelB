@@ -962,6 +962,278 @@ def make_colors_lights(out):
     out["glowstone_glow"] = glow_layer((~gaps).astype(float) * (0.5 + 0.5 * stretch(v)), "ffd85a", 0.9)
 
 
+
+# ---------------------------------------------------------------------------
+# shaped blocks: doors, trapdoors, ladders (M7b), pillars
+# ---------------------------------------------------------------------------
+
+DOOR_STYLES = {
+    "oak": "panels", "birch": "window4", "spruce": "straps", "jungle": "vine",
+    "acacia": "diamond", "dark_oak": "carved", "cherry": "blossom", "redwood": "arched",
+    "palm": "shutter", "mangrove": "cross", "willow": "willow_leaf", "maple": "maple_leaf",
+    "glowwood": "veins", "crystalwood": "crystal", "frostwood": "frost", "emberwood": "cracks",
+    "red_mushroom": "porthole", "brown_mushroom": "porthole", "glowing_mushroom": "porthole_glow",
+}
+
+
+def tall_boards(base, r, h=32, vertical=True):
+    """Door-sized plank field (h x 16), boards vertical or horizontal."""
+    pal = ramp(base, 6, spread=0.13)
+    img = np.zeros((h, N, 3))
+    if vertical:
+        for b in range(4):
+            x0 = b * 4
+            tone = 0.42 + 0.25 * (r.random() - 0.5)
+            for x in range(x0, x0 + 4):
+                col = tone + 0.18 * (r.random((h,)) - 0.5) + 0.1 * np.sin(np.arange(h) * 0.7 + x)
+                img[:, x] = shade(np.clip(col + 0.05, 0, 0.999), pal)
+            img[:, x0 + 3] = pal[1]
+    else:
+        for b in range(h // 2):
+            tone = 0.42 + 0.25 * (r.random() - 0.5)
+            row = tone + 0.18 * (r.random((N,)) - 0.5)
+            img[b * 2] = shade(np.clip(row + 0.1, 0, 0.999), pal)
+            img[b * 2 + 1] = pal[1]
+    return img, pal
+
+
+def frame(img, a, pal, w=1):
+    h = img.shape[0]
+    img[:w, :] = pal[0]; img[h - w:, :] = pal[0]
+    img[:, :w] = pal[0]; img[:, N - w:] = pal[0]
+    a[:w, :] = 1; a[h - w:, :] = 1; a[:, :w] = 1; a[:, N - w:] = 1
+
+
+def panel(img, pal, x0, y0, x1, y1):
+    img[y0:y1 + 1, x0:x1 + 1] = pal[3]
+    img[y0, x0:x1 + 1] = pal[5]; img[y0:y1 + 1, x0] = pal[5]
+    img[y1, x0:x1 + 1] = pal[1]; img[y0:y1 + 1, x1] = pal[1]
+    img[y0 + 1:y1, x0 + 1:x1] = pal[3] * 0.97
+
+
+def door_design(name, base, style):
+    r = rng(name + "_door")
+    h = 32
+    vertical = style not in ("shutter", "vine")
+    img, pal = tall_boards(base, r, h, vertical)
+    a = np.ones((h, N))
+    glow = np.zeros((h, N))
+    yy, xx = np.mgrid[0:h, 0:N]
+    iron = ramp("6a6e78", 4, spread=0.25)
+    if style == "panels":
+        panel(img, pal, 3, 3, 12, 13)
+        panel(img, pal, 3, 17, 12, 28)
+    elif style == "window4":
+        img[2:13, 3:13] = pal[1]
+        a[3:12, 4:12] = 0
+        img[7, 3:13] = pal[1]; a[7, 3:13] = 1
+        img[2:13, 7:9] = pal[1]; a[2:13, 7:9] = 1
+        panel(img, pal, 3, 17, 12, 28)
+    elif style == "straps":
+        for y in (5, 6, 24, 25):
+            img[y, 1:15] = iron[1 + (y % 2)]
+        for y in (5, 24):
+            for x in (3, 8, 12):
+                img[y, x] = iron[3]
+    elif style == "vine":
+        vine = ramp("3aa82a", 4, spread=0.25)
+        for y in range(h):
+            x = int(7 + 4 * np.sin(y * 0.35))
+            img[y, x] = vine[2]; img[y, (x + 1) % N] = vine[1]
+            if y % 5 == 0:
+                img[y, (x + 2) % N] = vine[3]; img[y, (x - 1) % N] = vine[3]
+    elif style == "diamond":
+        img[:] = shade(np.clip(0.4 + 0.3 * (((xx + yy) // 3) % 2) + 0.1 * r.random((h, N)), 0, 0.999), pal)
+        d = np.abs(xx - 7.5) + np.abs(yy - 8)
+        img[(d > 3) & (d < 4.6)] = pal[0]
+        a[d <= 3] = 0
+    elif style == "carved":
+        for k, (x0, y0, x1, y1) in enumerate(((2, 2, 13, 29), (4, 4, 11, 13), (4, 18, 11, 27))):
+            img[y0, x0:x1 + 1] = pal[0]; img[y1, x0:x1 + 1] = pal[0]
+            img[y0:y1 + 1, x0] = pal[0]; img[y0:y1 + 1, x1] = pal[0]
+        knot = ((xx - 7.5) ** 2 / 4 + (yy - 8.5) ** 2 / 9) < 2
+        img[knot] = pal[0]
+        knot2 = ((xx - 7.5) ** 2 / 4 + (yy - 22.5) ** 2 / 9) < 2
+        img[knot2] = pal[0]
+    elif style == "blossom":
+        d = np.sqrt((xx - 7.5) ** 2 + (yy - 8) ** 2)
+        img[(d >= 4) & (d < 5.2)] = pal[1]
+        a[d < 4] = 0
+        petal = ramp("ff8ac8", 3, spread=0.2)
+        for ang in range(0, 360, 60):
+            px = int(7.5 + 5.5 * np.cos(np.radians(ang)))
+            py = int(8 + 5.5 * np.sin(np.radians(ang)))
+            img[py, px] = petal[2]
+        panel(img, pal, 3, 17, 12, 28)
+    elif style == "arched":
+        win = ((yy >= 4) & (yy <= 12) & (xx >= 4) & (xx <= 11)) & ~((yy < 7) & ((xx - 7.5) ** 2 + (yy - 7) ** 2 > 14))
+        img[win] = pal[0]
+        inner = ((yy >= 5) & (yy <= 11) & (xx >= 5) & (xx <= 10)) & ~((yy < 8) & ((xx - 7.5) ** 2 + (yy - 7.5) ** 2 > 8))
+        a[inner] = 0
+    elif style == "shutter":
+        for y in range(0, h, 2):
+            img[y] = img[y] * 1.08
+            img[y + 1] = pal[0]
+    elif style == "cross":
+        for t in range(N):
+            for k in (0, 1):
+                y = int(t * 28 / 15) + 2
+                img[min(y + k, h - 1), t] = pal[1]
+                img[min(y + k, h - 1), N - 1 - t] = pal[1]
+        img[3:9, 5:11] = pal[0]
+        a[4:8, 6:10] = 0
+    elif style in ("willow_leaf", "maple_leaf"):
+        leaf = np.zeros((h, N), bool)
+        cy = 16
+        if style == "willow_leaf":
+            for y in range(6, 27):
+                wdt = 3.0 * np.sin((y - 6) / 21 * np.pi)
+                leaf[y, int(7.5 - wdt):int(8.5 + wdt)] = True
+            leaf[6:27, 7:9] = False
+            leaf[6:28, 7] = True
+        else:
+            d = np.sqrt((xx - 7.5) ** 2 + (yy - cy) ** 2)
+            ang = np.arctan2(yy - cy, xx - 7.5)
+            leaf = d < (4 + 2.5 * np.abs(np.cos(ang * 2.5)))
+            leaf[cy:cy + 10, 7] = True
+        img[leaf] = pal[0]
+        edge = leaf & ~np.roll(leaf, 1, axis=0)
+        img[edge] = pal[1]
+    elif style == "veins":
+        vm = np.zeros((h, N))
+        for x0 in (3, 8, 12):
+            x = x0
+            for y in range(h):
+                vm[y, x] = 1
+                if r.random() < 0.3:
+                    x = int(np.clip(x + r.choice([-1, 1]), 1, 14))
+        img = img * (1 - vm[..., None]) + hexrgb("4fffd0") * vm[..., None]
+        glow = vm * 0.9
+    elif style == "crystal":
+        cr = ramp("d8c8ff", 4, spread=0.15)
+        for (x0, y0, x1, y1) in ((3, 3, 7, 13), (8, 3, 12, 13), (3, 17, 7, 28), (8, 17, 12, 28)):
+            img[y0:y1 + 1, x0:x1 + 1] = cr[2]
+            for k in range(y1 - y0):
+                img[y0 + k, x0 + (k % (x1 - x0 + 1))] = cr[3]
+            img[y0, x0:x1 + 1] = pal[0]; img[y1, x0:x1 + 1] = pal[0]
+            img[y0:y1 + 1, x0] = pal[0]; img[y0:y1 + 1, x1] = pal[0]
+    elif style == "frost":
+        fr = ramp("eaf6ff", 4, spread=0.08)
+        img[3:13, 3:13] = fr[2]
+        sp = r.random((10, 10)) > 0.6
+        sub = img[3:13, 3:13]
+        sub[sp] = fr[3]
+        img[3:13, 7] = pal[1]; img[7, 3:13] = pal[1]
+        panel(img, pal, 3, 17, 12, 28)
+    elif style == "cracks":
+        cm = np.zeros((h, N))
+        for x0 in (4, 11):
+            x = x0
+            for y in range(1, h - 1):
+                cm[y, x] = 1
+                if r.random() < 0.4:
+                    x = int(np.clip(x + r.choice([-1, 1]), 1, 14))
+        img = img * (1 - cm[..., None]) + np.array([1.0, 0.48, 0.1]) * cm[..., None]
+        glow = cm
+    elif style.startswith("porthole"):
+        d = np.sqrt((xx - 7.5) ** 2 + (yy - 9) ** 2)
+        ring = (d >= 3.5) & (d < 5.2)
+        img[ring] = ramp("8a8a92", 3)[1]
+        a[d < 3.5] = 0
+        panel(img, pal, 3, 18, 12, 28)
+        if style == "porthole_glow":
+            img[ring] = hexrgb("7af0ff")
+            glow = ring.astype(float)
+    if style not in ("straps", "panels", "porthole", "porthole_glow", "veins", "cracks"):
+        img[16, 12:14] = iron[2]                       # handle
+    else:
+        img[16:18, 12] = iron[2]
+    frame(img, a, pal)
+    rgbA = np.concatenate([img, a[..., None]], axis=2)
+    gl = np.zeros((h, N, 4))
+    col = {"veins": "4fffd0", "cracks": "ff7a1a", "porthole_glow": "7af0ff"}.get(style)
+    if col:
+        gl[..., :3] = hexrgb(col)
+        gl[..., 3] = glow
+    return rgbA, (gl if col else None)
+
+
+def trapdoor_design(name, base, style):
+    r = rng(name + "_trapdoor")
+    img, pal = tall_boards(base, r, N, style not in ("shutter", "vine"))
+    a = np.ones((N, N))
+    if style in ("window4", "blossom", "arched", "diamond", "cross", "porthole", "porthole_glow"):
+        for (x0, y0) in ((3, 3), (9, 3), (3, 9), (9, 9)):
+            a[y0:y0 + 4, x0:x0 + 4] = 0
+    elif style in ("crystal", "frost"):
+        cr = ramp("d8c8ff" if style == "crystal" else "eaf6ff", 3)
+        for (x0, y0) in ((3, 3), (9, 3), (3, 9), (9, 9)):
+            img[y0:y0 + 4, x0:x0 + 4] = cr[1]
+            img[y0, x0:x0 + 4] = cr[2]
+    else:
+        panel(img, pal, 3, 3, 12, 12)
+    img[7:9, :] = pal[1]
+    img[:, 7:9] = pal[1]
+    a[7:9, :] = 1
+    a[:, 7:9] = 1
+    frame(img, a, pal)
+    return np.concatenate([img, a[..., None]], axis=2)
+
+
+def ladder_design(name, base):
+    pal = ramp(base, 5, spread=0.15)
+    img = np.zeros((N, N, 3)) + pal[1]
+    a = np.zeros((N, N))
+    for x in (2, 3, 12, 13):
+        img[:, x] = pal[2 if x in (2, 12) else 1]
+        a[:, x] = 1
+    for y in (1, 5, 9, 13):
+        img[y, 2:14] = pal[3]
+        img[y + 1, 2:14] = pal[1]
+        a[y:y + 2, 2:14] = 1
+    return rgba(img, a)
+
+
+PILLAR_MATERIALS = {
+    "stone": "7e8794", "cobblestone": "7a8088", "mossy_cobblestone": "6a7a6a",
+    "smooth_stone": "a8acb4", "stone_bricks": "8a909a", "deep_stone": "4a4e62",
+    "sandstone": "e8d08a", "bricks": "b84a32",
+}
+
+
+def pillar(name, base):
+    r = rng(name + "_pillar")
+    pal = ramp(base, 6, spread=0.16)
+    yy, xx = np.mgrid[0:N, 0:N]
+    flute = 0.55 + 0.3 * np.cos((xx + 0.5) * np.pi / 2.0)
+    v = flute + 0.12 * (r.random((N, N)) - 0.5)
+    side = shade(np.clip(v, 0, 0.999), pal)
+    side[:, (xx[0] % 4) == 0] = pal[1]
+    d = np.maximum(np.abs(xx - 7.5), np.abs(yy - 7.5))
+    top = shade(np.clip(0.45 + 0.3 * ((d.astype(int) // 2) % 2) + 0.1 * r.random((N, N)), 0, 0.999), pal)
+    top[d > 6.5] = pal[1]
+    return rgba(side), rgba(top)
+
+
+def make_shapes(out):
+    planks_of = {w: v[1] for w, v in WOODS.items()}
+    planks_of.update({m: v[4] for m, v in MUSHROOMS.items()})
+    for wood, base in planks_of.items():
+        style = DOOR_STYLES[wood]
+        door, glow = door_design(wood, base, style)
+        out[f"{wood}_door_top"] = door[:16]
+        out[f"{wood}_door_bottom"] = door[16:]
+        if glow is not None:
+            out[f"{wood}_door_top_glow"] = glow[:16]
+            out[f"{wood}_door_bottom_glow"] = glow[16:]
+        out[f"{wood}_trapdoor"] = trapdoor_design(wood, base, style)
+        out[f"{wood}_ladder"] = ladder_design(wood, base)
+    for mat, base in PILLAR_MATERIALS.items():
+        side, top = pillar(mat, base)
+        out[f"{mat}_pillar"] = side
+        out[f"{mat}_pillar_top"] = top
+
+
 def build_all():
     out = {}
     make_terrain(out)
@@ -969,6 +1241,7 @@ def build_all():
     make_woods(out)
     make_mushrooms(out)
     make_colors_lights(out)
+    make_shapes(out)
     return out
 
 
