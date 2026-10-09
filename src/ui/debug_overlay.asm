@@ -18,14 +18,18 @@
 %include "shader.inc"
 %include "text.inc"
 %include "jobs.inc"
+%include "world_api.inc"
 
 global overlay_draw, overlay_toggle, g_overlay_visible
 
 extern str_copy, str_append_dec, str_append_sdec
 extern g_stat_fps_x10, g_stat_avg_us, g_stat_min_us, g_stat_max_us
 extern g_cam_pos, g_cam_yaw, g_cam_pitch
+extern g_sections_live, g_section_bytes
+extern g_world_visible, g_world_drawn_quads, g_world_gpu_bytes
+extern g_block_names
 
-%define TEXT_CAP        4096
+%define TEXT_CAP        6144
 %define PAD             6               ; panel padding (unscaled pixels)
 %define NAME_COLUMN     24              ; binding list: key column
 %define COLOR_TEXT      0xFFFFFFFF
@@ -70,6 +74,26 @@ s_kb_close:     db " KB)", 10, 0
 s_jobs:         db "jobs    ", 0
 s_workers:      db " workers + main   completed ", 0
 s_queue:        db "   queued ", 0
+s_world:        db "world   columns ", 0
+s_w_sections:   db "  sections ", 0
+s_w_mb_open:    db " (", 0
+s_w_mb_close:   db " MB)  with geometry ", 0
+s_w_quads:      db "  quads ", 0
+s_w_gpu:        db "  GPU ", 0
+s_w_mb_nl:      db " MB", 10, 0
+s_draw:         db "draw    visible sections ", 0
+s_d_quads:      db "  quads ", 0
+s_gen:          db "gen     ", 0
+s_ms_wall:      db " ms wall  avg ", 0
+s_us_col:       db " us/column  max ", 0
+s_us_nl:        db " us", 10, 0
+s_mesh:         db "mesh    ", 0
+s_us_sec:       db " us/section  max ", 0
+s_chunk:        db "chunk   ", 0
+s_sp:           db " ", 0
+s_ground:       db "   ground below: ", 0
+s_at_y:         db " at y ", 0
+s_none:         db "none", 0
 s_controls:     db 10, "controls (data/config/controls.cfg):", 10, 0
 s_indent:       db "  ", 0
 s_comma:        db ", ", 0
@@ -104,7 +128,7 @@ overlay_toggle:
 ; build_text — compose the overlay text into g_ov_text.
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC build_text, 0, rbx, rsi, rdi, r12
+PROC build_text, 0, rbx, rsi, rdi, r12, r13
     mov rbx, [rel g_ov_text]            ; rbx = cursor
 %macro PUT 1                            ; append a static string
     lea rdx, [rel %1]
@@ -265,6 +289,118 @@ PROC build_text, 0, rbx, rsi, rdi, r12
     PUT s_queue
     call job_queue_depth
     PUTNUM rax, 0
+    PUT s_nl
+
+    ; world
+    PUT s_world
+    PUTNUM [rel g_world_columns_n], 0
+    PUT s_w_sections
+    PUTNUM [rel g_sections_live], 0
+    PUT s_w_mb_open
+    mov rax, [rel g_section_bytes]
+    xor edx, edx
+    mov ecx, 104858
+    div rcx
+    PUTNUM rax, 1
+    PUT s_w_mb_close
+    PUTNUM [rel g_draw_count], 0
+    PUT s_w_quads
+    PUTNUM [rel g_world_quads], 0
+    PUT s_w_gpu
+    mov rax, [rel g_world_gpu_bytes]
+    xor edx, edx
+    mov ecx, 104858
+    div rcx
+    PUTNUM rax, 1
+    PUT s_w_mb_nl
+    PUT s_draw
+    PUTNUM [rel g_world_visible], 0
+    PUT s_d_quads
+    PUTNUM [rel g_world_drawn_quads], 0
+    PUT s_nl
+    ; generation / meshing times
+    PUT s_gen
+    mov rax, [rel g_world_gen_wall_us]
+    xor edx, edx
+    mov ecx, 100
+    div rcx
+    PUTNUM rax, 1                       ; ms with 1 decimal
+    PUT s_ms_wall
+    mov rax, [rel g_world_gen_total_us]
+    xor edx, edx
+    mov rcx, [rel g_world_columns_n]
+    test rcx, rcx
+    jz .gen_div0
+    div rcx
+.gen_div0:
+    PUTNUM rax, 0
+    PUT s_us_col
+    PUTNUM [rel g_world_gen_max_us], 0
+    PUT s_us_nl
+    PUT s_mesh
+    mov rax, [rel g_world_mesh_wall_us]
+    xor edx, edx
+    mov ecx, 100
+    div rcx
+    PUTNUM rax, 1
+    PUT s_ms_wall
+    mov rax, [rel g_world_mesh_total_us]
+    xor edx, edx
+    mov rcx, [rel g_world_mesh_list_count]
+    test rcx, rcx
+    jz .mesh_div0
+    div rcx
+.mesh_div0:
+    PUTNUM rax, 0
+    PUT s_us_sec
+    PUTNUM [rel g_world_mesh_max_us], 0
+    PUT s_us_nl
+    ; chunk + ground block below the camera
+    movss xmm0, [rel g_cam_pos]
+    roundss xmm0, xmm0, 9               ; floor
+    cvttss2si esi, xmm0                 ; wx
+    movss xmm0, [rel g_cam_pos + 4]
+    roundss xmm0, xmm0, 9
+    cvttss2si edi, xmm0                 ; wy
+    movss xmm0, [rel g_cam_pos + 8]
+    roundss xmm0, xmm0, 9
+    cvttss2si r12d, xmm0                ; wz
+    PUT s_chunk
+    mov eax, esi
+    sar eax, 5
+    movsxd rax, eax
+    PUTSNUM rax, 0
+    PUT s_sp
+    lea eax, [edi - WORLD_MIN_Y]
+    sar eax, 5
+    movsxd rax, eax
+    PUTSNUM rax, 0
+    PUT s_sp
+    mov eax, r12d
+    sar eax, 5
+    movsxd rax, eax
+    PUTSNUM rax, 0
+    PUT s_ground
+    ; scan down up to 256 blocks for the first non-air block
+    mov r13d, 256
+.scan:
+    INVOKE world_block_at, rsi, rdi, r12
+    test eax, eax
+    jnz .found_ground
+    dec edi
+    dec r13d
+    jnz .scan
+    PUT s_none
+    jmp .ground_done
+.found_ground:
+    lea rcx, [rel g_block_names]
+    mov rdx, [rcx + rax * 8]
+    INVOKE str_copy, rbx, rdx
+    mov rbx, rax
+    PUT s_at_y
+    movsxd rax, edi
+    PUTSNUM rax, 0
+.ground_done:
     PUT s_nl
 
     ; bindings

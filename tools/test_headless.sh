@@ -37,6 +37,7 @@ echo "exit code: $RC"
 grep -q "window created, client area" "$LOG" || { echo "FAIL: window was not created"; exit 1; }
 grep -q "OpenGL core context created" "$LOG" || { echo "FAIL: no OpenGL context"; exit 1; }
 grep -q "selftest: PASS" "$LOG"           || { echo "FAIL: self test"; exit 1; }
+grep -q "world: quad buffer uploaded" "$LOG" || { echo "FAIL: world not built"; exit 1; }
 grep -q "text renderer ready" "$LOG"       || { echo "FAIL: text renderer/shaders did not start"; exit 1; }
 grep -q "perf: " "$LOG"                     || { echo "FAIL: no frame timing (perf) line"; exit 1; }
 grep -q "clean exit, code = 0" "$LOG"        || { echo "FAIL: no clean exit in log"; exit 1; }

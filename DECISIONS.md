@@ -192,7 +192,7 @@ or if a stack argument uses `r11`. M3 hit this bug once
 (`glCreateTextures`). Passing the same register for two slots is also
 rejected; copy it to the target register first.
 
-## D22 — Debug test scene (M3)
+## D22 — Debug test scene (M3; removed in M5)
 Until there is a world (M5), the renderer draws a 32×32 field of coloured
 block columns on a checkered ground, generated entirely in the vertex
 shader (no vertex data). It exists only to check the camera, depth,
@@ -257,3 +257,65 @@ stamping, verifying and freeing 8 blocks concurrently; there must be no
 corruption and no leaked blocks). It runs in every debug start and with
 `--selftest`, which CI and the headless test always pass. A failure exits
 with code 4 and no dialog.
+
+## D27 — Section storage: palette compression (M5)
+A section is 32³ blocks, indexed `y<<10 | z<<5 | x`. It is stored in one
+of three forms:
+* **uniform** (bits 0): one id in the 64-byte header and no data at all.
+  Most underground and sky sections are uniform; all-air sections are not
+  stored (null pointer).
+* **palette** (1/2/4/8 bits per block): a palette of up to 2^bits ids
+  (512-byte block) plus packed indices (4–32 KB).
+* **raw** (16 bits): more than 256 kinds of block in one section; ids are
+  stored directly (64 KB).
+Bit widths are powers of two, so an index never straddles a byte and
+get/set/decode are just shifts. `section_set` appends to the palette and
+regrows (decode → rebuild) only when the palette is full. The palette is
+never shrunk in place; it is recomputed exactly on rebuild. All storage
+comes from per-size lock-free pools (D23), so worker threads build and free
+sections without locks. The flat test world (576 columns, 7074 stored
+sections) takes 6.6 MB.
+
+## D28 — Greedy mesher and the packed quad format (M5)
+* Each section is expanded into a 34³ u16 volume, with a one-block border
+  copied from its 6 neighbours (air if missing, "solid" below the world).
+  This makes face culling exact across section borders, and meshing never
+  touches other sections afterwards.
+* For each of the 6 directions × 32 slices, a 32×32 mask of visible faces
+  is built and merged greedily into rectangles of equal block id (light/AO
+  equality joins in M13). A fully enclosed uniform opaque section is
+  skipped without meshing.
+* **Quad = 8 bytes**: block x, y, z (6 bits each), width−1 and height−1 (5
+  bits each), face (3 bits), block id (16 bits). The vertex shader expands
+  each quad from `gl_VertexID` (vertex pulling, no vertex buffers). Faces
+  1/3/4 use mirrored corner order, so every face winds CCW from outside
+  and back-face culling works.
+* Plain scalar greedy meshing averages 160–210 µs per stored section on
+  this 4-core Xeon, running on all worker threads. The spec's binary
+  greedy / AVX2 variant is an optimisation for later if streaming (M6)
+  needs it.
+* Verified by self-test cases with exact quad counts and, for one case,
+  checked quad contents.
+
+## D29 — World rendering for M5 (M5)
+All quads go into one immutable SSBO, uploaded once from a shared staging
+arena that the mesh jobs append to with `arena_alloc_shared` (an atomic
+bump). Each visible section is one `glDrawArrays` with three uniforms. The
+CPU frustum test uses 5 planes from the camera-relative matrix and a
+bounding sphere per section. Milestone 11 replaces this with persistent
+buffers, multi-draw-indirect and GPU culling; Milestone 6 with streaming
+uploads.
+
+## D30 — Flat test world is debug content (M5)
+`data/world/flat_test.cfg` declares placeholder blocks (`debug_*`, flat
+colours), the layers (stone to y 95, dirt to 98, grass at 99, so the land
+surface is at y ≈ 100 as in the spec), the world radius, and debug
+structures (banded hills and pillars that cross section borders, to
+exercise the mesher). None of this is game content. The real block set,
+textures and terrain are designed with the owner (M7, M8).
+
+## D31 — One data-file parser (M5)
+`src/core/cfg.asm` implements the `name = value` format of DATA_FORMAT.md
+(comments, trimming, `,` lists via `cfg_next_token`, warnings with a file
+label). controls.cfg and flat_test.cfg both use it. Milestone 7 extends it
+with sections/records for the registries.

@@ -13,6 +13,7 @@
 %include "log.inc"
 %include "file.inc"
 %include "memory.inc"
+%include "cfg.inc"
 %include "input.inc"
 %include "window.inc"
 
@@ -72,11 +73,11 @@ setting_table:      dq set_sens, g_mouse_sensitivity
                     dq set_sprint, g_fly_sprint_mult
 setting_count equ ($ - setting_table) / 16
 
-str_bad_line:       db "controls.cfg: line without '=': ", 0
-str_bad_name:       db "controls.cfg: unknown action or setting: ", 0
-str_bad_key:        db "controls.cfg: unknown key name: ", 0
-str_bad_number:     db "controls.cfg: expected a number for: ", 0
-str_too_many:       db "controls.cfg: more than 2 keys for: ", 0
+str_cfg_label:      db "controls.cfg", 0
+str_bad_name:       db "unknown action or setting: ", 0
+str_bad_key:        db "unknown key name: ", 0
+str_bad_number:     db "expected a number for: ", 0
+str_too_many:       db "more than 2 keys for: ", 0
 str_bound:          db "bound ", 0
 str_arrow:          db " -> ", 0
 str_comma:          db ", ", 0
@@ -103,7 +104,6 @@ g_mouse_captured:   resd 1
 g_capture_settle:   resd 1                  ; frames to ignore deltas after capture
 alignb 16
 alignb 8
-g_config_mark:      resq 1                  ; scratch arena mark while parsing
 g_config_path:      resb PATH_CAP
 
 section .text
@@ -188,119 +188,118 @@ input_action_name:
     ret
 
 ; -----------------------------------------------------------------------------
-; trim — trim ASCII whitespace/control chars from [start, end) and write a
-; terminator at the new end.
-;   in:  rcx = start, rdx = end (exclusive)
-;   out: rax = trimmed start
-;   clobbers: rax, rcx, rdx
-; -----------------------------------------------------------------------------
-trim:
-.front:
-    cmp rcx, rdx
-    jae .term
-    cmp byte [rcx], ' '
-    ja .back
-    inc rcx
-    jmp .front
-.back:
-    cmp rdx, rcx
-    jbe .term
-    cmp byte [rdx - 1], ' '
-    ja .term
-    dec rdx
-    jmp .back
-.term:
-    mov byte [rdx], 0
-    mov rax, rcx
-    ret
-
-; -----------------------------------------------------------------------------
-; log_with — log "<prefix><text>" at WARN level.
-;   in:  rcx = prefix, rdx = text
-;   clobbers: volatile registers
-; -----------------------------------------------------------------------------
-PROC log_with, 0, rbx, rsi
-    mov rbx, rcx
-    mov rsi, rdx
-    mov ecx, LOG_LEVEL_WARN
-    call log_begin
-    mov rcx, rbx
-    call log_append_str
-    mov rcx, rsi
-    call log_append_str
-    call log_end
-    RETURN
-ENDPROC
-
-; -----------------------------------------------------------------------------
 ; apply_binding — parse "Key[, Key]" into the bindings of one action.
 ;   in:  ecx = action id, rdx = value text (zero-terminated, trimmed)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC apply_binding, 0, rbx, rsi, rdi, r12, r13, r14
+PROC apply_binding, 0, rbx, rsi, rdi, r12, r13
     mov r12d, ecx                       ; action
-    mov rsi, rdx                        ; cursor
+    mov rsi, rdx                        ; cursor (0 = done)
     xor r13d, r13d                      ; keys stored so far
     lea rdi, [rel g_bindings]
     lea rdi, [rdi + r12 * BINDS_PER_ACTION]
     mov word [rdi], 0                   ; clear this action's bindings
 .token:
-    mov rbx, rsi                        ; token start
-.find_end:
-    mov al, [rsi]
-    test al, al
-    jz .have_token
-    cmp al, ','
-    je .have_token
-    inc rsi
-    jmp .find_end
-.have_token:
-    movzx r14d, byte [rsi]              ; remember the separator (trim may
-    INVOKE trim, rbx, rsi               ; overwrite it with the terminator)
+    test rsi, rsi
+    jz .done
+    mov rcx, rsi
+    call cfg_next_token
+    mov rsi, rdx
     mov rbx, rax
     cmp byte [rbx], 0
-    je .advance                         ; empty token
+    je .token                           ; empty token
     INVOKE key_lookup, rbx
     test eax, eax
     jnz .known
-    lea rcx, [rel str_bad_key]
-    INVOKE log_with, rcx, rbx
-    jmp .advance
+    lea rcx, [rel str_cfg_label]
+    lea rdx, [rel str_bad_key]
+    INVOKE cfg_warn, rcx, rdx, rbx
+    jmp .token
 .known:
     cmp r13d, BINDS_PER_ACTION
     jb .store
     mov ecx, r12d
     call input_action_name
-    lea rcx, [rel str_too_many]
-    INVOKE log_with, rcx, rax
-    jmp .advance
+    mov r8, rax
+    lea rcx, [rel str_cfg_label]
+    lea rdx, [rel str_too_many]
+    call cfg_warn
+    jmp .token
 .store:
     mov [rdi + r13], al
     inc r13d
-.advance:
-    test r14d, r14d
-    je .done
-    inc rsi
     jmp .token
 .done:
     RETURN
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; input_load_bindings — read data/config/controls.cfg.
-;   Format: one "name = value" per line, '#' starts a comment. Action names
-;   take one or two key names separated by ','; settings take a number.
-;   in:  none
+; controls_pair — cfg_parse callback for controls.cfg.
+;   in:  rcx = name, rdx = value, r8 = user (unused)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC controls_pair, 0, rbx, rsi, rdi
+    mov rbx, rcx
+    mov rsi, rdx
+    xor edi, edi
+.try_action:
+    mov ecx, edi
+    call input_action_name
+    INVOKE str_ieq, rax, rbx
+    test eax, eax
+    jnz .is_action
+    inc edi
+    cmp edi, ACT_COUNT
+    jb .try_action
+    xor edi, edi
+.try_setting:
+    lea rax, [rel setting_table]
+    mov rcx, rdi
+    shl rcx, 4
+    INVOKE str_ieq, [rax + rcx], rbx
+    test eax, eax
+    jnz .is_setting
+    inc edi
+    cmp edi, setting_count
+    jb .try_setting
+    lea rcx, [rel str_cfg_label]
+    lea rdx, [rel str_bad_name]
+    INVOKE cfg_warn, rcx, rdx, rbx
+    RETURN
+.is_action:
+    INVOKE apply_binding, rdi, rsi
+    RETURN
+.is_setting:
+    INVOKE str_parse_float, rsi
+    test eax, eax
+    jz .bad_number
+    lea rax, [rel setting_table]
+    mov rcx, rdi
+    shl rcx, 4
+    mov rax, [rax + rcx + 8]
+    movss [rax], xmm0
+    RETURN
+.bad_number:
+    lea rcx, [rel str_cfg_label]
+    lea rdx, [rel str_bad_number]
+    INVOKE cfg_warn, rcx, rdx, rbx
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; input_load_bindings — read data/config/controls.cfg (format: DATA_FORMAT.md).
+;   Action names take one or two key names separated by ','; settings take
+;   a number. Problems are logged as warnings and skipped.
 ;   out: eax = 1 if the file was read, 0 otherwise (error logged)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC input_load_bindings, 0, rbx, rsi, rdi, r12, r13, r14, r15
+PROC input_load_bindings, 0, rbx
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov rbx, rax
     lea rcx, [rel g_config_path]
     lea rdx, [rel STR_CONTROLS]
     call path_make
-    lea rcx, [rel g_arena_scratch]
-    call arena_mark
-    mov [rel g_config_mark], rax
     lea rcx, [rel g_config_path]
     lea rdx, [rel g_arena_scratch]
     call file_load
@@ -308,118 +307,15 @@ PROC input_load_bindings, 0, rbx, rsi, rdi, r12, r13, r14, r15
     jnz .read_ok
     LOG_ERROR "could not read data/config/controls.cfg"
     lea rcx, [rel g_arena_scratch]
-    INVOKE arena_reset_to, rcx, [rel g_config_mark]
+    INVOKE arena_reset_to, rcx, rbx
     xor eax, eax
     RETURN
 .read_ok:
-    mov rsi, rax                        ; rsi = line start (scratch memory)
-.line:
-    cmp byte [rsi], 0
-    je .finished
-    ; rdi = line end (newline or terminator)
-    mov rdi, rsi
-.find_eol:
-    mov al, [rdi]
-    test al, al
-    jz .eol
-    cmp al, 10
-    je .eol
-    inc rdi
-    jmp .find_eol
-.eol:
-    xor r14d, r14d                      ; r14 = 1 if more lines follow
-    cmp byte [rdi], 0
-    je .last
-    mov r14d, 1
-.last:
-    mov byte [rdi], 0
-    mov r15, rdi                        ; r15 = original line end
-    ; cut comment
-    mov rcx, rsi
-.find_hash:
-    cmp rcx, rdi
-    jae .no_hash
-    cmp byte [rcx], '#'
-    je .hash
-    inc rcx
-    jmp .find_hash
-.hash:
-    mov byte [rcx], 0
-    mov rdi, rcx
-.no_hash:
-    ; find '='
-    mov r12, rsi
-.find_eq:
-    cmp r12, rdi
-    jae .no_eq
-    cmp byte [r12], '='
-    je .have_eq
-    inc r12
-    jmp .find_eq
-.no_eq:
-    INVOKE trim, rsi, rdi
-    cmp byte [rax], 0
-    je .next_line                       ; blank / comment-only line
-    lea rcx, [rel str_bad_line]
-    INVOKE log_with, rcx, rax
-    jmp .next_line
-.have_eq:
-    INVOKE trim, rsi, r12
-    mov rbx, rax                        ; rbx = name
-    lea rcx, [r12 + 1]
-    INVOKE trim, rcx, rdi
-    mov r13, rax                        ; r13 = value
-
-    ; action?
-    xor r12d, r12d
-.try_action:
-    mov ecx, r12d
-    call input_action_name
-    INVOKE str_ieq, rax, rbx
-    test eax, eax
-    jnz .is_action
-    inc r12d
-    cmp r12d, ACT_COUNT
-    jb .try_action
-    ; setting?
-    xor r12d, r12d
-.try_setting:
-    lea rax, [rel setting_table]
-    mov rcx, r12
-    shl rcx, 4
-    INVOKE str_ieq, [rax + rcx], rbx
-    test eax, eax
-    jnz .is_setting
-    inc r12d
-    cmp r12d, setting_count
-    jb .try_setting
-    lea rcx, [rel str_bad_name]
-    INVOKE log_with, rcx, rbx
-    jmp .next_line
-.is_action:
-    INVOKE apply_binding, r12, r13
-    jmp .next_line
-.is_setting:
-    INVOKE str_parse_float, r13
-    test eax, eax
-    jz .bad_number
-    lea rax, [rel setting_table]
-    mov rcx, r12
-    shl rcx, 4
-    mov rax, [rax + rcx + 8]
-    movss [rax], xmm0
-    jmp .next_line
-.bad_number:
-    lea rcx, [rel str_bad_number]
-    INVOKE log_with, rcx, rbx
-.next_line:
-    test r14d, r14d
-    jz .finished
-    lea rsi, [r15 + 1]
-    jmp .line
-.finished:
+    lea rdx, [rel controls_pair]
+    lea r9, [rel str_cfg_label]
+    INVOKE cfg_parse, rax, rdx, 0, r9
     lea rcx, [rel g_arena_scratch]
-    INVOKE arena_reset_to, rcx, [rel g_config_mark]
+    INVOKE arena_reset_to, rcx, rbx
     call log_bindings
     mov eax, 1
     RETURN

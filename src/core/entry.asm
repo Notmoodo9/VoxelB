@@ -36,6 +36,7 @@ extern renderer_init, renderer_frame, renderer_shutdown
 extern camera_init, camera_update
 extern overlay_draw, overlay_toggle
 extern cpu_detect, selftest_run
+extern world_init, world_render_init, world_render_shutdown
 extern timer_init, timer_frame, timer_reset, timer_elapsed_us
 extern g_total_frames, g_stat_fps_x10, g_stat_avg_us, g_stat_min_us, g_stat_max_us
 
@@ -62,6 +63,7 @@ str_paths_fail:     db "The data folder was not found next to voxelb.exe.", 13, 
                     db "Keep voxelb.exe together with its data, shaders and assets folders.", 0
 str_controls_fail:  db "Could not read data/config/controls.cfg. See voxel.log for details.", 0
 str_init_fail:      db "Renderer start-up failed (shader or font). See voxel.log for details.", 0
+str_world_fail:     db "World start-up failed. See voxel.log for details.", 0
 str_window_fail:    db "Failed to create the main window. See voxel.log for details.", 0
 str_gl_fail:        db "Could not start OpenGL 4.5+ (core profile).", 13, 10, 13, 10
                     db "Please update your graphics driver. See voxel.log for details.", 0
@@ -255,6 +257,16 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     lea rcx, [rel str_init_fail]
     call log_fatal
 .init_ok:
+    call world_init
+    test eax, eax
+    jz .world_fail
+    call world_render_init
+    test eax, eax
+    jnz .world_ok
+.world_fail:
+    lea rcx, [rel str_world_fail]
+    call log_fatal
+.world_ok:
     call camera_init
     call timer_init
     cmp dword [rel g_window_active], 0
@@ -404,6 +416,7 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     xor ecx, ecx
     call input_set_capture
     call text_shutdown
+    call world_render_shutdown
     call renderer_shutdown
     call shader_shutdown
     call gl_shutdown

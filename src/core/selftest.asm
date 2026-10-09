@@ -7,6 +7,11 @@
 ;   2. jobs:   job_dispatch of COMPUTE_JOBS jobs of xorshift work (~10-20 us
 ;              each), results compared with a serial run on the main thread
 ;              (gives the parallel speed-up)
+;   4. sections: palette compression at every bit width (1/2/4/8/16):
+;              build from arrays with 1..300 distinct ids, compare every
+;              block via section_get and section_decode, then 3000 random
+;              section_set calls growing a uniform section to raw 16-bit,
+;              checked against a shadow array
 ;   3. pools:  POOL_JOBS jobs submitted one by one (job_submit) that each
 ;              allocate, fill, verify and free
 ;              blocks concurrently (lock-free pool under contention), plus
@@ -15,10 +20,12 @@
 %include "macros.inc"
 %include "log.inc"
 %include "jobs.inc"
+%include "section.inc"
 
 global selftest_run
 
 extern timer_elapsed_us, str_append_dec
+extern mesh_section, g_block_opaque
 
 %define COMPUTE_JOBS        4096
 %define COMPUTE_ITERS       8000
@@ -37,6 +44,15 @@ str_threads:        db " with threads ", 0
 str_pool:           db "selftest: pool storm ", 0
 str_pool_jobs:      db " jobs, fresh blocks used ", 0
 str_pool_us:        db ", us ", 0
+str_sect_fail:      db "selftest: section mismatch, distinct ids ", 0
+str_sect_bits:      db ", bits ", 0
+str_mesh_case:      db "selftest: mesher case ", 0
+str_mesh_got:       db " quads ", 0
+str_mesh_want:      db " expected ", 0
+str_mesh_first:     db " first quad ", 0
+align 4
+sect_variants:      dd 1, 2, 3, 17, 200, 300     ; distinct ids per test
+sect_expect_bits:   dd 0, 1, 2, 8, 8, 16
 
 section .bss
 alignb 64
@@ -47,6 +63,8 @@ g_results:          resq 1              ; COMPUTE_JOBS qwords (main scratch)
 g_errors:           resq 1
 g_counter:          resq 1
 g_numbuf:           resb 32
+alignb 8
+g_nb_tmp:           resq 6
 
 section .text
 
@@ -180,6 +198,20 @@ PROC test_arenas, 0, rbx, rsi
     INVOKE arena_try_alloc, rbx, MB(2), 8
     test rax, rax
     jnz .fail                           ; must refuse: beyond the reserve
+    ; shared (atomic) allocations must return base + offset exactly, even
+    ; at unaligned offsets inside a page
+    mov qword [rbx + ARENA.used], 24    ; unaligned start
+    INVOKE arena_alloc_shared, rbx, 24
+    mov rcx, [rbx + ARENA.base]
+    add rcx, 24
+    cmp rax, rcx
+    jne .fail
+    mov rsi, rax
+    INVOKE arena_alloc_shared, rbx, 8
+    lea rcx, [rsi + 32]                 ; 24 rounded up to 16 -> 32
+    cmp rax, rcx
+    jne .fail
+    mov qword [rax], 0x1234             ; committed: writable
     mov rcx, rbx
     call arena_release
     LOG_INFO "selftest: arenas ok"
@@ -372,6 +404,342 @@ PROC test_pool, 0, rbx, rsi
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; test_sections — palette compression round trips and growth.
+;   out: eax = 1 pass / 0 fail (logged)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC test_sections, 16, rbx, rsi, rdi, r12, r13, r14, r15
+    call sections_init
+    test eax, eax
+    jz .fail_plain
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [LOCAL(0)], rax
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_alloc, rcx, SECTION_VOLUME * 2, 64
+    mov r12, rax                        ; ids / shadow
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_alloc, rcx, SECTION_VOLUME * 2, 64
+    mov r13, rax                        ; decode buffer
+    test r12, r12
+    jz .fail
+    test r13, r13
+    jz .fail
+
+    ; ---- all air -> no section ---------------------------------------------------
+    mov rdi, r12
+    xor eax, eax
+    mov ecx, SECTION_VOLUME * 2 / 8
+    rep stosq
+    INVOKE section_build, r12, 0, 0, 0
+    test rax, rax
+    jnz .fail
+
+    ; ---- variants ----------------------------------------------------------------
+    xor r14d, r14d                      ; variant
+.variant:
+    lea rax, [rel sect_variants]
+    mov r15d, [rax + r14 * 4]           ; distinct ids
+    xor ecx, ecx
+.fill:
+    ; id = (i * 7919 + i/37) mod n + 1   (every id appears)
+    mov eax, ecx
+    imul eax, eax, 7919
+    mov edx, ecx
+    shr edx, 5
+    add eax, edx
+    xor edx, edx
+    div r15d
+    inc edx
+    mov [r12 + rcx * 2], dx
+    inc ecx
+    cmp ecx, SECTION_VOLUME
+    jb .fill
+    INVOKE section_build, r12, 1, 2, 3
+    test rax, rax
+    jz .variant_fail
+    mov rbx, rax
+    movzx eax, byte [rbx + SECT.bits]
+    lea rcx, [rel sect_expect_bits]
+    cmp eax, [rcx + r14 * 4]
+    jne .variant_fail_free
+    xor esi, esi
+.check_get:
+    mov rcx, rbx
+    mov edx, esi
+    call section_get
+    cmp ax, [r12 + rsi * 2]
+    jne .variant_fail_free
+    inc esi
+    cmp esi, SECTION_VOLUME
+    jb .check_get
+    INVOKE section_decode, rbx, r13
+    mov rsi, r12
+    mov rdi, r13
+    mov ecx, SECTION_VOLUME * 2
+    repe cmpsb
+    jne .variant_fail_free
+    mov rcx, rbx
+    call section_free
+    inc r14d
+    cmp r14d, 6
+    jb .variant
+
+    ; ---- growth through section_set ------------------------------------------------
+    mov ecx, 5
+    xor edx, edx
+    xor r8d, r8d
+    xor r9d, r9d
+    call section_make_uniform
+    test rax, rax
+    jz .fail
+    mov rbx, rax
+    mov rdi, r12
+    mov eax, 5
+    mov ecx, SECTION_VOLUME
+    rep stosw                           ; shadow = 5 everywhere
+    mov r15d, 12345                     ; LCG state
+    xor r14d, r14d
+.set_loop:
+    imul r15d, r15d, 1103515245
+    add r15d, 12345
+    mov esi, r15d
+    shr esi, 8
+    and esi, SECTION_VOLUME - 1         ; index
+    imul r15d, r15d, 1103515245
+    add r15d, 12345
+    mov edi, r15d
+    shr edi, 8
+    xor edx, edx
+    mov eax, edi
+    mov ecx, 600
+    div ecx
+    lea edi, [edx + 1]                  ; id 1..600
+    mov [r12 + rsi * 2], di
+    lea r9, [rel g_arena_scratch]
+    INVOKE section_set, rbx, rsi, rdi, r9
+    test eax, eax
+    jz .grow_fail
+    inc r14d
+    cmp r14d, 3000
+    jb .set_loop
+    xor esi, esi
+.check_grow:
+    mov rcx, rbx
+    mov edx, esi
+    call section_get
+    cmp ax, [r12 + rsi * 2]
+    jne .grow_fail
+    inc esi
+    cmp esi, SECTION_VOLUME
+    jb .check_grow
+    cmp byte [rbx + SECT.bits], 16
+    jne .grow_fail                      ; > 256 distinct ids: must be raw
+    mov rcx, rbx
+    call section_free
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(0)]
+    LOG_INFO "selftest: sections ok (palettes 1/2/4/8/16-bit, growth via set)"
+    mov eax, 1
+    RETURN
+
+.variant_fail_free:
+    mov rcx, rbx
+    call section_free
+.variant_fail:
+    mov ecx, LOG_LEVEL_ERROR
+    call log_begin
+    lea rcx, [rel str_sect_fail]
+    call log_append_str
+    mov ecx, r15d
+    call log_append_dec
+    call log_end
+    jmp .fail
+.grow_fail:
+    LOG_ERROR "selftest: section_set growth produced wrong blocks"
+.fail:
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(0)]
+.fail_plain:
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; mesh_case — mesh a section with all 6 neighbours set to one value and
+; compare the quad count.
+;   in:  rcx = SECT*, rdx = neighbour value, r8 = expected count,
+;        r9 = case number, ARG 5 = quad buffer
+;   out: eax = 1 if the count matched (mismatch logged with the first quad)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC mesh_case, 48, rbx, rsi, rdi, r12
+    mov rbx, rcx
+    mov rsi, r8
+    mov rdi, r9
+    mov r12, [ARG(5)]
+    xor eax, eax
+.fill_nb:
+    mov [LOCAL(0) + rax * 8], rdx
+    inc eax
+    cmp eax, 6
+    jb .fill_nb
+    lea rdx, [LOCAL(0)]
+    lea r9, [rel g_arena_scratch]
+    INVOKE mesh_section, rbx, rdx, r12, r9
+    cmp rax, rsi
+    je .ok
+    mov rbx, rax
+    mov ecx, LOG_LEVEL_ERROR
+    call log_begin
+    lea rcx, [rel str_mesh_case]
+    call log_append_str
+    mov rcx, rdi
+    call log_append_dec
+    lea rcx, [rel str_mesh_got]
+    call log_append_str
+    mov rcx, rbx
+    call log_append_dec
+    lea rcx, [rel str_mesh_want]
+    call log_append_str
+    mov rcx, rsi
+    call log_append_dec
+    lea rcx, [rel str_mesh_first]
+    call log_append_str
+    mov rcx, [r12]
+    call log_append_hex
+    call log_end
+    xor eax, eax
+    RETURN
+.ok:
+    mov eax, 1
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; test_mesher — exact quad counts for simple configurations.
+;   out: eax = 1 pass / 0 fail (logged)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC test_mesher, 16, rbx, rsi, rdi, r12, r13
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [LOCAL(0)], rax
+    lea rax, [rel g_block_opaque]
+    mov byte [rax + 1], 1               ; id 1 opaque (restored at the end)
+    mov byte [rax + 0xFFFF], 1
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_alloc, rcx, 98304 * 8, 64
+    mov r12, rax                        ; quad buffer
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_alloc, rcx, SECTION_VOLUME * 2, 64
+    mov r13, rax                        ; ids
+    mov ebx, 1                          ; result
+
+    ; case 1: uniform stone, air around -> 6 full faces
+    INVOKE section_make_uniform, 1, 0, 0, 0
+    mov rsi, rax
+    mov [rsp + 32], r12
+    INVOKE mesh_case, rsi, 0, 6, 1
+    and ebx, eax
+    ; case 2: uniform stone, solid around -> nothing (fast path)
+    mov [rsp + 32], r12
+    INVOKE mesh_case, rsi, NEIGHBOR_SOLID, 0, 2
+    and ebx, eax
+    mov rcx, rsi
+    call section_free
+
+    ; case 3: single block at (5, 6, 7) in air -> 6 unit quads
+    mov rdi, r13
+    xor eax, eax
+    mov ecx, SECTION_VOLUME * 2 / 8
+    rep stosq
+    mov word [r13 + ((6 << 10) | (7 << 5) | 5) * 2], 1
+    INVOKE section_build, r13, 0, 0, 0
+    mov rsi, rax
+    mov [rsp + 32], r12
+    INVOKE mesh_case, rsi, 0, 6, 3
+    and ebx, eax
+    mov rcx, rsi
+    call section_free
+
+    ; case 4: stone with one air cavity at (10, 10, 10), solid around -> 6
+    mov rdi, r13
+    mov eax, 1
+    mov ecx, SECTION_VOLUME
+    rep stosw
+    mov word [r13 + ((10 << 10) | (10 << 5) | 10) * 2], 0
+    INVOKE section_build, r13, 0, 0, 0
+    mov rsi, rax
+    mov [rsp + 32], r12
+    INVOKE mesh_case, rsi, NEIGHBOR_SOLID, 6, 4
+    and ebx, eax
+    mov rcx, rsi
+    call section_free
+
+    ; case 5: bottom half stone (y < 16), air above and around -> 6 quads
+    ; (top 32x32, bottom 32x32, 4 sides of 32x16)
+    mov rdi, r13
+    mov eax, 1
+    mov ecx, SECTION_VOLUME / 2
+    rep stosw
+    xor eax, eax
+    mov ecx, SECTION_VOLUME / 2
+    rep stosw
+    INVOKE section_build, r13, 0, 0, 0
+    mov rsi, rax
+    mov [rsp + 32], r12
+    INVOKE mesh_case, rsi, 0, 6, 5
+    and ebx, eax
+    mov rcx, rsi
+    call section_free
+
+    ; case 6: half-stone section with half-stone side neighbours, solid
+    ; below, air above -> exactly 1 quad (the 32x32 top)
+    mov rdi, r13
+    mov eax, 1
+    mov ecx, SECTION_VOLUME / 2
+    rep stosw
+    xor eax, eax
+    mov ecx, SECTION_VOLUME / 2
+    rep stosw
+    INVOKE section_build, r13, 0, 0, 0
+    mov rsi, rax
+    mov [LOCAL(8)], rsi
+    lea rdi, [rel g_nb_tmp]
+    mov [rdi + 0], rsi                  ; -X
+    mov [rdi + 8], rsi                  ; +X
+    mov qword [rdi + 16], NEIGHBOR_SOLID
+    mov qword [rdi + 24], 0             ; +Y air
+    mov [rdi + 32], rsi                 ; -Z
+    mov [rdi + 40], rsi                 ; +Z
+    lea r9, [rel g_arena_scratch]
+    INVOKE mesh_section, rsi, rdi, r12, r9
+    cmp rax, 1
+    je .case6_ok
+    mov rsi, rax
+    LOG_VAL LOG_LEVEL_ERROR, "selftest: mesher case 6 quads (expected 1):", rsi
+    LOG_HEX LOG_LEVEL_ERROR, "selftest: mesher case 6 first quad", [r12]
+    xor ebx, ebx
+.case6_ok:
+    mov rcx, [LOCAL(8)]
+    call section_free
+
+    lea rax, [rel g_block_opaque]
+    mov byte [rax + 1], 0
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(0)]
+    test ebx, ebx
+    jz .fail
+    LOG_INFO "selftest: mesher ok (6 cases)"
+    mov eax, 1
+    RETURN
+.fail:
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 ; selftest_run — run all checks (needs mem_init, jobs_init, timer_init).
 ;   out: eax = 1 if everything passed, 0 otherwise (failures logged)
 ;   clobbers: volatile registers
@@ -383,6 +751,10 @@ PROC selftest_run, 0, rbx
     call test_compute
     and ebx, eax
     call test_pool
+    and ebx, eax
+    call test_sections
+    and ebx, eax
+    call test_mesher
     and ebx, eax
     test ebx, ebx
     jz .failed

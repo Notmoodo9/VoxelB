@@ -11,6 +11,7 @@ global mem_init, mem_shutdown
 global arena_init, arena_release, arena_alloc, arena_try_alloc
 global arena_mark, arena_reset_to, arena_reset
 global pool_init, pool_release, pool_alloc, pool_free
+global arena_alloc_shared
 global g_arena_perm, g_arena_frame, g_arena_scratch, g_mem_committed
 
 IMPORT VirtualAlloc, VirtualFree
@@ -176,6 +177,49 @@ PROC arena_alloc, 0, rbx
     INVOKE log_named, rcx, [rbx + ARENA.name]
     xor eax, eax
 .ok:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; arena_alloc_shared — thread-safe bump allocation from an arena that several
+; threads append to (e.g. mesh staging). Uses an atomic add on .used and
+; commits the returned range itself (VirtualAlloc commit is idempotent and
+; thread-safe). Do not mix with arena_alloc on the same arena while threads
+; are allocating; reset only when no thread is using it.
+;   in:  rcx = ARENA*, rdx = size (rounded up to 16 bytes)
+;   out: rax = pointer, or 0 if the reservation is exhausted (logged)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC arena_alloc_shared, 0, rbx, rsi, rdi
+    mov rbx, rcx
+    lea rsi, [rdx + 15]
+    and rsi, -16                        ; size
+    mov rax, rsi
+    lock xadd [rbx + ARENA.used], rax   ; rax = offset
+    mov rdi, rax
+    add rax, rsi
+    cmp rax, [rbx + ARENA.reserved]
+    ja .full
+    ; peak = max(peak, end) (racy but only statistics)
+    cmp rax, [rbx + ARENA.peak]
+    jbe .peak_ok
+    mov [rbx + ARENA.peak], rax
+.peak_ok:
+    mov rcx, [rbx + ARENA.base]
+    add rcx, rdi
+    API VirtualAlloc, rcx, rsi, MEM_COMMIT, PAGE_READWRITE
+    test rax, rax
+    jz .full
+    lock add [rel g_mem_committed], rsi
+    lock add [rbx + ARENA.committed], rsi
+    ; VirtualAlloc returns the start of the first committed *page*, not our
+    ; (unaligned) address: return base + offset ourselves
+    mov rax, [rbx + ARENA.base]
+    add rax, rdi
+    RETURN
+.full:
+    LOG_ERROR "shared arena exhausted"
+    xor eax, eax
     RETURN
 ENDPROC
 

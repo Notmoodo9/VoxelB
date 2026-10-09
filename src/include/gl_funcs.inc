@@ -54,3 +54,4 @@ GLFN glTextureSubImage2D,       1
 GLFN glTextureParameteri,       1
 GLFN glBindTextureUnit,         1
 GLFN glDeleteTextures,          1
+GLFN glProgramUniform1ui,       1

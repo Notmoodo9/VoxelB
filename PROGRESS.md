@@ -1,11 +1,93 @@
 # Progress
 
 ## Current state
-**Milestone 4: Memory arenas/pools, job system with worker threads: DONE**
-(Windows CI green: run #7)
+**Milestone 5: Chunk/section data structures (palette compression), flat
+test world, mesher, render: DONE** (pending green Windows CI)
 
-Next: **Milestone 5: Chunk/section data structures (palette compression),
-flat test world, mesher, render.**
+Next: **Milestone 6: Infinite streaming: load/unload around the player on
+worker threads, no stutter.**
+
+---
+
+## Milestone 5 — done (2026-10-09)
+
+### What was built
+* **Sections** (`src/world/section.asm`, D27): 32³ palette-compressed
+  storage: uniform (no data), 1/2/4/8-bit palette, or raw 16-bit. Build from
+  an array, get, set (with palette growth), decode, and free. All storage
+  comes from lock-free pools.
+* **World** (`src/world/world.asm`): a column hash map, and a fixed test
+  world of (2·radius)² columns × 40 sections (Y −256…1023). Generation and
+  meshing run as parallel jobs (`job_dispatch`), with timing stats.
+  `world_block_at` and `world_section_at` queries.
+* **Debug test world** (`data/world/flat_test.cfg`, D30): placeholder
+  `debug_*` blocks with flat colours, layers stone/dirt/grass (surface at
+  y 100), radius 12 chunks (768 × 768 blocks), and debug hills and pillars
+  that cross section borders. **Not game content**: the real blocks come
+  from the M7 design interview.
+* **Greedy mesher** (`src/render/mesher.asm`, D28): 34³ padded volume with
+  neighbour borders, 6 directions × 32 slices, greedy rectangles, 8-byte
+  packed quads, and a skip for enclosed uniform sections.
+* **World rendering** (`src/render/world_render.asm`, `shaders/chunk.*`,
+  D29): one quad SSBO, vertex pulling, CPU frustum culling (5 planes ×
+  bounding sphere), back-face culling, flat block colours with per-block
+  jitter and edge lines (so single blocks show inside merged quads), face
+  shading and distance fog.
+* Debug block table (`src/world/block.asm`), replaced by the registry in M7.
+* Shared data-file parser (`src/core/cfg.asm`, D31); controls.cfg now uses
+  it too.
+* `arena_alloc_shared` (thread-safe bump allocation) for mesh staging.
+* Overlay: world (columns, sections + MB, sections with geometry, quads,
+  GPU MB), draw (visible sections and quads), gen and mesh times (wall, avg,
+  max), chunk coordinates and the ground block below the camera.
+* Self test: sections (all bit widths, get/decode round trips, 3000
+  random sets growing 0 → 16 bit) and the mesher (6 cases with exact
+  quad counts, including real neighbour sections). The M3 test scene is
+  removed.
+
+### Bugs found and fixed while testing
+* `arena_alloc_shared` returned `VirtualAlloc`'s page-rounded address
+  instead of base + offset, so mesh jobs overwrote each other's quads and the
+  world rendered with holes. The mesher unit tests proved the mesher right,
+  and dumping the quad contents led to the allocator. Fixed, and covered by
+  a self-test check.
+* Debug text disappeared once back-face culling was on: its screen-space
+  quads wind clockwise. Text now draws with culling off.
+
+### Verified (Wine 9 + Xvfb + Mesa llvmpipe)
+* 0 errors and 0 warnings in both configs. The headless test passes for both
+  (now also requires the world upload). The self test passes (arenas incl.
+  shared allocs, jobs, pools, sections, mesher).
+* Screenshots from 4 viewpoints (start, flown forward, turned 90°, low among
+  the hills): continuous grass ground, banded hills with correct sides and
+  steps, pillars spanning several sections, no missing or inverted faces.
+  The overlay reads `ground below: debug_grass at y 99` at the start point.
+* Clean exit (code 0).
+
+### Performance (4-core Xeon 2.8 GHz; rendering on llvmpipe, no GPU)
+| Measure | Value |
+|---|---|
+| World | 576 columns, 7074 stored sections (6.6 MB), 1750 with geometry |
+| Quads | 107,924 (0.84 MB on the GPU, 8 bytes each) |
+| Generation | 40–46 ms wall for all columns; avg 275–316 µs, max 1.6–11.7 ms per column |
+| Meshing | 284–370 ms wall for all sections; avg 159–208 µs, max 2.0–6.8 ms per section |
+| Frame (start view, ~970 visible sections, ~107k quads) | 16–19 FPS, 52–61 ms on llvmpipe |
+Software rasterisation of about 640k vertices per frame is the whole frame
+cost here. A real GPU draws this in well under a millisecond (still to be
+confirmed on your PC).
+
+### Known issues
+* Not yet seen on a real GPU (CI uses software GL).
+* Meshing a detailed section costs up to a few ms (scalar greedy). Fine on
+  workers, and the binary greedy / AVX2 variant stays available if M6
+  streaming needs it.
+
+### Deferred
+* The real block set, textures and registry: M7 (design interview).
+* Streaming and unloading: M6. The world is fixed-size and generated at
+  start-up.
+* Persistent buffers, MDI and GPU culling: M11. Light/AO-aware merging: M13.
+* Binary greedy meshing with AVX2: an optimisation, only if needed.
 
 ---
 

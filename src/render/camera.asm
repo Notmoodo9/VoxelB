@@ -36,8 +36,8 @@ c_us_to_s:      dd 0.000001
 c_max_dt:       dd 0.1
 c_one:          dd 1.0
 c_zero:         dd 0.0
-; start position: above the test scene, looking at it (north, slightly down)
-c_start_pos:    dd 0.0, 18.0, 46.0
+; start position: south of the test structures, looking north, slightly down
+c_start_pos:    dd 0.5, 138.0, 190.0
 c_start_pitch:  dd -0.35
 
 section .bss

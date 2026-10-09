@@ -14,7 +14,7 @@ yet; each item gets its own doc in `design/` when we interview it.
 | todo | Cold biomes: taiga, snowy tundra, ice spikes, glaciers, frozen ocean | M10 | |
 | todo | Fantasy biomes: mushroom fields, crystal caves, floating islands, glowing forests | M10 | |
 | todo | Trees and vegetation per biome | M10 | |
-| todo | Block set and textures (art style, palette) | M7/M10 | engine registry is technical; the block list is creative |
+| todo | Block set and textures (art style, palette) | M7/M10 | engine registry is technical; the block list is creative. M5 uses placeholder `debug_*` blocks with flat colours (data/world/flat_test.cfg) |
 | todo | Items, inventory, chests, crafting, tool tiers, smelting | M18 | |
 | todo | Passive animals | M19 | one mob at a time |
 | todo | Survival: health, hunger, damage, death, difficulty levels, Hardcore | M20 | |

@@ -47,6 +47,7 @@ extern mem_init, mem_shutdown
 extern arena_init, arena_release, arena_alloc, arena_try_alloc
 extern arena_mark, arena_reset_to, arena_reset
 extern pool_init, pool_release, pool_alloc, pool_free
+extern arena_alloc_shared
 extern g_arena_perm, g_arena_frame, g_arena_scratch, g_mem_committed
 %endif
 

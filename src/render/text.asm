@@ -335,6 +335,7 @@ PROC text_flush, 0, rbx, rsi
     GL glProgramUniform4fv, rbx, 1, 1, r9          ; u_font
 
     GL glDisable, GL_DEPTH_TEST
+    GL glDisable, GL_CULL_FACE          ; screen-space quads wind clockwise
     GL glEnable, GL_BLEND
     GL glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
     GL glBindVertexArray, [rel g_text_vao]
@@ -343,6 +344,7 @@ PROC text_flush, 0, rbx, rsi
     imul r8d, esi, 6
     GL glDrawArrays, GL_TRIANGLES, 0, r8
     GL glDisable, GL_BLEND
+    GL glEnable, GL_CULL_FACE
     GL glEnable, GL_DEPTH_TEST
 .done:
     RETURN
