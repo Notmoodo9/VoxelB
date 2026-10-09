@@ -2,7 +2,7 @@
 
 ## Current state
 **Milestone 10 (part 2): 🎨 DESIGN — Forest + old-growth forest: DONE**
-(Windows CI: see below)
+(Windows CI green: run #22)
 
 Next: **Milestone 10, part 3: the next temperate biome**. The candidates
 are birch forest, dark forest, meadow and river (`design/BACKLOG.md`). It
