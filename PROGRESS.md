@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 4): 🎨 DESIGN — Desert + oasis: DONE** (Windows CI: see below)
+**Milestone 10 (part 4): 🎨 DESIGN — Desert + oasis: DONE** (Windows CI green: run #26)
 
 Next: **Milestone 10, part 5: the next biome**. Candidates are savanna or
 badlands (hot), taiga (cold), dark forest, meadow or river
