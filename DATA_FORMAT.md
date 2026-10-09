@@ -26,7 +26,8 @@ this format by Milestone 7 (block registry). This document is extended then.
 | File | Read by | Contents |
 |---|---|---|
 | `data/config/controls.cfg` | `src/platform/input.asm` | key bindings (actions → up to 2 keys) and mouse/fly settings |
-| `data/world/flat_test.cfg` | `src/world/world.asm` | **debug** test world: placeholder blocks, layers, size, test structures |
+| `data/config/graphics.cfg` | `src/world/stream.asm` | graphics settings (render distance) |
+| `data/world/flat_test.cfg` | `src/world/world.asm` | **debug** test world: placeholder blocks, layers, test structures |
 
 ### `controls.cfg`
 
@@ -38,12 +39,21 @@ names is at the top of the file).
 Settings: `mouse_sensitivity` (degrees per mouse count), `invert_mouse_y`
 (0/1), `fly_speed` (blocks/s), `fly_sprint_multiplier`.
 
-### `flat_test.cfg` (debug content, Milestone 5)
+### `graphics.cfg`
+
+| Key | Value | Meaning |
+|---|---|---|
+| `render_distance` | `2`–`48` (default 16) | full-detail view distance in chunks. Columns are generated one ring further out (so edge chunks can be meshed against their neighbours) and unloaded three rings beyond it |
+
+### `flat_test.cfg` (debug content, Milestones 5–6)
+
+The world is infinite: every column gets the layers; the test structures
+sit around the origin.
+
 
 | Key | Value | Meaning |
 |---|---|---|
 | `block` | `name, RRGGBB` | declare a placeholder block with a flat colour (ids in order, 1..255) |
-| `radius_chunks` | `1`–`32` | world is columns −radius … radius−1 on X and Z |
 | `layer` | `block, top_y` | bottom-up layers; each fills up to `top_y` (inclusive) |
 | `test_structures` | `0`/`1` | banded hills and pillars around the origin |
 | `structure_blocks` | `block, block, …` | hill bands, bottom to top (up to 8) |

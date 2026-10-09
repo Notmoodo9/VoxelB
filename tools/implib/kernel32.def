@@ -27,6 +27,7 @@ EXPORTS
     ReleaseSemaphore
     ReleaseSRWLockExclusive
     SetThreadDescription
+    SetThreadPriority
     Sleep
     TlsAlloc
     TlsFree

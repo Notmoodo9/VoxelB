@@ -34,10 +34,29 @@ struc SECT                              ; one section; 64 bytes, from a pool
     .pad1       resd 1
 endstruc
 
+; column states (COLUMN.state); written by the owner of the transition:
+;   main: NEW -> (submit) GENERATING, GENERATED -> (submit) MESHING,
+;         MESHED -> (upload) READY;   workers: GENERATING -> GENERATED,
+;         MESHING -> MESHED (published last, after all results are written)
+%define COL_NEW         0
+%define COL_GENERATING  1
+%define COL_GENERATED   2
+%define COL_MESHING     3
+%define COL_MESHED      4
+%define COL_READY       5
+
 struc COLUMN
     .cx         resd 1
     .cz         resd 1
+    .state      resd 1                  ; COL_* (atomic)
+    .busy       resd 1                  ; mesh jobs reading this column
     .sections   resq SECTIONS_PER_COLUMN
+    .nb         resq 4                  ; -X, +X, -Z, +Z (set at mesh submit)
+    .mesh_buf   resq 1                  ; quads of all sections (VirtualAlloc)
+    .mesh_bytes resq 1
+    .geo_mask   resq 1                  ; bit sy = section has quads on the GPU
+    .list_index resd 1                  ; position in the loaded-column list
+    .pad        resd 1
 endstruc
 
 %endif

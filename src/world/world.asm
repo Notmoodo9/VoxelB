@@ -1,20 +1,20 @@
 ; =============================================================================
-; world.asm — Milestone 5 test world: config, columns, generation, meshing.
+; world.asm — world description, column map and column generation.
 ;
-; The world is a fixed square of (2*radius)^2 columns around the origin,
-; described by data/world/flat_test.cfg (blocks, layers, debug structures).
-; Generation and meshing run as parallel jobs (one job per column, then one
-; per stored section); mesh quads are appended to a shared staging arena and
-; uploaded to the GPU once by world_render. Milestone 6 turns this into
-; streaming around the player.
+; The world is infinite: columns are created by the streamer
+; (src/world/stream.asm) around the player and generated here by jobs, from
+; data/world/flat_test.cfg (debug blocks, layers, debug structures).
 ;
 ; Public API (see include/world_api.inc):
-;   world_init() -> eax 1/0            load config, generate, mesh
-;   world_column(cx, cz) -> rax COLUMN* or 0
-;   world_section_at(cx, sy, cz) -> rax SECT* or 0
-;   world_block_at(wx, wy, wz) -> eax block id
-;   g_draw_list / g_draw_count         sections that have quads
-;   g_mesh_staging (ARENA), g_world_quads, timing stats (g_world_*)
+;   world_init() -> eax 1/0             load config, pools, hash map
+;   world_column_alloc(cx, cz) -> rax   new COLUMN (state NEW), not mapped
+;   world_column_free(col)
+;   world_column_insert(col) / world_column_remove(col)   (main thread)
+;   world_column(cx, cz) -> rax COLUMN* or 0   (main thread)
+;   world_section_at(cx, sy, cz) / world_block_at(wx, wy, wz)   (main thread)
+;   gen_column_job(COLUMN*, WORKER*)     job: fills the 40 sections, then
+;                                        publishes COL_GENERATED
+;   g_world_gen_count / _total_us / _max_us   generation timing
 ; =============================================================================
 %define WORLD_IMPL
 %include "macros.inc"
@@ -27,34 +27,29 @@
 %include "world_api.inc"
 
 global world_init, world_column, world_section_at, world_block_at
-global g_draw_list, g_draw_count, g_mesh_staging, g_world_quads
-global g_world_columns_n, g_world_mesh_list_count
-global g_world_gen_wall_us, g_world_gen_total_us, g_world_gen_max_us
-global g_world_mesh_wall_us, g_world_mesh_total_us, g_world_mesh_max_us
-global g_world_radius
+global world_column_alloc, world_column_free, world_column_insert, world_column_remove
+global gen_column_job, atomic_max, world_hash_selftest
+global g_world_gen_count, g_world_gen_total_us, g_world_gen_max_us
 
 extern str_ieq, str_parse_float, str_parse_u64
 extern blocks_init, block_register, block_find
-extern mesh_section
 extern timer_elapsed_us
 
 %define MAX_LAYERS          16
 %define MAX_STRUCT_BLOCKS   8
-%define HASH_BITS           13
+%define HASH_BITS           14          ; 16384 slots (render distance <= 48)
 %define HASH_SIZE           (1 << HASH_BITS)
 %define STRUCT_BASE_Y       100
 %define STRUCT_TOP_Y        220
 %define STRUCT_RADIUS       128         ; blocks around the origin
 %define PILLAR_SPACING      37
 %define PILLAR_TOP_Y        210
-%define MESH_MAX_QUADS      98304
-%define STAGING_RESERVE     MB(512)
+%define MAX_COLUMNS         65536
 
 section .rdata
 str_cfg_path:   db "data/world/flat_test.cfg", 0
 str_cfg_label:  db "flat_test.cfg", 0
 k_block:        db "block", 0
-k_radius:       db "radius_chunks", 0
 k_layer:        db "layer", 0
 k_structures:   db "test_structures", 0
 k_struct_blk:   db "structure_blocks", 0
@@ -62,22 +57,7 @@ k_pillar:       db "pillar_block", 0
 str_unknown:    db "unknown setting: ", 0
 str_bad_block:  db "unknown block: ", 0
 str_bad_value:  db "bad value for: ", 0
-name_staging:   db "mesh staging", 0
-str_gen:        db "world: generated ", 0
-str_cols:       db " columns in ", 0
-str_us_wall:    db " us wall (", 0
-str_us_job:     db " us per column avg, max ", 0
-str_us_close:   db " us)", 0
-str_mesh:       db "world: meshed ", 0
-str_sections:   db " sections in ", 0
-str_us_sec:     db " us per section avg, max ", 0
-str_quads:      db "world: quads ", 0
-str_drawn:      db ", sections with geometry ", 0
-str_stored:     db ", stored sections ", 0
-
-section .data
-align 4
-g_world_radius:     dd 8
+name_columns:   db "columns", 0
 
 section .bss
 alignb 8
@@ -89,25 +69,14 @@ g_struct_ids:       resd MAX_STRUCT_BLOCKS
 g_struct_count:     resd 1
 g_pillar_id:        resd 1
 alignb 8
-g_columns:          resq 1              ; COLUMN* array
-g_world_columns_n:  resq 1
 g_hash:             resq 1              ; HASH_SIZE x {key, COLUMN*}
-g_mesh_list:        resq 1              ; SECT* array
-g_world_mesh_list_count: resq 1
-g_draw_list:        resq 1              ; SECT* array (quad_count > 0)
-g_draw_count:       resq 1
-g_counter:          resq 1
 g_cfg_mark:         resq 1
 alignb 64
-g_world_quads:          resq 1
+g_world_gen_count:      resq 1
 g_world_gen_total_us:   resq 1
 g_world_gen_max_us:     resq 1
-g_world_mesh_total_us:  resq 1
-g_world_mesh_max_us:    resq 1
-g_world_gen_wall_us:    resq 1
-g_world_mesh_wall_us:   resq 1
 alignb 64
-g_mesh_staging:     resb ARENA_size
+g_column_pool:      resb POOL_size
 g_cfg_path:         resb PATH_CAP
 
 section .text
@@ -207,10 +176,6 @@ PROC world_pair, 0, rbx, rsi, rdi, r12
     INVOKE str_ieq, rbx, rdx
     test eax, eax
     jnz .block
-    lea rdx, [rel k_radius]
-    INVOKE str_ieq, rbx, rdx
-    test eax, eax
-    jnz .radius
     lea rdx, [rel k_layer]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
@@ -245,18 +210,6 @@ PROC world_pair, 0, rbx, rsi, rdi, r12
     test edx, edx
     jz .bad
     INVOKE block_register, rdi, rax
-    RETURN
-
-.radius:
-    mov rcx, rsi
-    call str_parse_u64
-    test r8, r8
-    jz .bad
-    cmp eax, 1
-    jb .bad
-    cmp eax, 32
-    ja .bad
-    mov [rel g_world_radius], eax
     RETURN
 
 .layer:                                 ; layer = block, top_y
@@ -366,6 +319,143 @@ world_column:
 .none:
     xor eax, eax
     ret
+
+; -----------------------------------------------------------------------------
+; world_column_insert — add a column to the map (main thread).
+;   in:  rcx = COLUMN*
+;   clobbers: rax, rcx, rdx, r8, r9
+; -----------------------------------------------------------------------------
+world_column_insert:
+    mov r9, rcx
+    mov ecx, [r9 + COLUMN.cx]
+    mov edx, [r9 + COLUMN.cz]
+    call hash_slot
+    mov r8, [rel g_hash]
+.probe:
+    mov rcx, rdx
+    shl rcx, 4
+    cmp qword [r8 + rcx + 8], 0
+    je .insert
+    inc rdx
+    and rdx, HASH_SIZE - 1
+    jmp .probe
+.insert:
+    mov [r8 + rcx], rax
+    mov [r8 + rcx + 8], r9
+    ret
+
+; -----------------------------------------------------------------------------
+; world_column_remove — remove a column from the map (main thread).
+; Linear probing with backward-shift deletion: following entries of the
+; same probe chain are moved up, so lookups never need tombstones.
+;   in:  rcx = COLUMN*
+;   clobbers: rax, rcx, rdx, r8, r9, r10, r11
+; -----------------------------------------------------------------------------
+world_column_remove:
+    mov r9, rcx
+    mov ecx, [r9 + COLUMN.cx]
+    mov edx, [r9 + COLUMN.cz]
+    call hash_slot
+    mov r8, [rel g_hash]
+.find:
+    mov rcx, rdx
+    shl rcx, 4
+    cmp qword [r8 + rcx + 8], 0
+    je .done                            ; not present
+    cmp [r8 + rcx + 8], r9
+    je .found
+    inc rdx
+    and rdx, HASH_SIZE - 1
+    jmp .find
+.found:
+    ; rdx = hole index
+    mov r10, rdx                        ; j = scan index
+.shift:
+    inc r10
+    and r10, HASH_SIZE - 1
+    mov rcx, r10
+    shl rcx, 4
+    cmp qword [r8 + rcx + 8], 0
+    je .clear_hole                      ; end of the cluster
+    ; home slot of the entry at j
+    mov rax, [r8 + rcx]
+    mov r11, 0x9E3779B97F4A7C15
+    imul r11, rax
+    shr r11, 64 - HASH_BITS             ; k = home
+    ; move it into the hole unless its home lies cyclically in (hole, j]
+    ; i.e. keep if: hole < k <= j (no wrap) or wrapped equivalents
+    mov rax, r10
+    sub rax, r11
+    and rax, HASH_SIZE - 1              ; distance home -> j
+    mov rcx, r10
+    sub rcx, rdx
+    and rcx, HASH_SIZE - 1              ; distance hole -> j
+    cmp rax, rcx
+    jb .shift                           ; home is after the hole: stays
+    ; move entry j -> hole
+    mov rcx, r10
+    shl rcx, 4
+    mov rax, [r8 + rcx]
+    mov r11, [r8 + rcx + 8]
+    mov rcx, rdx
+    shl rcx, 4
+    mov [r8 + rcx], rax
+    mov [r8 + rcx + 8], r11
+    mov rdx, r10                        ; new hole
+    jmp .shift
+.clear_hole:
+    mov rcx, rdx
+    shl rcx, 4
+    mov qword [r8 + rcx], 0
+    mov qword [r8 + rcx + 8], 0
+.done:
+    ret
+
+; -----------------------------------------------------------------------------
+; world_column_alloc — new zeroed column (state NEW), not yet in the map.
+;   in:  ecx = cx, edx = cz
+;   out: rax = COLUMN*, or 0 if the column pool is exhausted (logged)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC world_column_alloc, 0, rbx, rsi, rdi
+    mov ebx, ecx
+    mov esi, edx
+    lea rcx, [rel g_column_pool]
+    call pool_alloc
+    test rax, rax
+    jz .done
+    mov rdi, rax
+    mov rdx, rax
+    xor eax, eax
+    mov ecx, COLUMN_size / 8
+    rep stosq
+    mov rax, rdx
+    mov [rax + COLUMN.cx], ebx
+    mov [rax + COLUMN.cz], esi
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; world_column_free — free a column's sections and the column itself (it must
+; not be in the map, nor in use by any job).
+;   in:  rcx = COLUMN*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC world_column_free, 0, rbx, rsi
+    mov rbx, rcx
+    xor esi, esi
+.sections:
+    mov rcx, [rbx + COLUMN.sections + rsi * 8]
+    call section_free
+    inc esi
+    cmp esi, SECTIONS_PER_COLUMN
+    jb .sections
+    lea rcx, [rel g_column_pool]
+    mov rdx, rbx
+    call pool_free
+    RETURN
+ENDPROC
 
 ; -----------------------------------------------------------------------------
 ; world_section_at — section by chunk coordinates (sy 0..39).
@@ -618,11 +708,11 @@ ENDPROC
 
 ; -----------------------------------------------------------------------------
 ; gen_column_job — job: generate all 40 sections of one column.
-;   in:  rcx = column index, rdx = WORKER*
+;   in:  rcx = COLUMN*, rdx = WORKER*
+;   Publishes COL_GENERATED after every section pointer is stored.
 ; -----------------------------------------------------------------------------
 PROC gen_column_job, 16, rbx, rsi, rdi, r12, r13, r14, r15
-    mov rax, [rel g_columns]
-    mov rbx, [rax + rcx * 8]            ; COLUMN*
+    mov rbx, rcx                        ; COLUMN*
     lea r15, [rdx + WORKER.scratch]
     call timer_elapsed_us
     mov [LOCAL(0)], rax
@@ -725,131 +815,140 @@ PROC gen_column_job, 16, rbx, rsi, rdi, r12, r13, r14, r15
     call timer_elapsed_us
     sub rax, [LOCAL(0)]
     lock add [rel g_world_gen_total_us], rax
+    lock inc qword [rel g_world_gen_count]
     mov rdx, rax
     lea rcx, [rel g_world_gen_max_us]
     call atomic_max
+    ; publish: on x86 the section stores above are visible before this one
+    mov dword [rbx + COLUMN.state], COL_GENERATED
     RETURN
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; mesh_section_job — job: mesh one stored section and append its quads to
-; the shared staging arena.
-;   in:  rcx = index into g_mesh_list, rdx = WORKER*
-; -----------------------------------------------------------------------------
-%define MJ_NB   0                       ; 6 neighbour pointers
-%define MJ_T0   48
-PROC mesh_section_job, 64, rbx, rsi, rdi, r12, r13, r14, r15
-    mov rax, [rel g_mesh_list]
-    mov rbx, [rax + rcx * 8]            ; SECT*
-    lea r15, [rdx + WORKER.scratch]
-    call timer_elapsed_us
-    mov [LOCAL(MJ_T0)], rax
-    mov r12d, [rbx + SECT.cx]
-    mov r13d, [rbx + SECT.sy]
-    mov r14d, [rbx + SECT.cz]
-    ; neighbours: -X +X -Y +Y -Z +Z
-    lea ecx, [r12d - 1]
-    INVOKE world_section_at, rcx, r13, r14
-    mov [LOCAL(MJ_NB + 0)], rax
-    lea ecx, [r12d + 1]
-    INVOKE world_section_at, rcx, r13, r14
-    mov [LOCAL(MJ_NB + 8)], rax
-    mov rax, NEIGHBOR_SOLID             ; below the world: solid
-    test r13d, r13d
-    jz .below_done
-    lea edx, [r13d - 1]
-    INVOKE world_section_at, r12, rdx, r14
-.below_done:
-    mov [LOCAL(MJ_NB + 16)], rax
-    lea edx, [r13d + 1]
-    INVOKE world_section_at, r12, rdx, r14
-    mov [LOCAL(MJ_NB + 24)], rax
-    lea r8d, [r14d - 1]
-    INVOKE world_section_at, r12, r13, r8
-    mov [LOCAL(MJ_NB + 32)], rax
-    lea r8d, [r14d + 1]
-    INVOKE world_section_at, r12, r13, r8
-    mov [LOCAL(MJ_NB + 40)], rax
-
-    INVOKE arena_alloc, r15, MESH_MAX_QUADS * 8, 64
-    test rax, rax
-    jz .done
-    mov rsi, rax                        ; quads
-    lea rdx, [LOCAL(MJ_NB)]
-    INVOKE mesh_section, rbx, rdx, rsi, r15
-    mov [rbx + SECT.quad_count], eax
-    mov rdi, rax                        ; count
-    test rdi, rdi
-    jz .timing
-    lock add [rel g_world_quads], rdi
-    lea rdx, [rdi * 8]
-    lea rcx, [rel g_mesh_staging]
-    call arena_alloc_shared
-    test rax, rax
-    jz .lost
-    mov rdx, rax
-    sub rdx, [rel g_mesh_staging + ARENA.base]
-    shr rdx, 3
-    mov [rbx + SECT.quad_first], edx
-    ; copy the quads
-    mov rcx, rdi
-    mov r8, rdi
-    mov rdi, rax
-    mov rax, rsi
-    mov rsi, rax
-    mov rcx, r8
-    rep movsq
-    jmp .timing
-.lost:
-    mov dword [rbx + SECT.quad_count], 0
-.timing:
-    call timer_elapsed_us
-    sub rax, [LOCAL(MJ_T0)]
-    mov [rbx + SECT.mesh_us], eax
-    lock add [rel g_world_mesh_total_us], rax
-    mov rdx, rax
-    lea rcx, [rel g_world_mesh_max_us]
-    call atomic_max
-.done:
-    RETURN
-ENDPROC
-
-; -----------------------------------------------------------------------------
-; log_timing — "<a><n1><b><n2><c><n3><d><n4><e>" helper for the summary.
-;   in:  rcx = string table (5 qword ptrs), rdx = values (4 qwords)
+; world_hash_selftest — insert 3000 columns in a 60x50 block (dense probe
+; clusters), remove every third one, check every lookup, remove the rest
+; and check the table is empty. Uses a temporary table (g_hash is swapped).
+;   out: eax = 1 pass / 0 fail
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC log_timing, 0, rbx, rsi, rdi
-    mov rbx, rcx
-    mov rsi, rdx
-    mov ecx, LOG_LEVEL_INFO
-    call log_begin
-    xor edi, edi
-.part:
-    mov rcx, [rbx + rdi * 8]
-    call log_append_str
-    cmp edi, 4
-    jae .end
-    mov rcx, [rsi + rdi * 8]
-    call log_append_dec
-    inc edi
-    jmp .part
-.end:
-    call log_end
+%define HT_N    3000
+PROC world_hash_selftest, 16, rbx, rsi, rdi, r12, r13
+    mov rax, [rel g_hash]
+    mov [LOCAL(0)], rax
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [LOCAL(8)], rax
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_alloc, rcx, HASH_SIZE * 16, 64
+    test rax, rax
+    jz .fail
+    mov [rel g_hash], rax
+    mov rdi, rax
+    xor eax, eax
+    mov ecx, HASH_SIZE * 2
+    rep stosq
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_alloc, rcx, HT_N * COLUMN_size, 64
+    test rax, rax
+    jz .fail
+    mov r12, rax                        ; fake columns
+    xor esi, esi
+.insert:
+    imul rbx, rsi, COLUMN_size
+    add rbx, r12
+    mov eax, esi
+    xor edx, edx
+    mov ecx, 60
+    div ecx
+    sub eax, 25
+    sub edx, 30
+    mov [rbx + COLUMN.cx], edx
+    mov [rbx + COLUMN.cz], eax
+    mov rcx, rbx
+    call world_column_insert
+    inc esi
+    cmp esi, HT_N
+    jb .insert
+    ; remove every third
+    xor esi, esi
+.remove3:
+    imul rcx, rsi, COLUMN_size
+    add rcx, r12
+    call world_column_remove
+    add esi, 3
+    cmp esi, HT_N
+    jb .remove3
+    ; check all lookups
+    xor esi, esi
+.check:
+    imul rbx, rsi, COLUMN_size
+    add rbx, r12
+    mov ecx, [rbx + COLUMN.cx]
+    mov edx, [rbx + COLUMN.cz]
+    call world_column
+    mov rdi, rax                        ; lookup result
+    mov eax, esi
+    xor edx, edx
+    mov ecx, 3
+    div ecx
+    test edx, edx
+    jz .must_be_gone
+    cmp rdi, rbx
+    jne .fail
+    jmp .check_next
+.must_be_gone:
+    test rdi, rdi
+    jnz .fail
+.check_next:
+    inc esi
+    cmp esi, HT_N
+    jb .check
+    ; remove the rest; the table must end up empty
+    xor esi, esi
+.remove_rest:
+    mov eax, esi
+    xor edx, edx
+    mov ecx, 3
+    div ecx
+    test edx, edx
+    jz .skip_rest
+    imul rcx, rsi, COLUMN_size
+    add rcx, r12
+    call world_column_remove
+.skip_rest:
+    inc esi
+    cmp esi, HT_N
+    jb .remove_rest
+    mov rax, [rel g_hash]
+    xor ecx, ecx
+.empty:
+    cmp qword [rax + rcx * 8], 0
+    jne .fail
+    inc ecx
+    cmp ecx, HASH_SIZE * 2
+    jb .empty
+    mov rax, [LOCAL(0)]
+    mov [rel g_hash], rax
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(8)]
+    mov eax, 1
+    RETURN
+.fail:
+    mov rax, [LOCAL(0)]
+    mov [rel g_hash], rax
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(8)]
+    xor eax, eax
     RETURN
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; world_init — load the test-world description, generate and mesh it.
+; world_init — load the world description and set up pools and the map.
 ;   out: eax = 1 on success, 0 on failure (logged)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-%define WI_STR      0                   ; 5 string pointers
-%define WI_VAL      40                  ; 4 values
-%define WI_T0       72
-PROC world_init, 80, rbx, rsi, rdi, r12, r13
+PROC world_init, 0, rbx, rdi
     call blocks_init
-    ; ---- config -------------------------------------------------------------
     lea rcx, [rel g_arena_scratch]
     call arena_mark
     mov [rel g_cfg_mark], rax
@@ -879,23 +978,12 @@ PROC world_init, 80, rbx, rsi, rdi, r12, r13
     call sections_init
     test eax, eax
     jz .fail
-    lea rcx, [rel g_mesh_staging]
-    lea r8, [rel name_staging]
-    INVOKE arena_init, rcx, STAGING_RESERVE, r8
+    lea rcx, [rel g_column_pool]
+    lea rax, [rel name_columns]
+    mov [rsp + 32], rax
+    INVOKE pool_init, rcx, COLUMN_size, MAX_COLUMNS, 1024
     test eax, eax
     jz .fail
-
-    ; ---- columns + hash ---------------------------------------------------------
-    mov eax, [rel g_world_radius]
-    lea ebx, [eax * 2]
-    imul ebx, ebx                       ; column count
-    mov [rel g_world_columns_n], rbx
-    lea rcx, [rel g_arena_perm]
-    lea rdx, [rbx * 8]
-    INVOKE arena_alloc, rcx, rdx, 64
-    test rax, rax
-    jz .fail
-    mov [rel g_columns], rax
     lea rcx, [rel g_arena_perm]
     INVOKE arena_alloc, rcx, HASH_SIZE * 16, 64
     test rax, rax
@@ -905,195 +993,7 @@ PROC world_init, 80, rbx, rsi, rdi, r12, r13
     xor eax, eax
     mov ecx, HASH_SIZE * 2
     rep stosq
-    xor r12d, r12d                      ; column index
-    mov esi, [rel g_world_radius]
-    neg esi                             ; cz
-.cz_loop:
-    mov edi, [rel g_world_radius]
-    neg edi                             ; cx
-.cx_loop:
-    lea rcx, [rel g_arena_perm]
-    INVOKE arena_alloc, rcx, COLUMN_size, 16
-    test rax, rax
-    jz .fail
-    mov r13, rax
-    mov [r13 + COLUMN.cx], edi
-    mov [r13 + COLUMN.cz], esi
-    push rdi
-    lea rdi, [r13 + COLUMN.sections]
-    xor eax, eax
-    mov ecx, SECTIONS_PER_COLUMN
-    rep stosq
-    pop rdi
-    mov rax, [rel g_columns]
-    mov [rax + r12 * 8], r13
-    ; insert into the hash table
-    mov ecx, edi
-    mov edx, esi
-    call hash_slot
-    mov r8, [rel g_hash]
-.probe:
-    mov rcx, rdx
-    shl rcx, 4
-    cmp qword [r8 + rcx + 8], 0
-    je .insert
-    inc rdx
-    and rdx, HASH_SIZE - 1
-    jmp .probe
-.insert:
-    mov [r8 + rcx], rax
-    mov [r8 + rcx + 8], r13
-    inc r12d
-    inc edi
-    cmp edi, [rel g_world_radius]
-    jl .cx_loop
-    inc esi
-    cmp esi, [rel g_world_radius]
-    jl .cz_loop
-
-    ; ---- generate (parallel) -------------------------------------------------------
-    call timer_elapsed_us
-    mov [LOCAL(WI_T0)], rax
-    mov qword [rel g_counter], 0
-    lea rcx, [rel gen_column_job]
-    lea r8, [rel g_counter]
-    INVOKE job_dispatch, rcx, rbx, r8
-    lea rcx, [rel g_counter]
-    call job_wait
-    call timer_elapsed_us
-    sub rax, [LOCAL(WI_T0)]
-    mov [rel g_world_gen_wall_us], rax
-
-    ; ---- list stored sections -------------------------------------------------------
-    lea rcx, [rel g_arena_perm]
-    imul rdx, rbx, SECTIONS_PER_COLUMN * 8
-    INVOKE arena_alloc, rcx, rdx, 64
-    test rax, rax
-    jz .fail
-    mov [rel g_mesh_list], rax
-    mov rdi, rax
-    xor r12d, r12d                      ; count
-    xor esi, esi                        ; column
-.list_col:
-    mov rax, [rel g_columns]
-    mov r13, [rax + rsi * 8]
-    xor ecx, ecx
-.list_sec:
-    mov rax, [r13 + COLUMN.sections + rcx * 8]
-    test rax, rax
-    jz .list_skip
-    mov [rdi + r12 * 8], rax
-    inc r12d
-.list_skip:
-    inc ecx
-    cmp ecx, SECTIONS_PER_COLUMN
-    jb .list_sec
-    inc esi
-    cmp rsi, rbx
-    jb .list_col
-    mov [rel g_world_mesh_list_count], r12
-
-    ; ---- mesh (parallel) ----------------------------------------------------------------
-    call timer_elapsed_us
-    mov [LOCAL(WI_T0)], rax
-    mov qword [rel g_counter], 0
-    lea rcx, [rel mesh_section_job]
-    lea r8, [rel g_counter]
-    INVOKE job_dispatch, rcx, r12, r8
-    lea rcx, [rel g_counter]
-    call job_wait
-    call timer_elapsed_us
-    sub rax, [LOCAL(WI_T0)]
-    mov [rel g_world_mesh_wall_us], rax
-
-    ; ---- draw list ------------------------------------------------------------------------
-    lea rcx, [rel g_arena_perm]
-    lea rdx, [r12 * 8 + 8]
-    INVOKE arena_alloc, rcx, rdx, 64
-    test rax, rax
-    jz .fail
-    mov [rel g_draw_list], rax
-    mov rdi, rax
-    mov rsi, [rel g_mesh_list]
-    xor ecx, ecx
-    xor edx, edx
-.draw_scan:
-    cmp rcx, r12
-    jae .draw_done
-    mov rax, [rsi + rcx * 8]
-    cmp dword [rax + SECT.quad_count], 0
-    je .draw_skip
-    mov [rdi + rdx * 8], rax
-    inc rdx
-.draw_skip:
-    inc rcx
-    jmp .draw_scan
-.draw_done:
-    mov [rel g_draw_count], rdx
-
-    ; ---- summary ----------------------------------------------------------------------------
-    lea rax, [rel str_gen]
-    mov [LOCAL(WI_STR)], rax
-    lea rax, [rel str_cols]
-    mov [LOCAL(WI_STR + 8)], rax
-    lea rax, [rel str_us_wall]
-    mov [LOCAL(WI_STR + 16)], rax
-    lea rax, [rel str_us_job]
-    mov [LOCAL(WI_STR + 24)], rax
-    lea rax, [rel str_us_close]
-    mov [LOCAL(WI_STR + 32)], rax
-    mov [LOCAL(WI_VAL)], rbx
-    mov rax, [rel g_world_gen_wall_us]
-    mov [LOCAL(WI_VAL + 8)], rax
-    mov rax, [rel g_world_gen_total_us]
-    xor edx, edx
-    div rbx
-    mov [LOCAL(WI_VAL + 16)], rax
-    mov rax, [rel g_world_gen_max_us]
-    mov [LOCAL(WI_VAL + 24)], rax
-    lea rcx, [LOCAL(WI_STR)]
-    lea rdx, [LOCAL(WI_VAL)]
-    call log_timing
-
-    lea rax, [rel str_mesh]
-    mov [LOCAL(WI_STR)], rax
-    lea rax, [rel str_sections]
-    mov [LOCAL(WI_STR + 8)], rax
-    lea rax, [rel str_us_sec]
-    mov [LOCAL(WI_STR + 24)], rax
-    mov [LOCAL(WI_VAL)], r12
-    mov rax, [rel g_world_mesh_wall_us]
-    mov [LOCAL(WI_VAL + 8)], rax
-    mov rax, [rel g_world_mesh_total_us]
-    xor edx, edx
-    mov rcx, r12
-    test rcx, rcx
-    jnz .div_ok
-    mov ecx, 1
-.div_ok:
-    div rcx
-    mov [LOCAL(WI_VAL + 16)], rax
-    mov rax, [rel g_world_mesh_max_us]
-    mov [LOCAL(WI_VAL + 24)], rax
-    lea rcx, [LOCAL(WI_STR)]
-    lea rdx, [LOCAL(WI_VAL)]
-    call log_timing
-
-    mov ecx, LOG_LEVEL_INFO
-    call log_begin
-    lea rcx, [rel str_quads]
-    call log_append_str
-    mov rcx, [rel g_world_quads]
-    call log_append_dec
-    lea rcx, [rel str_drawn]
-    call log_append_str
-    mov rcx, [rel g_draw_count]
-    call log_append_dec
-    lea rcx, [rel str_stored]
-    call log_append_str
-    mov rcx, [rel g_sections_live]
-    call log_append_dec
-    call log_end
+    LOG_INFO "world: ready (infinite flat test world)"
     mov eax, 1
     RETURN
 .fail:

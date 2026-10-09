@@ -26,6 +26,8 @@ global selftest_run
 
 extern timer_elapsed_us, str_append_dec
 extern mesh_section, g_block_opaque
+extern gpu_alloc_init, gpu_alloc, gpu_free, g_gpu_units_used
+extern world_hash_selftest
 
 %define COMPUTE_JOBS        4096
 %define COMPUTE_ITERS       8000
@@ -740,6 +742,105 @@ PROC test_mesher, 16, rbx, rsi, rdi, r12, r13
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; test_gpu_alloc — buddy allocator: 2000 random allocations, distinctness
+; and in-range checks, free everything in a scrambled order, then the whole
+; space must be one free block again (an allocation of all units succeeds).
+;   out: eax = 1 pass / 0 fail (logged)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define GT_N    2000
+PROC test_gpu_alloc, 16, rbx, rsi, rdi, r12, r13, r14
+    call gpu_alloc_init
+    test eax, eax
+    jz .fail
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [LOCAL(0)], rax
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_alloc, rcx, GT_N * 8, 64
+    mov r12, rax                        ; {start, size} as 2 x u32
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_alloc, rcx, (1 << 18) / 8, 64
+    mov r13, rax                        ; ownership bitmap over units
+    mov rdi, rax
+    xor eax, eax
+    mov ecx, (1 << 18) / 64
+    rep stosq
+    mov r14d, 777                       ; LCG
+    xor esi, esi
+.alloc:
+    imul r14d, r14d, 1103515245
+    add r14d, 12345
+    mov ecx, r14d
+    shr ecx, 16
+    and ecx, 63
+    inc ecx                             ; 1..64 units
+    mov ebx, ecx
+    call gpu_alloc
+    cmp eax, -1
+    je .fail_free
+    ; power-of-two size actually reserved
+    mov ecx, 1
+.pow:
+    cmp ecx, ebx
+    jae .pow_ok
+    shl ecx, 1
+    jmp .pow
+.pow_ok:
+    mov [r12 + rsi * 8], eax
+    mov [r12 + rsi * 8 + 4], ecx
+    ; mark units; none may be owned already
+    mov edx, eax
+    add ecx, eax
+    cmp ecx, 1 << 18
+    ja .fail_free
+.mark:
+    bts [r13], edx
+    jc .fail_free                       ; overlap!
+    inc edx
+    cmp edx, ecx
+    jb .mark
+    inc esi
+    cmp esi, GT_N
+    jb .alloc
+    ; free in a scrambled order (stride 7 is coprime with 2000)
+    xor esi, esi
+    xor edi, edi
+.free:
+    mov ecx, [r12 + rdi * 8]
+    call gpu_free
+    add edi, 7
+    cmp edi, GT_N
+    jb .no_wrap
+    sub edi, GT_N
+.no_wrap:
+    inc esi
+    cmp esi, GT_N
+    jb .free
+    cmp qword [rel g_gpu_units_used], 0
+    jne .fail_reset
+    mov ecx, 1 << 18
+    call gpu_alloc                      ; everything must have merged back
+    test eax, eax
+    jnz .fail_reset
+    mov ecx, eax
+    call gpu_free
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(0)]
+    LOG_INFO "selftest: gpu buddy allocator ok (2000 blocks, full re-merge)"
+    mov eax, 1
+    RETURN
+.fail_free:
+.fail_reset:
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(0)]
+.fail:
+    LOG_ERROR "selftest: gpu buddy allocator failed"
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 ; selftest_run — run all checks (needs mem_init, jobs_init, timer_init).
 ;   out: eax = 1 if everything passed, 0 otherwise (failures logged)
 ;   clobbers: volatile registers
@@ -756,6 +857,17 @@ PROC selftest_run, 0, rbx
     and ebx, eax
     call test_mesher
     and ebx, eax
+    call test_gpu_alloc
+    and ebx, eax
+    call world_hash_selftest
+    test eax, eax
+    jnz .hash_ok
+    LOG_ERROR "selftest: column hash map insert/remove failed"
+    xor ebx, ebx
+    jmp .hash_done
+.hash_ok:
+    LOG_INFO "selftest: column hash map ok (3000 keys, backward-shift delete)"
+.hash_done:
     test ebx, ebx
     jz .failed
     LOG_INFO "selftest: PASS"

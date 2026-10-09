@@ -1,10 +1,11 @@
 ; =============================================================================
 ; world_render.asm — draws the meshed world.
 ;
-; All section quads live in one immutable shader storage buffer (uploaded
-; once from the mesh staging arena); each visible section is one
-; glDrawArrays of quad_count*6 vertices, and shaders/chunk.vert pulls its
-; quad from the buffer (vertex pulling, no vertex buffers). Sections are
+; All section quads live in one 128 MB shader storage buffer; the streamer
+; (src/world/stream.asm) uploads into ranges handed out by the buddy
+; allocator (gpu_alloc.asm). Each visible section of a READY column is one
+; glDrawArrays of quad_count*6 vertices; shaders/chunk.vert pulls its quad
+; from the buffer (vertex pulling, no vertex buffers). Sections are
 ; frustum-culled on the CPU (5 planes, bounding sphere). Milestone 11 moves
 ; this to persistent buffers + multi-draw-indirect + GPU culling.
 ;
@@ -21,10 +22,13 @@
 %include "world_api.inc"
 
 global world_render_init, world_render_draw, world_render_shutdown
-global g_world_visible, g_world_drawn_quads, g_world_gpu_bytes
+global g_world_visible, g_world_drawn_quads, g_world_gpu_bytes, g_quad_buffer
 
 extern g_cam_viewproj, g_cam_pos
 extern g_block_colors
+extern g_loaded, g_loaded_count
+
+%define QUAD_BUFFER_BYTES   (1 << 27)   ; 128 MB = gpu_alloc's 2^18 x 512 B
 
 section .rdata
 str_vs:         db "shaders/chunk.vert", 0
@@ -68,21 +72,12 @@ PROC world_render_init, 0, rbx
     lea rdx, [rel g_world_vao]
     GL glCreateVertexArrays, 1, rdx
 
-    ; quads: one immutable buffer with the staging contents
-    mov rbx, [rel g_mesh_staging + ARENA.used]
-    test rbx, rbx
-    jnz .has_quads
-    mov ebx, 16                         ; keep a valid (tiny) buffer
-.has_quads:
-    mov [rel g_world_gpu_bytes], rbx
+    ; quads: one buffer for the whole streamed world
+    mov qword [rel g_world_gpu_bytes], QUAD_BUFFER_BYTES
     lea rdx, [rel g_quad_buffer]
     GL glCreateBuffers, 1, rdx
-    mov r8, [rel g_mesh_staging + ARENA.base]
-    GL glNamedBufferStorage, [rel g_quad_buffer], rbx, r8, 0
-    ; the staging copy is no longer needed (M6 will stream instead)
-    lea rcx, [rel g_mesh_staging]
-    call arena_release
-    LOG_VAL LOG_LEVEL_INFO, "world: quad buffer uploaded, bytes", rbx
+    GL glNamedBufferStorage, [rel g_quad_buffer], QUAD_BUFFER_BYTES, 0, GL_DYNAMIC_STORAGE_BIT
+    LOG_INFO "world: quad buffer created (128 MB)"
 
     ; block colours (debug table)
     lea rdx, [rel g_color_buffer]
@@ -193,35 +188,53 @@ PROC world_render_draw, 32, rbx, rsi, rdi, r12, r13
     GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 0, [rel g_quad_buffer]
     GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 1, [rel g_color_buffer]
 
-    mov rsi, [rel g_draw_list]
-    mov rdi, [rel g_draw_count]
-    xor r12d, r12d
-.next:
-    cmp r12, rdi
+    xor r12d, r12d                      ; loaded column index
+.column:
+    cmp r12, [rel g_loaded_count]
     jae .done
-    mov r13, [rsi + r12 * 8]            ; SECT*
-    ; world origin (float) and camera-relative origin
+    mov rax, [rel g_loaded]
+    mov rsi, [rax + r12 * 8]            ; COLUMN*
+    inc r12
+    cmp dword [rsi + COLUMN.state], COL_READY
+    jne .column
+    mov rdi, [rsi + COLUMN.geo_mask]    ; sections with quads
+.next:
+    test rdi, rdi
+    jz .column
+    bsf rax, rdi
+    btr rdi, rax
+    mov r13, [rsi + COLUMN.sections + rax * 8]   ; SECT*
+    ; camera-relative origin (computed in double: exact far from the origin)
+    ; and a wrapped world origin for the per-block patterns (mod 65536)
     lea rcx, [rel g_vec_tmp]            ; rel origin
-    lea rdx, [rel g_vec_tmp2]           ; world origin
+    lea rdx, [rel g_vec_tmp2]           ; pattern origin
     mov eax, [r13 + SECT.cx]
     shl eax, 5
+    cvtsi2sd xmm0, eax
+    subsd xmm0, [rel g_cam_pos]
+    cvtsd2ss xmm0, xmm0
+    movss [rcx], xmm0
+    and eax, 0xFFFF
     cvtsi2ss xmm0, eax
     movss [rdx], xmm0
-    subss xmm0, [rel g_cam_pos]
-    movss [rcx], xmm0
     mov eax, [r13 + SECT.sy]
     shl eax, 5
     add eax, WORLD_MIN_Y
+    cvtsi2sd xmm0, eax
+    subsd xmm0, [rel g_cam_pos + 8]
+    cvtsd2ss xmm0, xmm0
+    movss [rcx + 4], xmm0
     cvtsi2ss xmm0, eax
     movss [rdx + 4], xmm0
-    subss xmm0, [rel g_cam_pos + 4]
-    movss [rcx + 4], xmm0
     mov eax, [r13 + SECT.cz]
     shl eax, 5
+    cvtsi2sd xmm0, eax
+    subsd xmm0, [rel g_cam_pos + 16]
+    cvtsd2ss xmm0, xmm0
+    movss [rcx + 8], xmm0
+    and eax, 0xFFFF
     cvtsi2ss xmm0, eax
     movss [rdx + 8], xmm0
-    subss xmm0, [rel g_cam_pos + 8]
-    movss [rcx + 8], xmm0
     mov dword [rcx + 12], 0
     ; sphere centre = rel + 16
     movaps xmm3, [rcx]
@@ -261,7 +274,6 @@ PROC world_render_draw, 32, rbx, rsi, rdi, r12, r13
     imul r8d, r8d, 6
     GL glDrawArrays, GL_TRIANGLES, 0, r8
 .skip:
-    inc r12
     jmp .next
 .done:
     RETURN

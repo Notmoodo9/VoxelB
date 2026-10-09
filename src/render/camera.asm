@@ -13,13 +13,14 @@
 ;   camera_init()                   default position/orientation
 ;   camera_update(ecx=w, edx=h)     apply mouse + movement actions for this
 ;                                   frame and rebuild g_cam_viewproj
-;   g_cam_pos (3 floats), g_cam_yaw, g_cam_pitch (radians), g_cam_viewproj
+;   g_cam_pos (3 doubles), g_cam_yaw, g_cam_pitch (radians), g_cam_viewproj
+;   g_cam_autofly: nonzero = always fly forward (streaming tests, --flytest)
 ; =============================================================================
 %include "macros.inc"
 %include "input.inc"
 
 global camera_init, camera_update
-global g_cam_pos, g_cam_yaw, g_cam_pitch, g_cam_viewproj
+global g_cam_pos, g_cam_yaw, g_cam_pitch, g_cam_viewproj, g_cam_autofly
 
 extern sincosf
 extern g_frame_us
@@ -37,13 +38,16 @@ c_max_dt:       dd 0.1
 c_one:          dd 1.0
 c_zero:         dd 0.0
 ; start position: south of the test structures, looking north, slightly down
-c_start_pos:    dd 0.5, 138.0, 190.0
+align 8
+c_start_pos:    dq 0.5, 138.0, 190.0       ; doubles
 c_start_pitch:  dd -0.35
 
 section .bss
 alignb 64
 g_cam_viewproj: resd 16
-g_cam_pos:      resd 3
+alignb 8
+g_cam_pos:      resq 3                  ; doubles: precise far from the origin
+g_cam_autofly:  resd 1
 g_cam_yaw:      resd 1
 g_cam_pitch:    resd 1
 alignb 4
@@ -61,8 +65,10 @@ section .text
 camera_init:
     mov rax, [rel c_start_pos]
     mov [rel g_cam_pos], rax
-    mov eax, [rel c_start_pos + 8]
-    mov [rel g_cam_pos + 8], eax
+    mov rax, [rel c_start_pos + 8]
+    mov [rel g_cam_pos + 8], rax
+    mov rax, [rel c_start_pos + 16]
+    mov [rel g_cam_pos + 16], rax
     mov dword [rel g_cam_yaw], 0
     movss xmm0, [rel c_start_pitch]
     movss [rel g_cam_pitch], xmm0
@@ -160,6 +166,10 @@ PROC camera_update, 64
 
     ; ---- movement -----------------------------------------------------------------------
     INVOKE axis_value, ACT_MOVE_FORWARD, ACT_MOVE_BACK
+    cmp dword [rel g_cam_autofly], 0
+    je .manual_forward
+    movss xmm0, [rel c_one]             ; test mode: always forward
+.manual_forward:
     movss [LOCAL(CU_F)], xmm0
     INVOKE axis_value, ACT_MOVE_RIGHT, ACT_MOVE_LEFT
     movss [LOCAL(CU_R)], xmm0
@@ -207,18 +217,21 @@ PROC camera_update, 64
     jz .no_sprint
     mulss xmm6, [rel g_fly_sprint_mult]
 .no_sprint:
-    movss xmm0, [LOCAL(CU_F)]
+    movss xmm0, [LOCAL(CU_F)]           ; (CU_F/R/U hold wish x/y/z here)
     mulss xmm0, xmm6
-    addss xmm0, [rel g_cam_pos]
-    movss [rel g_cam_pos], xmm0
+    cvtss2sd xmm0, xmm0
+    addsd xmm0, [rel g_cam_pos]
+    movsd [rel g_cam_pos], xmm0
     movss xmm0, [LOCAL(CU_R)]
     mulss xmm0, xmm6
-    addss xmm0, [rel g_cam_pos + 4]
-    movss [rel g_cam_pos + 4], xmm0
+    cvtss2sd xmm0, xmm0
+    addsd xmm0, [rel g_cam_pos + 8]
+    movsd [rel g_cam_pos + 8], xmm0
     movss xmm0, [LOCAL(CU_U)]
     mulss xmm0, xmm6
-    addss xmm0, [rel g_cam_pos + 8]
-    movss [rel g_cam_pos + 8], xmm0
+    cvtss2sd xmm0, xmm0
+    addsd xmm0, [rel g_cam_pos + 16]
+    movsd [rel g_cam_pos + 16], xmm0
 .no_move:
 
     ; ---- view-projection (rotation only; column-major) --------------------------------------

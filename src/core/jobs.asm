@@ -40,7 +40,9 @@ extern g_cpu_logical
 IMPORT CreateThread, WaitForSingleObject, CloseHandle
 IMPORT CreateSemaphoreA, ReleaseSemaphore
 IMPORT TlsAlloc, TlsFree, TlsSetValue, TlsGetValue
-IMPORT SetThreadDescription
+IMPORT SetThreadDescription, SetThreadPriority
+
+%define THREAD_PRIORITY_BELOW_NORMAL  -1
 
 %define QUEUE_CAPACITY  4096            ; power of two
 %define QUEUE_MASK      (QUEUE_CAPACITY - 1)
@@ -367,6 +369,9 @@ PROC worker_main, 0, rbx, rsi
     mov ecx, [rel g_job_tls]
     API TlsSetValue, rcx, rbx
     API SetThreadDescription, -2, thread_name   ; -2 = GetCurrentThread()
+    ; the frame thread must win any contention: background work never
+    ; preempts input/render (no stutter while streaming)
+    API SetThreadPriority, -2, THREAD_PRIORITY_BELOW_NORMAL
 .loop:
     cmp dword [rel g_job_quit], 0
     jne .exit

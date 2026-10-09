@@ -44,6 +44,7 @@ build\debug\voxelb.exe --autoclose 3000   closes itself after 3 s (automated tes
 build\debug\voxelb.exe --novsync          start with vsync off
 build\debug\voxelb.exe --workers 2        use 2 job worker threads (default: CPU threads - 1)
 build\debug\voxelb.exe --selftest         run the memory/job self test (always on in debug builds)
+build\debug\voxelb.exe --flytest          fly straight ahead at 60 blocks/s (streaming stress test)
 ```
 
 Default controls (rebind in `data/config/controls.cfg`, format in `DATA_FORMAT.md`):
@@ -59,6 +60,9 @@ Default controls (rebind in `data/config/controls.cfg`, format in `DATA_FORMAT.m
 | F8 | vsync on/off |
 | Esc | release the mouse; press again (mouse free) to quit |
 | Left click | capture the mouse again |
+
+Render distance is set in `data/config/graphics.cfg` (`render_distance`, 2–48
+chunks, default 16). Restart after editing.
 
 The game needs its `data`, `shaders` and `assets` folders. It looks for them
 next to `voxelb.exe` (the release zip layout) or two folders up (the

@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 CONFIG=${1:-debug}
-MS=${2:-2000}
+MS=${2:-6000}
 EXE=build/$CONFIG/voxelb.exe
 LOG=build/$CONFIG/voxel.log
 [ -f "$EXE" ] || { echo "missing $EXE - run tools/build.sh $CONFIG" >&2; exit 1; }
@@ -37,7 +37,8 @@ echo "exit code: $RC"
 grep -q "window created, client area" "$LOG" || { echo "FAIL: window was not created"; exit 1; }
 grep -q "OpenGL core context created" "$LOG" || { echo "FAIL: no OpenGL context"; exit 1; }
 grep -q "selftest: PASS" "$LOG"           || { echo "FAIL: self test"; exit 1; }
-grep -q "world: quad buffer uploaded" "$LOG" || { echo "FAIL: world not built"; exit 1; }
+grep -q "world: quad buffer created" "$LOG" || { echo "FAIL: world GPU buffer not created"; exit 1; }
+grep -q "stream: view complete" "$LOG" || { echo "FAIL: streamer never finished the view"; exit 1; }
 grep -q "text renderer ready" "$LOG"       || { echo "FAIL: text renderer/shaders did not start"; exit 1; }
 grep -q "perf: " "$LOG"                     || { echo "FAIL: no frame timing (perf) line"; exit 1; }
 grep -q "clean exit, code = 0" "$LOG"        || { echo "FAIL: no clean exit in log"; exit 1; }

@@ -1,11 +1,85 @@
 # Progress
 
 ## Current state
-**Milestone 5: Chunk/section data structures (palette compression), flat
-test world, mesher, render: DONE** (Windows CI green: run #9)
+**Milestone 6: Infinite streaming: load/unload around the player on worker
+threads, no stutter: DONE** (Windows CI: see below)
 
-Next: **Milestone 6: Infinite streaming: load/unload around the player on
-worker threads, no stutter.**
+The owner reports that the game runs well on a mid-range PC with integrated
+graphics. This is the first report from real GPU hardware.
+
+Next: **Milestone 7: Data-driven block registry + parser + texture array.**
+The registry and parser are engine work. The actual block set and its
+textures are creative content and need a Design Interview first.
+
+---
+
+## Milestone 6 — done (2026-10-09)
+
+### What was built
+* **Infinite world.** Columns are generated, meshed, uploaded and unloaded
+  around the camera on worker threads (D32). The flat test world now
+  covers every column; the debug hills and pillars stay around the origin.
+* `src/world/stream.asm`: the per-frame streamer (spiral priority,
+  neighbour-gated meshing, busy counters, unload hysteresis, a 2 MB/frame
+  upload budget, an in-flight cap), plus periodic `stream:` stats in the
+  log.
+* `src/world/world.asm`: a column pool, a column hash map (backward-shift
+  deletion), and `gen_column_job`.
+* `src/render/gpu_alloc.asm`: a buddy allocator over a 128 MB quad SSBO
+  (D33).
+* The camera position is kept in doubles; rendering is camera-relative in
+  double (D34).
+* `data/config/graphics.cfg`: `render_distance` (default 16).
+* `--flytest` flag: flies straight ahead at 60 blocks/s, to stress
+  streaming.
+* Debug overlay: `world` (columns/ready/sections/MB/render distance),
+  `stream` (in-flight gen/mesh, upload KB/frame, update µs), and `gpu`
+  (quads, buffer use, CPU meshes waiting).
+* Workers run at below-normal priority (D35).
+* Self tests: a column hash (3000 keys, with deletion) and the GPU buddy
+  allocator (2000 blocks, full re-merge).
+* Smoke tests now check `stream: view complete` (the default autoclose is
+  now 8 s on CI, 6 s locally).
+
+### Bugs found and fixed while testing
+* The hash self test overwrote the lookup result with a division result.
+* `gpu_alloc_init` was not idempotent (the self test runs it first).
+* push/pop inside PROC bodies (buddy allocator, upload rollback) broke the
+  fixed frame. Replaced with saved registers.
+* Throughput was limited by frame rate (4 jobs per thread in flight).
+  Raised to 16: the full view now loads in 1.2 s instead of 3.7 s.
+
+### Verified (Wine 9 + Xvfb + Mesa llvmpipe, 4-core Xeon)
+* Debug and release headless tests pass. Every self test passes, the
+  screenshot shows the world, and the exit is clean.
+* `--flytest` release, 12 s at 60 blocks/s:
+  * the full view (797 columns) completes 1194 ms after start;
+  * steady state: 1001 loaded / 932 ready;
+  * GPU quads fall from 107k to 932 once the hill area is left, so
+    unloading frees GPU memory;
+  * no errors and a clean exit.
+
+### Performance (llvmpipe software rendering, render distance 16)
+| | |
+|---|---|
+| FPS while flying (release) | 74–96 |
+| Frame time, near the hills (debug, 106k quads) | 57 ms (17 FPS; software raster) |
+| `stream_update` average | 70–170 µs per frame |
+| `stream_update` worst | under 1.5 ms without CPU oversubscription (D35) |
+| Column generation | avg 0.25 ms, max 3.7 ms |
+| Column meshing | avg 1.3–1.7 ms, max 9.5 ms (on workers) |
+| Upload | 2 MB/frame budget, ≤0.2 ms per frame measured |
+
+### Known issues
+* Under heavy CPU oversubscription (software GL plus workers on 4 cores),
+  `stream_update` can show rare 4–12 ms spikes from OS preemption (D35).
+* The buddy allocator wastes up to 2× in the quad buffer. That's fine at
+  render distance 16; M11 replaces it.
+
+### Deferred
+* Saving and reloading modified columns: M17 (columns are regenerated).
+* LOD beyond the render distance: M12. Persistent buffers/MDI/GPU culling: M11.
+* Real terrain: M8. The real block set: M7 (needs a design interview).
 
 ---
 
@@ -87,7 +161,8 @@ cost here. A real GPU draws this in well under a millisecond (still to be
 confirmed on your PC).
 
 ### Known issues
-* Not yet seen on a real GPU (CI uses software GL).
+* (M6) The owner has since run it on real hardware with integrated
+  graphics and reports that it runs well.
 * Meshing a detailed section costs up to a few ms (scalar greedy). Fine on
   workers, and the binary greedy / AVX2 variant stays available if M6
   streaming needs it.

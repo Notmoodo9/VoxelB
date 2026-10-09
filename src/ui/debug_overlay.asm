@@ -27,6 +27,11 @@ extern g_stat_fps_x10, g_stat_avg_us, g_stat_min_us, g_stat_max_us
 extern g_cam_pos, g_cam_yaw, g_cam_pitch
 extern g_sections_live, g_section_bytes
 extern g_world_visible, g_world_drawn_quads, g_world_gpu_bytes
+extern g_loaded_count, g_render_distance, g_stream_ready
+extern g_stream_gen_inflight, g_stream_mesh_inflight, g_stream_upload_frame
+extern g_stream_update_us, g_stream_quads, g_stream_cpu_mesh_bytes
+extern g_stream_mesh_count, g_stream_mesh_total_us, g_stream_mesh_max_us
+extern g_gpu_units_used
 extern g_block_names
 
 %define TEXT_CAP        6144
@@ -75,20 +80,25 @@ s_jobs:         db "jobs    ", 0
 s_workers:      db " workers + main   completed ", 0
 s_queue:        db "   queued ", 0
 s_world:        db "world   columns ", 0
-s_w_sections:   db "  sections ", 0
+s_w_ready:      db " (ready ", 0
+s_w_sections:   db ")  sections ", 0
 s_w_mb_open:    db " (", 0
-s_w_mb_close:   db " MB)  with geometry ", 0
-s_w_quads:      db "  quads ", 0
-s_w_gpu:        db "  GPU ", 0
-s_w_mb_nl:      db " MB", 10, 0
+s_w_dist:       db " MB)  render distance ", 0
+s_stream:       db "stream  in flight: gen ", 0
+s_s_mesh:       db "  mesh ", 0
+s_s_upload:     db "   upload ", 0
+s_s_update:     db " KB/frame   update ", 0
+s_gpu:          db "gpu     quads ", 0
+s_g_used:       db "   buffer ", 0
+s_g_total:      db " / 128 MB   CPU meshes waiting ", 0
+s_g_kb_nl:      db " KB", 10, 0
 s_draw:         db "draw    visible sections ", 0
 s_d_quads:      db "  quads ", 0
 s_gen:          db "gen     ", 0
-s_ms_wall:      db " ms wall  avg ", 0
-s_us_col:       db " us/column  max ", 0
+s_cols_avg:     db " columns  avg ", 0
+s_us_max:       db " us  max ", 0
 s_us_nl:        db " us", 10, 0
 s_mesh:         db "mesh    ", 0
-s_us_sec:       db " us/section  max ", 0
 s_chunk:        db "chunk   ", 0
 s_sp:           db " ", 0
 s_ground:       db "   ground below: ", 0
@@ -102,6 +112,8 @@ align 8
 facing_names:   dq s_north, s_east, s_south, s_west
 align 4
 c_100:          dd 100.0
+align 8
+c_100d:         dq 100.0
 c_rad2deg10:    dd 572.957795               ; degrees * 10
 c_rad2deg:      dd 57.2957795
 c_45:           dd 45.0
@@ -190,19 +202,19 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
 
     ; camera position (2 decimals)
     PUT s_pos
-    movss xmm0, [rel g_cam_pos]
-    mulss xmm0, [rel c_100]
-    cvtss2si rax, xmm0
+    movsd xmm0, [rel g_cam_pos]
+    mulsd xmm0, [rel c_100d]
+    cvtsd2si rax, xmm0
     PUTSNUM rax, 2
     PUT s_y
-    movss xmm0, [rel g_cam_pos + 4]
-    mulss xmm0, [rel c_100]
-    cvtss2si rax, xmm0
+    movsd xmm0, [rel g_cam_pos + 8]
+    mulsd xmm0, [rel c_100d]
+    cvtsd2si rax, xmm0
     PUTSNUM rax, 2
     PUT s_z
-    movss xmm0, [rel g_cam_pos + 8]
-    mulss xmm0, [rel c_100]
-    cvtss2si rax, xmm0
+    movsd xmm0, [rel g_cam_pos + 16]
+    mulsd xmm0, [rel c_100d]
+    cvtsd2si rax, xmm0
     PUTSNUM rax, 2
     PUT s_nl
 
@@ -291,9 +303,11 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
     PUTNUM rax, 0
     PUT s_nl
 
-    ; world
+    ; world / streaming
     PUT s_world
-    PUTNUM [rel g_world_columns_n], 0
+    PUTNUM [rel g_loaded_count], 0
+    PUT s_w_ready
+    PUTNUM [rel g_stream_ready], 0
     PUT s_w_sections
     PUTNUM [rel g_sections_live], 0
     PUT s_w_mb_open
@@ -302,69 +316,79 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
     mov ecx, 104858
     div rcx
     PUTNUM rax, 1
-    PUT s_w_mb_close
-    PUTNUM [rel g_draw_count], 0
-    PUT s_w_quads
-    PUTNUM [rel g_world_quads], 0
-    PUT s_w_gpu
-    mov rax, [rel g_world_gpu_bytes]
+    PUT s_w_dist
+    mov eax, [rel g_render_distance]
+    PUTNUM rax, 0
+    PUT s_nl
+    PUT s_stream
+    PUTNUM [rel g_stream_gen_inflight], 0
+    PUT s_s_mesh
+    PUTNUM [rel g_stream_mesh_inflight], 0
+    PUT s_s_upload
+    mov rax, [rel g_stream_upload_frame]
+    shr rax, 10
+    PUTNUM rax, 0
+    PUT s_s_update
+    PUTNUM [rel g_stream_update_us], 0
+    PUT s_us_nl
+    PUT s_gpu
+    PUTNUM [rel g_stream_quads], 0
+    PUT s_g_used
+    mov rax, [rel g_gpu_units_used]
+    shl rax, 9
     xor edx, edx
     mov ecx, 104858
     div rcx
     PUTNUM rax, 1
-    PUT s_w_mb_nl
+    PUT s_g_total
+    mov rax, [rel g_stream_cpu_mesh_bytes]
+    shr rax, 10
+    PUTNUM rax, 0
+    PUT s_g_kb_nl
     PUT s_draw
     PUTNUM [rel g_world_visible], 0
     PUT s_d_quads
     PUTNUM [rel g_world_drawn_quads], 0
     PUT s_nl
-    ; generation / meshing times
+    ; generation / meshing times (averages over everything so far)
     PUT s_gen
-    mov rax, [rel g_world_gen_wall_us]
-    xor edx, edx
-    mov ecx, 100
-    div rcx
-    PUTNUM rax, 1                       ; ms with 1 decimal
-    PUT s_ms_wall
+    PUTNUM [rel g_world_gen_count], 0
+    PUT s_cols_avg
     mov rax, [rel g_world_gen_total_us]
     xor edx, edx
-    mov rcx, [rel g_world_columns_n]
+    mov rcx, [rel g_world_gen_count]
     test rcx, rcx
     jz .gen_div0
     div rcx
 .gen_div0:
     PUTNUM rax, 0
-    PUT s_us_col
+    PUT s_us_max
     PUTNUM [rel g_world_gen_max_us], 0
     PUT s_us_nl
     PUT s_mesh
-    mov rax, [rel g_world_mesh_wall_us]
+    PUTNUM [rel g_stream_mesh_count], 0
+    PUT s_cols_avg
+    mov rax, [rel g_stream_mesh_total_us]
     xor edx, edx
-    mov ecx, 100
-    div rcx
-    PUTNUM rax, 1
-    PUT s_ms_wall
-    mov rax, [rel g_world_mesh_total_us]
-    xor edx, edx
-    mov rcx, [rel g_world_mesh_list_count]
+    mov rcx, [rel g_stream_mesh_count]
     test rcx, rcx
     jz .mesh_div0
     div rcx
 .mesh_div0:
     PUTNUM rax, 0
-    PUT s_us_sec
-    PUTNUM [rel g_world_mesh_max_us], 0
+    PUT s_us_max
+    PUTNUM [rel g_stream_mesh_max_us], 0
     PUT s_us_nl
     ; chunk + ground block below the camera
-    movss xmm0, [rel g_cam_pos]
-    roundss xmm0, xmm0, 9               ; floor
-    cvttss2si esi, xmm0                 ; wx
-    movss xmm0, [rel g_cam_pos + 4]
-    roundss xmm0, xmm0, 9
-    cvttss2si edi, xmm0                 ; wy
-    movss xmm0, [rel g_cam_pos + 8]
-    roundss xmm0, xmm0, 9
-    cvttss2si r12d, xmm0                ; wz
+    movsd xmm0, [rel g_cam_pos]
+    roundsd xmm0, xmm0, 9               ; floor
+    cvttsd2si esi, xmm0                 ; wx
+    movsd xmm0, [rel g_cam_pos + 8]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si edi, xmm0                 ; wy
+    movsd xmm0, [rel g_cam_pos + 16]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si r12d, xmm0                ; wz
     PUT s_chunk
     mov eax, esi
     sar eax, 5

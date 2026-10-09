@@ -6,10 +6,8 @@
 %include "world.inc"
 %ifndef WORLD_IMPL
 extern world_init, world_column, world_section_at, world_block_at
-extern g_draw_list, g_draw_count, g_mesh_staging, g_world_quads
-extern g_world_columns_n, g_world_mesh_list_count
-extern g_world_gen_wall_us, g_world_gen_total_us, g_world_gen_max_us
-extern g_world_mesh_wall_us, g_world_mesh_total_us, g_world_mesh_max_us
-extern g_world_radius
+extern world_column_alloc, world_column_free, world_column_insert, world_column_remove
+extern gen_column_job, atomic_max, world_hash_selftest
+extern g_world_gen_count, g_world_gen_total_us, g_world_gen_max_us
 %endif
 %endif

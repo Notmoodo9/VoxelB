@@ -6,6 +6,7 @@
 ;                      (automated test runs; exit code stays 0)
 ;   --novsync          start with vsync off (toggle_vsync action at runtime)
 ;   --workers <n>      number of job worker threads (default: CPUs - 1)
+;   --flytest          fly north automatically at 60 blocks/s (streaming test)
 ;   --selftest         run the arena/pool/job self test at start (always on
 ;                      in debug builds); a failure exits with code 4
 ;
@@ -37,6 +38,8 @@ extern camera_init, camera_update
 extern overlay_draw, overlay_toggle
 extern cpu_detect, selftest_run
 extern world_init, world_render_init, world_render_shutdown
+extern stream_init, stream_update, stream_shutdown
+extern g_cam_autofly, g_fly_speed
 extern timer_init, timer_frame, timer_reset, timer_elapsed_us
 extern g_total_frames, g_stat_fps_x10, g_stat_avg_us, g_stat_min_us, g_stat_max_us
 
@@ -55,6 +58,9 @@ opt_novsync:        db "--novsync", 0
 opt_workers:        db "--workers", 0
 opt_workers_len     equ $ - opt_workers - 1
 opt_selftest:       db "--selftest", 0
+opt_flytest:        db "--flytest", 0
+align 4
+c_flytest_speed:    dd 60.0
 str_cpu_fail:       db "This CPU lacks SSE4.2, which VoxelB requires.", 0
 str_mem_fail:       db "Could not reserve memory. See voxel.log for details.", 0
 str_jobs_fail:      db "Could not start worker threads. See voxel.log for details.", 0
@@ -262,12 +268,24 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     jz .world_fail
     call world_render_init
     test eax, eax
+    jz .world_fail
+    call stream_init
+    test eax, eax
     jnz .world_ok
 .world_fail:
     lea rcx, [rel str_world_fail]
     call log_fatal
 .world_ok:
     call camera_init
+    lea rdx, [rel opt_flytest]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .no_flytest
+    mov dword [rel g_cam_autofly], 1
+    movss xmm0, [rel c_flytest_speed]
+    movss [rel g_fly_speed], xmm0
+    LOG_INFO "flytest: flying north at 60 blocks/s"
+.no_flytest:
     call timer_init
     cmp dword [rel g_window_active], 0
     je .no_initial_capture
@@ -346,6 +364,7 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     mov ecx, [rel g_client_w]
     mov edx, [rel g_client_h]
     call camera_update
+    call stream_update
     mov ecx, [rel g_client_w]
     mov edx, [rel g_client_h]
     call renderer_frame
@@ -416,6 +435,7 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     xor ecx, ecx
     call input_set_capture
     call text_shutdown
+    call stream_shutdown
     call world_render_shutdown
     call renderer_shutdown
     call shader_shutdown

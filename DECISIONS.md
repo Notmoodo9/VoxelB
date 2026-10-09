@@ -319,3 +319,52 @@ textures and terrain are designed with the owner (M7, M8).
 (comments, trimming, `,` lists via `cfg_next_token`, warnings with a file
 label). controls.cfg and flat_test.cfg both use it. Milestone 7 extends it
 with sections/records for the registries.
+
+## D32 — Column streaming pipeline (M6)
+* A column (32 wide, 40 sections tall) moves through the states NEW →
+  GENERATING → GENERATED → MESHING → MESHED → READY. Only the main thread
+  changes the loaded set; a job publishes its result by writing the next
+  state last (a release store), and the main thread reads it with an
+  acquire load. No locks.
+* Each frame, `stream_update` walks a precomputed spiral of chunk offsets
+  sorted by distance, so the nearest missing work is always issued first.
+  Generation runs out to R+1 and meshing to R. A column is meshed only once
+  its 4 horizontal neighbours are generated, so edge faces are culled
+  correctly the first time and never re-meshed.
+* A column stays loaded until it is beyond R+3 (hysteresis), so flying
+  back and forth across a border doesn't regenerate it.
+* A `busy` counter on each column counts the mesh jobs that read it as a
+  neighbour. A column is freed only when it is idle and its busy count is
+  0, so a job never reads freed memory.
+* At most `(workers+1)·16` gen jobs and as many mesh jobs are in flight.
+  That is enough to keep every worker busy for a whole frame even at 15
+  FPS, while keeping the queue short so a fast-moving camera re-prioritises
+  quickly.
+* Uploads are capped at 2 MB per frame. The main thread never waits for a
+  job, only for its own small upload batch.
+* Loaded columns are kept in an open-addressing hash (16384 slots, linear
+  probing, backward-shift deletion) plus a dense list for iteration.
+
+## D33 — GPU quad buffer: buddy allocator (M6)
+The 128 MB quad SSBO is split into 2^18 units of 64 quads (512 B). Each
+section's mesh gets a power-of-two run of units from a buddy allocator
+(free lists per order, buddies merged on free). That means O(log n) alloc
+and free, no compaction, and at most 2× internal waste, which is fine for
+the M6–M10 interim. Milestone 11 replaces this with persistent mapped
+buffers and multi-draw indirect. A full buffer is reported once and the
+column stays unrendered; it is never a crash.
+
+## D34 — Double-precision camera (M6)
+The camera position is kept in doubles, so it is exact far from the origin.
+Each section's origin is computed relative to the camera in double, then
+converted to float for the shader. Rendering stays jitter-free at any
+distance the 32-bit chunk coordinates can reach.
+
+## D35 — Worker priority and frame-time spikes (M6)
+Workers run at `THREAD_PRIORITY_BELOW_NORMAL`, so the render thread wins
+whenever cores are oversubscribed. On the 4-core test box, occasional 4–12
+ms spikes in `stream_update` turned out to be OS preemption: llvmpipe's
+render threads compete with the workers there. With llvmpipe forced
+single-threaded, the worst case fell to under 1.5 ms. Per-operation timing
+showed every step (upload, submit, unload) at 1 ms or less. The average
+update stays at 70–170 µs.
