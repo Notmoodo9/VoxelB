@@ -2,7 +2,7 @@
 
 ## Current state
 **Milestone 9: 🎨 DESIGN — Caves, ravines, aquifers, lava, ores: DONE**
-(Windows CI: see below)
+(Windows CI green: run #18)
 
 Next: **Milestone 10: 🎨 DESIGN — Biomes + blending + vegetation/trees.**
 It starts with a design interview, one biome at a time, starting with the
@@ -91,6 +91,11 @@ fantasy biomes and underground structures.
 * Screenshots: the sky cavern bowl from above and from its rim; a cavern
   floor with dripstone, pillars and floor patches; deep lava lakes; a
   ravine; a shaft; the spawn view unchanged.
+
+### Verified on Windows (GitHub Actions run #18)
+* Debug and release build and smoke tests pass (self tests including
+  section connectivity, terrain generator loaded, view complete, clean
+  exit).
 
 ### Performance (release, llvmpipe, render distance 16, 3 workers)
 | | |
