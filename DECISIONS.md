@@ -511,3 +511,79 @@ air at or below sea level. That covers oceans, lakes and rivers (river
 beds sit below sea level). Flow and real water rendering are M15. The
 distance fog was thinned (density 0.0028 → 0.0013) so mountains stay
 readable across the 512-block view. Real height/distance fog is M14.
+
+## D48 — Cave model: fields on a coarse grid, columns, regions (M9)
+`src/world/caves.asm`, data in `data/world/caves.cfg`
+(`design/terrain/underground.md`). It works in three layers:
+* **Per column** (`caves_column`, CCOL records): crust height (caves stay
+  `cave_crust` below the surface except at `entrance` spots), sky cavern
+  mask, natural pillar, flooded (surface at most sea level + 3), floor patch
+  block, ravine depth/ratio, shaft top/bottom, and the lake and lava levels
+  of its aquifer region (64×64, levels from a hash of region and seed).
+* **Per section** (`caves_grid`): cavern ("cheese") and tunnel fields on a
+  9×5×9 grid (every 4 blocks in x/z, every 8 in y), interpolated per block
+  column (`caves_profile`) and per block. The grid's min/max decide whether
+  a section can contain a cave at all.
+* **Per block** (`caves_carve`): fast reject in the fill loop (tunnel value
+  ≥ 0, cheese below the height's threshold, plain column), then ravine,
+  shaft, sky bowl, tunnel, cavern; the fluid comes from the column's levels.
+
+Ores, dripstone and floor patches run per section after the fill
+(`caves_finish`). Every section below the surface is now filled voxel by
+voxel (no more uniform stone sections underground), which is why
+generation went from 2.2 to about 10 ms per column, and meshing from 1.5
+to about 12 ms. Both run on the workers. The streamer's in-flight job cap
+scales with frame time (`g_frame_us >> 14`, 1..8) so slow frames are not
+made slower.
+
+## D49 — Aquifer barrier instead of fluid walls (M9)
+Fluid levels are per region (and flooding per column), so two neighbours
+can disagree: one side water up to y 50, the other air. Without care the
+water stands as a vertical wall. Like Minecraft's aquifers, `caves_carve`
+keeps the rock wherever a side neighbour's fluid (air / water / lava) at
+that height differs from the cell's own. Neighbours outside the chunk come
+from a ring of 4×32 extra column records computed in `caves_column`.
+Lakes are switched off inside sky cavern bowls, otherwise the barriers
+formed dam walls across the open bowl.
+
+## D50 — Sky caverns as bowls, shafts as hashed cells (M9)
+A lowered cavern threshold alone made only small pits. Sky caverns now
+also carve an open bowl from the surface down to
+`sky_cavern_depth × m × (2 − m)` (m = the 0..1 mask), so the cavern below
+is visible from far away. Shafts were contour lines of a 2D field (long
+thin cracks); they are now round pipes: one possible shaft per
+`shaft_spacing` cell, its centre, radius and depth from a hash.
+
+## D51 — Cave culling: section connectivity + visibility walk (M9)
+With every underground section meshed, the view holds ~4M quads, mostly
+inside rock and caves you cannot see. The mesher flood-fills each section's
+open cells and stores which of its 6 faces are connected (15 pair bits,
+`SECT.vis`). The renderer walks sections breadth-first from the camera's
+section (Minecraft's approach):
+* go from a section through face d only if a face it was entered through
+  connects to d;
+* never go against a direction already taken on the path;
+* only into sections inside the frustum.
+
+Every path to a section has the same length (no turning back), so all paths
+arrive while it is still queued. Its entry faces and allowed directions are
+the union over those paths. Without that, the first path's directions hid
+caves that another path could see. The camera's section and its 26
+neighbours pass everything (32-block sections are coarse up close).
+
+Results (llvmpipe): spawn view 446 of ~11,000 sections, 262k of 4.0M
+quads. Inside the sky cavern 543 sections / 332k quads, against 1062 /
+695k for a looser "any open face" rule, with the same image. A camera
+inside solid rock sees through it (faces between solid blocks are never
+built) and the walk then shows holes. That is expected (spectator-like
+views) and is not a culling bug. Hi-Z occlusion culling (M11) is the next
+step.
+
+## D52 — Ores: hashed clusters per section (M9)
+For each ore whose range overlaps a section, `per_section ×
+(1 + mountain_bonus)` attempts plus `ore_wall_bonus` extra attempts that
+must touch a cave. Each attempt has a hash-chosen position, a triangular
+density test around `peak_y`, and a random-walk cluster of `size_min..max`
+blocks that replaces only stone (normal ore) or deep stone (`deep_block`).
+Rare long veins snake through a section. All randomness is a hash of world
+seed, section and ore, so chunks are reproducible in any order.

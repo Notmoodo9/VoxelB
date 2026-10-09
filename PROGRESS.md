@@ -1,11 +1,130 @@
 # Progress
 
 ## Current state
-**Milestone 8: 🎨 DESIGN — Terrain: DONE** (Windows CI green: run #16)
+**Milestone 9: 🎨 DESIGN — Caves, ravines, aquifers, lava, ores: DONE**
+(Windows CI: see below)
 
-Next: **Milestone 9: 🎨 DESIGN — Caves, ravines, aquifers, lava, ores.**
-It starts with a design interview, one item at a time: caves first, then
-ores.
+Next: **Milestone 10: 🎨 DESIGN — Biomes + blending + vegetation/trees.**
+It starts with a design interview, one biome at a time, starting with the
+temperate biomes.
+
+---
+
+## Milestone 9 — done (2026-10-09)
+
+### Design interview
+Three rounds plus approval, recorded in `design/terrain/underground.md`:
+* a rich underground: huge caverns (bigger and hotter deeper), winding
+  tunnels, narrow passages, vertical shafts;
+* cave mouths in hillsides and valleys, rare dramatic ravines, and every so
+  often a massive cavern open to the sky;
+* underground lakes and deep lava lakes;
+* stalactites, stalagmites, pillars, varied floors;
+* classic + fantasy ores with deep variants, mountain emeralds, a cave-wall
+  bonus, deep-only rarities.
+
+Later, with their own interviews (in `design/BACKLOG.md`): underground
+fantasy biomes and underground structures.
+
+### What was built
+* **Blocks** (`data/blocks/05_underground.blocks`, 17 new):
+  * `lava`: animated, glowing;
+  * `dripstone_block`, and `pointed_dripstone` with the new `spike` shape
+    (hanging/standing; base, middle and tip chosen automatically);
+  * 14 ores: coal, copper, iron, silver, gold (each with a deep variant
+    where they reach deep stone), emerald, diamond, mythril, adamantite,
+    and a glowing star crystal.
+  * Textures come from `tools/texgen/texgen.py`.
+* **Cave generator** (`src/world/caves.asm`, D48), all numbers in
+  `data/world/caves.cfg`:
+  * caverns from 3D noise with a height spline, bigger deeper; natural
+    pillars;
+  * tunnels and narrow passages;
+  * cave mouths where the entrance field allows;
+  * ravines (rare, 30–80 deep, narrowing);
+  * round vertical shafts (D50);
+  * sky caverns: an open bowl up to 140 deep over a pillared cavern (D50);
+  * aquifer regions with lake levels; flooded caves under the sea; lava
+    levels below Y −90;
+  * a rock barrier wherever fluids would stand as a wall (D49);
+  * dripstone, and gravel/clay/mud floor patches.
+* **Ores** (`data/world/ores.cfg`, D52): clusters per section by height
+  with a peak, large veins, mountain-only emerald, bonus attempts on cave
+  walls, deep-stone variants, deep-only rarities.
+* **Cave culling** (D51): the mesher stores which faces of each section
+  are connected through open space. The renderer walks visible sections
+  from the camera, Minecraft-style, so caves hidden in rock are not drawn
+  (spawn view: 262k of 4.0M quads).
+* `--survey` also logs the nearest sky cavern, ravine and shaft.
+* Streaming: the number of jobs in flight scales with frame time.
+* Tests: section connectivity self test (straight and bent tunnels).
+  Smoke-test autoclose is now 20 s (the view needs ~7 s on software GL).
+
+### How to see it (seed 20261009, the default)
+* Sky cavern, from above: `voxelb.exe --pos -1010 260 -64 --look 0 -89`.
+* From its rim: `voxelb.exe --pos -896 135 40 --look 0 -25`.
+* On the cavern floor (dripstone forest, pillars, gravel/clay/mud):
+  `voxelb.exe --pos -1000 0 -64 --look 120 -10`. Fly down from there
+  (Shift) and east for the deep lava lakes around Y −150.
+* Ravine running into the sea: `voxelb.exe --pos -288 135 -330 --look 0 -35`.
+* Shaft (3 wide, near the spawn): `voxelb.exe --pos 137 160 -68 --look 0 -89`
+  (the plus-shaped hole right of centre).
+* `voxelb.exe --survey` lists them for other seeds.
+
+### Bugs found and fixed while testing
+* The visibility walk first over-culled. A section remembered only the
+  first entry face and path, so a second path that could see further was
+  ignored. It now keeps all entry faces and allowed directions (D51). A
+  Python re-check of dumped sections confirmed the mesher's connectivity
+  bits.
+* Some test views showed "holes" only because the camera was inside rock
+  (seeing through it). The test positions now start in open air.
+* Aquifer water stood as walls at region borders; now rock barriers (D49).
+* Shafts were long thin cracks and sky caverns were small pits; reworked
+  (D50).
+* Edge cells evaluated noise for neighbours outside the chunk (gen spikes
+  to 223 ms); now a precomputed ring of edge columns (max ~40 ms).
+
+### Verified (Wine 9 + Xvfb + Mesa llvmpipe)
+* Debug and release headless tests pass (self tests including section
+  connectivity, clean exits).
+* Screenshots: the sky cavern bowl from above and from its rim; a cavern
+  floor with dripstone, pillars and floor patches; deep lava lakes; a
+  ravine; a shaft; the spawn view unchanged.
+
+### Performance (release, llvmpipe, render distance 16, 3 workers)
+| | |
+|---|---|
+| View complete at spawn | ~7.1 s (M8: 1.3 s) |
+| Column generation | avg 9.4–12.7 ms (max ~40 ms) |
+| Column meshing | avg 11–14 ms |
+| Spawn view | 446 sections, 262k quads drawn of 4.0M; 7 FPS (140 ms) |
+| Sky cavern view | 543 sections, 332k quads; 4 FPS |
+| Cavern floor view | 223 sections, 206k quads; 6.5 FPS |
+| `stream_update` | avg 40–55 µs |
+
+Software GL is the limit (frame time is linear in drawn quads, about 0.45
+µs per quad on llvmpipe). Underground sections are now all real voxels,
+which multiplied generation and meshing work by ~5. Both run on the
+workers, so the main thread stays smooth, but the first view takes longer.
+GPU-driven drawing with Hi-Z occlusion (M11) and LOD (M12) are the
+planned answers.
+
+### Known issues
+* A camera inside solid rock sees through it (no faces between solid
+  blocks) and shows culling holes. This is normal for a spectator-like
+  view.
+* Ores are sparse with the design's numbers (~0.2% of rock); tune
+  `per_section` if they feel too rare.
+* Natural pillars under sky caverns end flat at the bowl's depth.
+* Lava and star crystal glow only through their textures until lighting
+  (M13).
+* Fluids are static (flowing water/lava: M15).
+
+### Deferred
+* Underground fantasy biomes and underground structures (own interviews).
+* Cave lighting and darkness (M13), cave ambience (M24).
+* Ore uses and tool tiers (M18).
 
 ---
 

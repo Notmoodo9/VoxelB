@@ -1253,6 +1253,83 @@ def make_water(out):
     out["water"] = frames
 
 
+# ---------------------------------------------------------------------------
+# underground (M9): lava, dripstone, ores
+# ---------------------------------------------------------------------------
+
+ORES = {
+    # name: (fleck colour, host, style)
+    "coal_ore": ("2a2a30", "stone", "chunks"),
+    "copper_ore": ("e07a3a", "stone", "veins"),
+    "deep_copper_ore": ("e07a3a", "deep_stone", "veins"),
+    "iron_ore": ("d8a882", "stone", "chunks"),
+    "deep_iron_ore": ("d8a882", "deep_stone", "chunks"),
+    "silver_ore": ("e8ecf4", "stone", "chunks"),
+    "deep_silver_ore": ("e8ecf4", "deep_stone", "chunks"),
+    "gold_ore": ("ffd23a", "stone", "chunks"),
+    "deep_gold_ore": ("ffd23a", "deep_stone", "chunks"),
+    "emerald_ore": ("2ae87a", "stone", "gems"),
+    "diamond_ore": ("6af0f0", "deep_stone", "gems"),
+    "mythril_ore": ("3a8aff", "deep_stone", "veins"),
+    "adamantite_ore": ("ff3a3a", "deep_stone", "gems"),
+    "star_crystal_ore": ("fff0a8", "deep_stone", "stars"),
+}
+
+
+def make_underground(out):
+    # lava: bright, slowly churning, 16 frames
+    pal = ramp("ff6a1a", 6, spread=0.22, hue_shift=0.03, sat_boost=1.0)
+    yy, xx = np.mgrid[0:N, 0:N]
+    frames, gframes = [], []
+    base = noise(rng("lava"), 4, 3)
+    for f in range(16):
+        t = 2 * np.pi * f / 16
+        v = 0.55 * base + 0.25 * np.sin(xx * 0.8 + t + base * 4) + 0.2 * np.sin(yy * 0.6 - t * 2 + base * 3)
+        img = shade(np.clip(stretch(v) * 0.999, 0, 0.999), pal)
+        crust = stretch(v) < 0.15
+        img[crust] = hexrgb("6a1a0a")
+        frames.append(rgba(img))
+        gframes.append(glow_layer((~crust).astype(float) * (0.6 + 0.4 * stretch(v)), "ff9a3a", 1.0))
+    out["lava"] = frames
+    out["lava_glow"] = gframes
+    # dripstone: warm brown-grey with vertical streaks
+    dp = ramp("8a7464", 6, spread=0.18)
+    r = rng("dripstone")
+    col = noise(r, 16, 1)[0]
+    v = 0.55 * stretch(col)[None, :] + 0.45 * noise(r, 4, 2)
+    out["dripstone_block"] = rgba(shade(stretch(v) * 0.999, dp))
+    pd = shade(stretch(v) * 0.999, dp)
+    out["pointed_dripstone"] = rgba(pd)
+    # ores: host stone with coloured flecks
+    stone_img = {"stone": stone(rng("stone")), "deep_stone": stone(rng("deep_stone"), base="4a4e62")}
+    for y in range(0, N, 5):
+        stone_img["deep_stone"][y] = stone_img["deep_stone"][y] * 0.85
+    for name, (col_hex, host, style) in ORES.items():
+        r = rng(name)
+        img = stone_img[host].copy()
+        op = ramp(col_hex, 4, spread=0.28, sat_boost=1.15)
+        glow = np.zeros((N, N))
+        spots = 9 if style != "gems" else 7
+        for _ in range(spots):
+            x, y = r.integers(1, N - 2, 2)
+            if style == "chunks":
+                cells = [(0, 0), (1, 0), (0, 1), (1, 1), (2, 1)][: r.integers(3, 6)]
+            elif style == "gems":
+                cells = [(0, 0), (1, 1), (0, 1)][: r.integers(1, 4)]
+            elif style == "stars":
+                cells = [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]
+            else:  # veins
+                cells = [(k, int(np.round(np.sin(k)))) for k in range(r.integers(2, 4))]
+            for i, (dx, dy) in enumerate(cells):
+                px, py = (x + dx) % N, (y + dy) % N
+                img[py, px] = op[3] if i == 0 else op[2]
+                glow[py, px] = 1.0
+            img[(y + 1) % N, (x + 1) % N] = op[0] * 0.7     # shadow under the fleck
+        out[name] = rgba(img)
+        if name == "star_crystal_ore":
+            out[name + "_glow"] = glow_layer(glow, col_hex, 1.0)
+
+
 def build_all():
     out = {}
     make_terrain(out)
@@ -1262,6 +1339,7 @@ def build_all():
     make_colors_lights(out)
     make_shapes(out)
     make_water(out)
+    make_underground(out)
     return out
 
 

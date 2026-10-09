@@ -41,6 +41,8 @@ warnings, as above.
 | `data/blocks/*.blocks` | `src/world/block.asm` | the block registry: every block, its textures and render settings |
 | `data/world/world.cfg` | `src/world/world.asm` | world seed and generator (`terrain` or `flat_test`) |
 | `data/world/terrain.cfg` | `src/world/terrain.asm` | the terrain generator: noise fields, splines, heights, surface blocks |
+| `data/world/caves.cfg` | `src/world/terrain.asm` (used by `caves.asm`) | caves, ravines, shafts, aquifers, lava, cave decoration |
+| `data/world/ores.cfg` | `src/world/terrain.asm` (used by `caves.asm`) | ores: blocks, heights, cluster sizes and counts |
 | `data/world/flat_test.cfg` | `src/world/world.asm` | **debug** test world: layers, block gallery, test structures |
 | `assets/textures/blocks/*.png` | `src/render/block_textures.asm` | block textures (16×16, animated strips, glow layers) |
 
@@ -98,6 +100,7 @@ every setting applies to all states):
 | `wall` | 1 | joins walls and solid blocks; no post on a straight run |
 | `pillar` | 1 | base / shaft / capital when stacked |
 | `pane` | 1 | joins panes, walls and solid blocks |
+| `spike` | hanging (from above), standing (from below) | base / middle / tip by the spikes it touches (dripstone) |
 
 Faces of a shape take the block's textures by direction, projected like
 a cube's (so a slab shows the lower half of its texture).
@@ -194,6 +197,56 @@ but mostly within −0.5..0.5.
 How they combine is described at the top of `src/world/terrain.asm`. Run
 `voxelb.exe --survey` to log what a change does: the ocean/height shares
 and places worth visiting.
+
+### `caves.cfg` (Milestone 9)
+
+Caves, ravines, shafts, aquifers, lava and cave decoration
+(`design/terrain/underground.md`). Same record format as `terrain.cfg`; all
+settings optional (defaults in `src/world/terrain.asm`).
+
+| Key | Meaning |
+|---|---|
+| `cave_bottom_y` | nothing is carved at or below this height |
+| `cave_crust`, `entrance_threshold` | caves stay this many blocks below the surface, except where the `entrance` field is above the threshold (cave mouths) |
+| `tunnel_width`, `passage_width` | tunnels / narrow passages: where two 3D fields are both within this of zero (noise units) |
+| `pillar_width` | `pillar` field above this: a natural pillar (no cavern there) |
+| `sky_cavern_threshold`, `sky_cavern_depth`, `sky_cavern_openness` | where the `sky_cavern` field is above the threshold: an open bowl from the surface down to the depth (deepest in the middle), and the cavern threshold drops by the openness. No lakes there |
+| `ravine_threshold`, `ravine_width`, `ravine_depth_min`, `ravine_depth_max` | ravines are zero lines of the `ravine` field inside the `ravine_mask` field (above the threshold); they narrow with depth |
+| `shaft_spacing`, `shaft_chance`, `shaft_radius_min`, `shaft_radius_max`, `shaft_depth_min`, `shaft_depth_max` | one possible shaft per cell of `shaft_spacing` blocks, present in `shaft_chance` of cells: a round vertical pipe from the surface down |
+| `aquifer_size`, `lake_chance`, `lake_min_y`, `lake_max_y` | regions of this many blocks; this share holds a lake with a level in the range (open cave cells at or below it are water) |
+| `lava_region_top_y`, `lava_min_y`, `lava_max_y` | below the top, each region has a lava level in the range |
+| `dripstone_chance` | per open cave floor / ceiling block: a stalagmite / stalactite of 1–4 blocks |
+| `floor_patch_threshold` | gravel / clay / mud patches on cave floors where the `detail` field is beyond this |
+| `ore_wall_bonus` | extra ore attempts (share) that must touch a cave |
+| `lava_block`, `dripstone_block`, `mud_block` | the blocks used |
+
+Caves under the sea (surface at most sea level + 3) flood up to sea level.
+Where a neighbouring column would hold a different fluid (another lake or
+lava level, the coast) at the same height, the rock stays as a barrier, so
+water never stands as a wall against open air.
+
+`[spline cavern_threshold]` maps height → cavern threshold (`cheese` noise
+above it is open; lower = bigger caverns). Noise records: `cheese`,
+`tunnel_a`, `tunnel_b`, `passage_a`, `passage_b` (3D), and `pillar`,
+`entrance`, `sky_cavern`, `ravine`, `ravine_mask` (2D).
+
+### `ores.cfg` (Milestone 9)
+
+One `[ore <name>]` record per ore (up to 32):
+
+| Key | Meaning |
+|---|---|
+| `block`, `deep_block` | the ore in stone / in deep stone (`deep_block` optional: same block) |
+| `min_y`, `max_y`, `peak_y` | height range; most common at `peak_y` (omit for an even spread) |
+| `size_min`, `size_max` | blocks per cluster (a random walk) |
+| `per_section` | clusters per 32³ section inside the range |
+| `mountain_only` | 1: only inside mountains (y ≥ 180, 8+ blocks below the surface) |
+| `mountain_bonus` | extra share of clusters where the surface is 250+ |
+| `deep_only` | 1: only in deep stone |
+| `vein_chance`, `vein_size` | chance per section of one long vein of this many blocks |
+
+Ores replace only stone and deep stone. Placement is a hash of world seed,
+section and ore, so it is the same every time.
 
 ### `flat_test.cfg` (debug layout, Milestones 5–7)
 

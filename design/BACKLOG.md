@@ -7,8 +7,10 @@ yet; each item gets its own doc in `design/` when we interview it.
 | Status | Item | Milestone | Notes |
 |---|---|---|---|
 | done | Terrain shape | M8 | `design/terrain/overworld_terrain.md` |
-| todo | Caves, ravines, aquifers, lava lakes | M9 | |
-| todo | Ore list, depth ranges, rarity, tool tiers | M9 | |
+| done | Caves, ravines, aquifers, lava lakes | M9 | `design/terrain/underground.md` |
+| done | Ore list, depth ranges, rarity | M9 | `design/terrain/underground.md`; tool tiers in M18 |
+| todo | Underground fantasy biomes (unrelated to the surface biome) | after M10 | from the M9 interview |
+| todo | Underground structures | M23 | from the M9 interview |
 | todo | Temperate biomes: plains, forest, birch forest, dark forest, meadow, river | M10 | one biome at a time |
 | todo | Hot/dry biomes: desert, savanna, badlands/mesa, jungle, swamp | M10 | |
 | todo | Cold biomes: taiga, snowy tundra, ice spikes, glaciers, frozen ocean | M10 | |

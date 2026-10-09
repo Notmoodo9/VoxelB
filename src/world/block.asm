@@ -103,10 +103,11 @@ s_plate:        db "pressure_plate", 0
 s_wall:         db "wall", 0
 s_pillar:       db "pillar", 0
 s_pane:         db "pane", 0
+s_spike:        db "spike", 0
 align 8
 shape_names:    dq s_cube, s_slab, s_stairs, s_fence, s_gate, s_door, s_trapdoor
-                dq s_ladder, s_sign, s_wall_sign, s_plate, s_wall, s_pillar, s_pane
-shape_states:   db 1, 2, 8, 1, 8, 32, 16, 4, 4, 4, 2, 1, 1, 1
+                dq s_ladder, s_sign, s_wall_sign, s_plate, s_wall, s_pillar, s_pane, s_spike
+shape_states:   db 1, 2, 8, 1, 8, 32, 16, 4, 4, 4, 2, 1, 1, 1, 2
 str_shape_late:     db "shape must be the first setting of a new block: ", 0
 k_templates:    db "templates", 0
 k_members:      db "members", 0

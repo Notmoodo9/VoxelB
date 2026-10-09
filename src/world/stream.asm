@@ -38,7 +38,7 @@ global g_stream_update_us, g_stream_update_max_us, g_stream_upload_frame
 global g_stream_quads, g_stream_mesh_count, g_stream_mesh_total_us
 global g_stream_mesh_max_us, g_stream_cpu_mesh_bytes, g_stream_view_ms
 
-extern timer_elapsed_us, g_render_distance
+extern timer_elapsed_us, g_render_distance, g_frame_us
 extern mesh_section
 extern gpu_alloc_init, gpu_alloc, gpu_free, gpu_alloc_units_needed
 extern g_quad_buffer, g_cam_pos
@@ -602,8 +602,20 @@ PROC stream_update, 80, rbx, rsi, rdi, r12, r13, r14, r15
     mov eax, [rel g_job_worker_count]
     inc eax
     shl eax, 4                          ; 16 jobs per thread in flight: enough
-                                        ; to keep workers busy for a whole
-                                        ; frame even at low frame rates
+                                        ; to keep workers busy for a frame
+    ; slow frames: allow proportionally more (up to 8x), so streaming does
+    ; not depend on the frame rate
+    mov rcx, [rel g_frame_us]
+    shr rcx, 14                         ; / ~16 ms
+    cmp rcx, 1
+    jae .cap_min
+    mov ecx, 1
+.cap_min:
+    cmp rcx, 8
+    jbe .cap_max
+    mov ecx, 8
+.cap_max:
+    imul eax, ecx
     mov [LOCAL(SU_CAP)], rax
     mov qword [LOCAL(SU_BUDGET)], UPLOAD_BUDGET
     mov qword [rel g_stream_upload_frame], 0

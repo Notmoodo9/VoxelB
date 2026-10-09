@@ -41,7 +41,8 @@
 %define SHAPE_WALL          11
 %define SHAPE_PILLAR        12
 %define SHAPE_PANE          13
-%define SHAPE_COUNT         14
+%define SHAPE_SPIKE         14          ; bit 0: points down (base/middle/tip automatic)
+%define SHAPE_COUNT         15
 ; facings: 0 north (-Z), 1 east (+X), 2 south (+Z), 3 west (-X)
 
 ; Neighbour sentinel for the mesher: a solid boundary (below the world).
@@ -55,7 +56,9 @@ struc SECT                              ; one section; 64 bytes, from a pool
     .flags      resb 1
     .pal_count  resw 1
     .uniform_id resw 1                  ; block id when bits = 0
-    .pad0       resw 3
+    .vis        resw 1                  ; face-to-face visibility (15 pair bits,
+                                        ; see mesher.asm); set when meshed
+    .pad0       resw 2
     .palette    resq 1                  ; u16[256] (bits 1..8), else 0
     .data       resq 1                  ; packed indices / raw u16 ids
     .quad_first resd 1                  ; first quad in the GPU quad buffer
@@ -89,6 +92,8 @@ struc COLUMN
     .geo_mask   resq 1                  ; bit sy = section has quads on the GPU
     .list_index resd 1                  ; position in the loaded-column list
     .pad        resd 1
+    .vstamp     resw SECTIONS_PER_COLUMN ; visibility walk: frame stamp per section
+    .vqueue     resd SECTIONS_PER_COLUMN ; visibility walk: queue slot this frame
 endstruc
 
 %endif

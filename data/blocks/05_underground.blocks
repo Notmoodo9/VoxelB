@@ -1,0 +1,30 @@
+# Underground blocks (design/terrain/underground.md).
+
+[block lava]
+light = 15, 8, 2
+
+[block dripstone_block]
+
+# pointed dripstone: state 0 points up (stalagmite), 1 points down
+# (stalactite); it tapers automatically into base, middle and tip
+[block pointed_dripstone]
+shape  = spike
+render = cutout
+
+# --- ores (deep_ variants sit in deep stone) ----------------------------------
+[block coal_ore]
+[block copper_ore]
+[block deep_copper_ore]
+[block iron_ore]
+[block deep_iron_ore]
+[block silver_ore]
+[block deep_silver_ore]
+[block gold_ore]
+[block deep_gold_ore]
+[block emerald_ore]
+[block diamond_ore]
+[block mythril_ore]
+[block adamantite_ore]
+
+[block star_crystal_ore]
+light = 12, 11, 6

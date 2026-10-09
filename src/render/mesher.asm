@@ -30,7 +30,7 @@
 %include "memory.inc"
 %include "section.inc"
 
-global mesh_section
+global mesh_section, vis_pair_bit
 
 extern g_block_opaque, g_block_layer, g_block_shape
 extern shapes_emit
@@ -65,7 +65,188 @@ dir_table:
     dq PAD,  1,    PAD2, -PAD
     dq PAD,  1,    PAD2, PAD
 
+; bit of the face pair (i, j) in SECT.vis (faces -X +X -Y +Y -Z +Z)
+vis_pair_bit:
+    db 0xFF, 0,  1,  2,  3,  4
+    db 0,  0xFF, 5,  6,  7,  8
+    db 1,  5, 0xFF,  9, 10, 11
+    db 2,  6,  9, 0xFF, 12, 13
+    db 3,  7, 10, 12, 0xFF, 14
+    db 4,  8, 11, 13, 14, 0xFF
+
 section .text
+
+; -----------------------------------------------------------------------------
+; section_vis — which pairs of the section's 6 faces are connected through
+; non-opaque blocks (flood fill of every open region). Used by the renderer's
+; visibility walk (cave culling): a view can pass from face i to face j only
+; if bit vis_pair_bit[i][j] is set.
+;   in:  rcx = volume (34^3 u16), rdx = scratch ARENA*
+;   out: eax = 15 pair bits
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC section_vis, 16, rbx, rsi, rdi, r12, r13, r14, r15
+    mov rbx, rcx
+    mov r15, rdx
+    INVOKE arena_alloc, r15, 4096, 64   ; visited bits
+    test rax, rax
+    jz .all
+    mov r12, rax
+    mov rdi, rax
+    xor eax, eax
+    mov ecx, 4096 / 8
+    rep stosq
+    INVOKE arena_alloc, r15, 65536, 64  ; stack of cells
+    test rax, rax
+    jz .all
+    mov r13, rax
+    lea r14, [rel g_block_opaque]
+    xor esi, esi                        ; vis bits
+    xor edi, edi                        ; cell
+.cell:
+    bt [r12], edi
+    jc .cell_next
+    mov eax, edi
+    call cell_vol_index
+    movzx eax, word [rbx + rax * 2]
+    cmp byte [r14 + rax], 0
+    jne .cell_next                      ; opaque
+    ; flood this region
+    bts [r12], edi
+    mov [r13], di
+    mov r8d, 1                          ; stack size
+    xor r9d, r9d                        ; faces touched
+.pop:
+    test r8d, r8d
+    jz .region_done
+    dec r8d
+    movzx ecx, word [r13 + r8 * 2]
+    mov eax, ecx
+    and eax, 31                         ; x
+    jnz .not_x0
+    or r9d, 1
+    jmp .nx_hi
+.not_x0:
+    lea edx, [ecx - 1]
+    call try_push
+.nx_hi:
+    cmp eax, 31
+    jne .not_x31
+    or r9d, 2
+    jmp .ny
+.not_x31:
+    lea edx, [ecx + 1]
+    call try_push
+.ny:
+    mov eax, ecx
+    shr eax, 10                         ; y
+    jnz .not_y0
+    or r9d, 4
+    jmp .ny_hi
+.not_y0:
+    lea edx, [ecx - 1024]
+    call try_push
+.ny_hi:
+    cmp eax, 31
+    jne .not_y31
+    or r9d, 8
+    jmp .nz
+.not_y31:
+    lea edx, [ecx + 1024]
+    call try_push
+.nz:
+    mov eax, ecx
+    shr eax, 5
+    and eax, 31                         ; z
+    jnz .not_z0
+    or r9d, 16
+    jmp .nz_hi
+.not_z0:
+    lea edx, [ecx - 32]
+    call try_push
+.nz_hi:
+    cmp eax, 31
+    jne .not_z31
+    or r9d, 32
+    jmp .pop
+.not_z31:
+    lea edx, [ecx + 32]
+    call try_push
+    jmp .pop
+.region_done:
+    xor ecx, ecx                        ; i
+.pi:
+    bt r9d, ecx
+    jnc .pi_next
+    lea edx, [ecx + 1]                  ; j
+.pj:
+    cmp edx, 6
+    jae .pi_next
+    bt r9d, edx
+    jnc .pj_next
+    imul eax, ecx, 6
+    add eax, edx
+    lea r10, [rel vis_pair_bit]
+    movzx eax, byte [r10 + rax]
+    bts esi, eax
+.pj_next:
+    inc edx
+    jmp .pj
+.pi_next:
+    inc ecx
+    cmp ecx, 6
+    jb .pi
+    cmp esi, 0x7FFF
+    je .done                            ; everything connected already
+.cell_next:
+    inc edi
+    cmp edi, 32768
+    jb .cell
+.done:
+    mov eax, esi
+    RETURN
+.all:
+    mov eax, 0x7FFF
+    RETURN
+ENDPROC
+
+; cell_vol_index — volume index of cell eax (x | z << 5 | y << 10).
+;   out: eax   clobbers: rax, rdx, r10
+cell_vol_index:
+    mov edx, eax
+    and edx, 31
+    mov r10d, eax
+    shr r10d, 5
+    and r10d, 31
+    imul r10d, r10d, PAD
+    add edx, r10d
+    shr eax, 10
+    imul eax, eax, PAD2
+    add eax, edx
+    add eax, ORIGIN
+    ret
+
+; try_push — push neighbour cell edx if open and not visited.
+;   uses rbx (volume), r12 (bits), r13 (stack), r14 (opaque), r8d (size)
+;   keeps rax, rcx; clobbers rdx, r10, r11
+try_push:
+    bt [r12], edx
+    jc .no
+    mov r11d, eax
+    push rdx
+    mov eax, edx
+    call cell_vol_index
+    movzx eax, word [rbx + rax * 2]
+    movzx eax, byte [r14 + rax]
+    pop rdx
+    xchg eax, r11d
+    test r11d, r11d
+    jnz .no
+    bts [r12], edx
+    mov [r13 + r8 * 2], dx
+    inc r8d
+.no:
+    ret
 
 ; -----------------------------------------------------------------------------
 ; all_opaque — is every block of a section opaque? (uniform: its id; palette
@@ -205,6 +386,7 @@ PROC mesh_section, L_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     inc edi
     cmp edi, 6
     jb .cover_check
+    mov word [rbx + SECT.vis], 0        ; solid: nothing passes through
     xor eax, eax
     xor edx, edx
     RETURN
@@ -476,6 +658,11 @@ PROC mesh_section, L_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     inc qword [LOCAL(L_FACE)]
     cmp qword [LOCAL(L_FACE)], 6
     jb .dir
+
+    ; ---- visibility through the section (cave culling) ----------------------------
+    INVOKE section_vis, [LOCAL(L_VOL)], [LOCAL(L_ARENA)]
+    mov rcx, [LOCAL(L_SECT)]
+    mov [rcx + SECT.vis], ax
 
     ; ---- shaped blocks (slabs, stairs, ...) -------------------------------------------
     cmp qword [LOCAL(L_SHAPES)], 0

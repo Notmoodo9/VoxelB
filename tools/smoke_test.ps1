@@ -3,8 +3,8 @@
 #   powershell -ExecutionPolicy Bypass -File tools\smoke_test.ps1 -Config debug
 param(
     [ValidateSet('debug', 'release')] [string] $Config = 'release',
-    [int] $AutocloseMs = 8000,
-    [int] $TimeoutMs = 60000
+    [int] $AutocloseMs = 20000,
+    [int] $TimeoutMs = 120000
 )
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path -Parent $PSScriptRoot)

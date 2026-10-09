@@ -115,3 +115,11 @@ glow = glowing_mushroom_door_bottom_glow
 [texture water]
 frame_ms    = 120
 interpolate = 1
+
+# underground (milestone 9)
+[texture lava]
+frame_ms    = 220
+interpolate = 1
+glow        = lava_glow
+[texture star_crystal_ore]
+glow = star_crystal_ore_glow

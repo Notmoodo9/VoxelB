@@ -76,7 +76,7 @@ shape_jump:     dq shapes_emit.s_none, shapes_emit.s_slab, shapes_emit.s_stairs
                 dq shapes_emit.s_fence, shapes_emit.s_gate, shapes_emit.s_door
                 dq shapes_emit.s_trapdoor, shapes_emit.s_ladder, shapes_emit.s_sign
                 dq shapes_emit.s_wall_sign, shapes_emit.s_plate, shapes_emit.s_wall
-                dq shapes_emit.s_pillar, shapes_emit.s_pane
+                dq shapes_emit.s_pillar, shapes_emit.s_pane, shapes_emit.s_spike
 
 section .text
 
@@ -461,6 +461,43 @@ PROC shapes_emit, S_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov byte [r15 + 3], 14
     mov [r15 + 4], r9b
     mov byte [r15 + 5], 14
+    add r15, 6
+    jmp .emit
+
+.s_spike:
+    ; width by part: base (attached), middle, tip (nothing beyond)
+    ; up (state 0): attached below, grows up; down: attached above
+    mov eax, [LOCAL(S_ID)]
+    mov rbx, [LOCAL(S_VOL)]
+    mov rcx, PAD2                       ; growth direction offset
+    test dword [LOCAL(S_STATE)], 1
+    jz .spike_dir
+    neg rcx
+.spike_dir:
+    lea rdx, [r12 + rcx]                ; next block in the growth direction
+    xor r8d, r8d                        ; inset: 0 tip.. computed below
+    cmp [rbx + rdx * 2], ax
+    jne .spike_tip
+    mov rdx, r12
+    sub rdx, rcx                        ; block it grows from
+    cmp [rbx + rdx * 2], ax
+    je .spike_mid
+    mov r8d, 4                          ; base: 4..12
+    jmp .spike_box
+.spike_mid:
+    mov r8d, 5                          ; middle: 5..11
+    jmp .spike_box
+.spike_tip:
+    mov r8d, 6                          ; tip: 6..10
+.spike_box:
+    mov [r15], r8b
+    mov byte [r15 + 1], 0
+    mov [r15 + 2], r8b
+    mov eax, 16
+    sub eax, r8d
+    mov [r15 + 3], al
+    mov byte [r15 + 4], 16
+    mov [r15 + 5], al
     add r15, 6
     jmp .emit
 

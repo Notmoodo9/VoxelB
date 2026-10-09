@@ -906,6 +906,129 @@ PROC test_png, 32, rbx, rsi, rdi, r12
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; vis_case — build a stone section with one carved tunnel, mesh it and check
+; SECT.vis (face connectivity used by the renderer's cave culling).
+;   in:  rcx = ids buffer (filled by the caller), edx = expected vis,
+;        r8 = quad buffer
+;   out: eax = 1 pass / 0 fail (logged)
+; -----------------------------------------------------------------------------
+PROC vis_case, 64, rbx, rsi, rdi
+    mov esi, edx
+    mov rdi, r8
+    INVOKE section_build, rcx, 0, 0, 0
+    test rax, rax
+    jz .fail
+    mov rbx, rax
+    xor eax, eax
+.nb:
+    mov qword [LOCAL(0) + rax * 8], 0
+    inc eax
+    cmp eax, 6
+    jb .nb
+    lea rdx, [LOCAL(0)]
+    lea r9, [rel g_arena_scratch]
+    INVOKE mesh_section, rbx, rdx, rdi, r9
+    movzx eax, word [rbx + SECT.vis]
+    mov [LOCAL(48)], eax
+    mov rcx, rbx
+    call section_free
+    mov eax, [LOCAL(48)]
+    cmp eax, esi
+    jne .wrong
+    mov eax, 1
+    RETURN
+.wrong:
+    LOG_VAL LOG_LEVEL_ERROR, "selftest: section visibility bits", rax
+    LOG_VAL LOG_LEVEL_ERROR, "selftest: expected visibility bits", rsi
+.fail:
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; test_vis — section face connectivity for straight and bent tunnels.
+;   out: eax = 1 pass / 0 fail
+; -----------------------------------------------------------------------------
+PROC test_vis, 16, rbx, rsi, rdi, r12, r13
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [LOCAL(0)], rax
+    lea rax, [rel g_block_opaque]
+    mov byte [rax + 1], 1
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_alloc, rcx, 131072 * 8, 64
+    mov r12, rax                        ; quads
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_alloc, rcx, SECTION_VOLUME * 2, 64
+    mov r13, rax                        ; ids
+    mov ebx, 1
+%macro VIS_FILL 0
+    mov rdi, r13
+    mov eax, 1
+    mov ecx, SECTION_VOLUME
+    rep stosw
+%endmacro
+    ; vertical tunnel (x 5, z 5): -Y <-> +Y = bit 9
+    VIS_FILL
+    xor ecx, ecx
+.v:
+    mov eax, ecx
+    shl eax, 10
+    or eax, (5 << 5) | 5
+    mov word [r13 + rax * 2], 0
+    inc ecx
+    cmp ecx, 32
+    jb .v
+    INVOKE vis_case, r13, 1 << 9, r12
+    and ebx, eax
+    ; tunnel along x (y 5, z 5): -X <-> +X = bit 0
+    VIS_FILL
+    xor ecx, ecx
+.h:
+    mov eax, (5 << 10) | (5 << 5)
+    or eax, ecx
+    mov word [r13 + rax * 2], 0
+    inc ecx
+    cmp ecx, 32
+    jb .h
+    INVOKE vis_case, r13, 1 << 0, r12
+    and ebx, eax
+    ; bend: from the -X face along x to (20, 5, 5), then up to +Y = bit 2
+    VIS_FILL
+    xor ecx, ecx
+.b1:
+    mov eax, (5 << 10) | (5 << 5)
+    or eax, ecx
+    mov word [r13 + rax * 2], 0
+    inc ecx
+    cmp ecx, 21
+    jb .b1
+    mov ecx, 5
+.b2:
+    mov eax, ecx
+    shl eax, 10
+    or eax, (5 << 5) | 20
+    mov word [r13 + rax * 2], 0
+    inc ecx
+    cmp ecx, 32
+    jb .b2
+    INVOKE vis_case, r13, 1 << 2, r12
+    and ebx, eax
+    lea rax, [rel g_block_opaque]
+    mov byte [rax + 1], 0
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(0)]
+    test ebx, ebx
+    jz .failed
+    LOG_INFO "selftest: section visibility ok (3 tunnel cases)"
+    mov eax, 1
+    RETURN
+.failed:
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 ; selftest_run — run all checks (needs mem_init, jobs_init, timer_init).
 ;   out: eax = 1 if everything passed, 0 otherwise (failures logged)
 ;   clobbers: volatile registers
@@ -925,6 +1048,8 @@ PROC selftest_run, 0, rbx
     call test_gpu_alloc
     and ebx, eax
     call test_png
+    and ebx, eax
+    call test_vis
     and ebx, eax
     call world_hash_selftest
     test eax, eax

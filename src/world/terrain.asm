@@ -42,14 +42,23 @@
 %include "section.inc"
 %include "world_api.inc"
 %include "terrain.inc"
+%include "caves.inc"
 
-global terrain_load, terrain_gen_column, terrain_sample, terrain_find_spawn
+global terrain_load, terrain_gen_column, terrain_sample, terrain_find_spawn, log_xz
 global terrain_survey
 global g_world_seed, g_sea_level
+global g_noise, g_splines, g_ores, g_ore_count, spline_eval
+global g_tunnel_w, g_pass_w, g_crust, g_entr_thr, g_sky_thr, g_sky_depth, g_sky_open
+global g_rav_thr, g_rav_w, g_rav_dmin, g_rav_dmax, g_shaft_space, g_shaft_chance
+global g_shaft_rmin, g_shaft_rmax
+global g_shaft_dmin, g_shaft_dmax, g_aq_size, g_lake_chance, g_lake_min, g_lake_max
+global g_lava_top, g_lava_min, g_lava_max, g_drip_chance, g_patch_thr, g_pillar_w
+global g_cave_bottom, g_ore_wall, g_b_lava, g_b_drip, g_b_mud, g_b_water, g_b_stone
+global g_b_deep, g_b_gravel, g_b_clay
 
 extern str_ieq, str_parse_float, str_parse_u64
 
-%define FIELD_COUNT     11
+%define FIELD_COUNT     21
 %define F_CONT          0
 %define F_EROS          1
 %define F_PEAKS         2
@@ -61,14 +70,26 @@ extern str_ieq, str_parse_float, str_parse_u64
 %define F_RIVER         8
 %define F_DETAIL        9
 %define F_OVERHANG      10
+; caves (M9; data/world/caves.cfg)
+%define F_CHEESE        11              ; 3D caverns
+%define F_TUN_A         12              ; 3D tunnels: two fields, tunnel
+%define F_TUN_B         13              ;   where both are near zero
+%define F_PASS_A        14              ; 3D narrow passages (same idea)
+%define F_PASS_B        15
+%define F_PILLAR        16              ; 2D natural pillars in caverns
+%define F_ENTRANCE      17              ; 2D where caves may break the surface
+%define F_SKY           18              ; 2D rare sky-open caverns
+%define F_RAVINE        19              ; 2D ravine lines
+%define F_RAVINE_MASK   20              ; 2D where ravines exist
 
-%define SPLINE_COUNT    6
+%define SPLINE_COUNT    7
 %define S_BASE          0
 %define S_MOUNT         1
 %define S_PEAKS         2
 %define S_HIGH          3
 %define S_GIANT         4
 %define S_ROLLING       5
+%define S_CHEESE        6               ; y -> cavern threshold (caves.cfg)
 %define SPLINE_MAX      16
 struc SPLINE
     .count      resd 1
@@ -82,6 +103,7 @@ endstruc
 %define T_BLOCK         2
 
 %define HM              34              ; heightmap side (column + 1 border)
+%define MAX_ORES        32
 
 section .rdata
 str_cfg_path:   db "data/world/terrain.cfg", 0
@@ -116,9 +138,21 @@ n_rolling:  db "rolling", 0
 n_river:    db "river", 0
 n_detail:   db "detail", 0
 n_overhang: db "overhang", 0
+n_cheese:   db "cheese", 0
+n_tun_a:    db "tunnel_a", 0
+n_tun_b:    db "tunnel_b", 0
+n_pass_a:   db "passage_a", 0
+n_pass_b:   db "passage_b", 0
+n_pillar:   db "pillar", 0
+n_entrance: db "entrance", 0
+n_sky:      db "sky_cavern", 0
+n_ravine:   db "ravine", 0
+n_rav_mask: db "ravine_mask", 0
 align 8
 field_names:    dq n_cont, n_eros, n_peaks, n_high, n_giant, n_ridges, n_jag
                 dq n_rolling, n_river, n_detail, n_overhang
+                dq n_cheese, n_tun_a, n_tun_b, n_pass_a, n_pass_b, n_pillar
+                dq n_entrance, n_sky, n_ravine, n_rav_mask
 ; spline names (records [spline <name>])
 s_base:     db "base_height", 0
 s_mount:    db "mountain_factor", 0
@@ -126,8 +160,9 @@ s_peaks:    db "peaks_height", 0
 s_high:     db "high_factor", 0
 s_giant:    db "giant_mask", 0
 s_rolling:  db "rolling_height", 0
+s_cheese:   db "cavern_threshold", 0
 align 8
-spline_names:   dq s_base, s_mount, s_peaks, s_high, s_giant, s_rolling
+spline_names:   dq s_base, s_mount, s_peaks, s_high, s_giant, s_rolling, s_cheese
 ; top-level settings: name, type, address
 k_sea:          db "sea_level", 0
 k_land_start:   db "land_start", 0
@@ -161,6 +196,56 @@ k_b_gravel:     db "gravel_block", 0
 k_b_snow:       db "snow_block", 0
 k_b_water:      db "water_block", 0
 k_b_clay:       db "seabed_clay_block", 0
+k_tunnel_w:     db "tunnel_width", 0
+k_pass_w:       db "passage_width", 0
+k_crust:        db "cave_crust", 0
+k_entr_thr:     db "entrance_threshold", 0
+k_sky_thr:      db "sky_cavern_threshold", 0
+k_sky_depth:    db "sky_cavern_depth", 0
+k_sky_open:     db "sky_cavern_openness", 0
+k_rav_thr:      db "ravine_threshold", 0
+k_rav_w:        db "ravine_width", 0
+k_rav_dmin:     db "ravine_depth_min", 0
+k_rav_dmax:     db "ravine_depth_max", 0
+k_shaft_space:  db "shaft_spacing", 0
+k_shaft_chance: db "shaft_chance", 0
+k_shaft_rmin:   db "shaft_radius_min", 0
+k_shaft_rmax:   db "shaft_radius_max", 0
+k_shaft_dmin:   db "shaft_depth_min", 0
+k_shaft_dmax:   db "shaft_depth_max", 0
+k_aq_size:      db "aquifer_size", 0
+k_lake_chance:  db "lake_chance", 0
+k_lake_min:     db "lake_min_y", 0
+k_lake_max:     db "lake_max_y", 0
+k_lava_top:     db "lava_region_top_y", 0
+k_lava_min:     db "lava_min_y", 0
+k_lava_max:     db "lava_max_y", 0
+k_drip:         db "dripstone_chance", 0
+k_patch:        db "floor_patch_threshold", 0
+k_pillar_w:     db "pillar_width", 0
+k_cave_bottom:  db "cave_bottom_y", 0
+k_ore_wall:     db "ore_wall_bonus", 0
+k_b_lava:       db "lava_block", 0
+k_b_drip:       db "dripstone_block", 0
+k_b_mud:        db "mud_block", 0
+k_ore:          db "ore", 0
+k_o_block:      db "block", 0
+k_o_deep:       db "deep_block", 0
+k_o_min:        db "min_y", 0
+k_o_max:        db "max_y", 0
+k_o_peak:       db "peak_y", 0
+k_o_smin:       db "size_min", 0
+k_o_smax:       db "size_max", 0
+k_o_per:        db "per_section", 0
+k_o_monly:      db "mountain_only", 0
+k_o_mbonus:     db "mountain_bonus", 0
+k_o_donly:      db "deep_only", 0
+k_o_vchance:    db "vein_chance", 0
+k_o_vsize:      db "vein_size", 0
+str_caves_path: db "data/world/caves.cfg", 0
+str_caves_label: db "caves.cfg", 0
+str_ores_path:  db "data/world/ores.cfg", 0
+str_ores_label: db "ores.cfg", 0
 align 8
 settings:
     dq k_sea,        T_INT,   g_sea_level
@@ -195,6 +280,54 @@ settings:
     dq k_b_snow,     T_BLOCK, g_b_snow
     dq k_b_water,    T_BLOCK, g_b_water
     dq k_b_clay,     T_BLOCK, g_b_clay
+    dq k_tunnel_w,   T_FLOAT, g_tunnel_w
+    dq k_pass_w,     T_FLOAT, g_pass_w
+    dq k_crust,      T_INT,   g_crust
+    dq k_entr_thr,   T_FLOAT, g_entr_thr
+    dq k_sky_thr,    T_FLOAT, g_sky_thr
+    dq k_sky_depth,  T_INT,   g_sky_depth
+    dq k_sky_open,   T_FLOAT, g_sky_open
+    dq k_rav_thr,    T_FLOAT, g_rav_thr
+    dq k_rav_w,      T_FLOAT, g_rav_w
+    dq k_rav_dmin,   T_INT,   g_rav_dmin
+    dq k_rav_dmax,   T_INT,   g_rav_dmax
+    dq k_shaft_space, T_INT,  g_shaft_space
+    dq k_shaft_chance, T_FLOAT, g_shaft_chance
+    dq k_shaft_rmin, T_FLOAT, g_shaft_rmin
+    dq k_shaft_rmax, T_FLOAT, g_shaft_rmax
+    dq k_shaft_dmin, T_INT,   g_shaft_dmin
+    dq k_shaft_dmax, T_INT,   g_shaft_dmax
+    dq k_aq_size,    T_INT,   g_aq_size
+    dq k_lake_chance, T_FLOAT, g_lake_chance
+    dq k_lake_min,   T_INT,   g_lake_min
+    dq k_lake_max,   T_INT,   g_lake_max
+    dq k_lava_top,   T_INT,   g_lava_top
+    dq k_lava_min,   T_INT,   g_lava_min
+    dq k_lava_max,   T_INT,   g_lava_max
+    dq k_drip,       T_FLOAT, g_drip_chance
+    dq k_patch,      T_FLOAT, g_patch_thr
+    dq k_pillar_w,   T_FLOAT, g_pillar_w
+    dq k_cave_bottom, T_INT,  g_cave_bottom
+    dq k_ore_wall,   T_FLOAT, g_ore_wall
+    dq k_b_lava,     T_BLOCK, g_b_lava
+    dq k_b_drip,     T_BLOCK, g_b_drip
+    dq k_b_mud,      T_BLOCK, g_b_mud
+    dq 0
+; ore record settings: name, type, offset in ORE
+ore_settings:
+    dq k_o_block,    T_BLOCK, ORE.block
+    dq k_o_deep,     T_BLOCK, ORE.deep
+    dq k_o_min,      T_INT,   ORE.min_y
+    dq k_o_max,      T_INT,   ORE.max_y
+    dq k_o_peak,     T_INT,   ORE.peak_y
+    dq k_o_smin,     T_INT,   ORE.size_min
+    dq k_o_smax,     T_INT,   ORE.size_max
+    dq k_o_per,      T_FLOAT, ORE.per_section
+    dq k_o_monly,    T_INT,   ORE.mountain_only
+    dq k_o_mbonus,   T_FLOAT, ORE.mountain_bonus
+    dq k_o_donly,    T_INT,   ORE.deep_only
+    dq k_o_vchance,  T_FLOAT, ORE.vein_chance
+    dq k_o_vsize,    T_INT,   ORE.vein_size
     dq 0
 align 4
 c_zero:     dd 0.0
@@ -242,12 +375,42 @@ g_steep:        dd 4
 g_scree:        dd 3
 g_scree_y:      dd 180
 g_deep_y:       dd 0
+g_tunnel_w:     dd 0.07
+g_pass_w:       dd 0.03
+g_crust:        dd 7
+g_entr_thr:     dd 0.3
+g_sky_thr:      dd 0.45
+g_sky_depth:    dd 140
+g_sky_open:     dd 0.35
+g_rav_thr:      dd 0.35
+g_rav_w:        dd 0.03
+g_rav_dmin:     dd 30
+g_rav_dmax:     dd 80
+g_shaft_space:  dd 160
+g_shaft_chance: dd 0.3
+g_shaft_rmin:   dd 1.0
+g_shaft_rmax:   dd 1.8
+g_shaft_dmin:   dd 30
+g_shaft_dmax:   dd 120
+g_aq_size:      dd 64
+g_lake_chance:  dd 0.4
+g_lake_min:     dd -90
+g_lake_max:     dd 70
+g_lava_top:     dd -90
+g_lava_min:     dd -230
+g_lava_max:     dd -120
+g_drip_chance:  dd 0.08
+g_patch_thr:    dd 0.3
+g_pillar_w:     dd 0.06
+g_cave_bottom:  dd -250
+g_ore_wall:     dd 0.3
 
 section .bss
 alignb 8
 g_noise:        resb NOISE_size * FIELD_COUNT
 g_splines:      resb SPLINE_size * SPLINE_COUNT
 g_cfg_mark:     resq 1
+g_label:        resq 1
 g_kind:         resd 1                  ; 0 none, 1 noise, 2 spline
 g_rec:          resd 1
 g_b_top:        resd 1
@@ -260,6 +423,12 @@ g_b_gravel:     resd 1
 g_b_snow:       resd 1
 g_b_water:      resd 1
 g_b_clay:       resd 1
+g_b_lava:       resd 1
+g_b_drip:       resd 1
+g_b_mud:        resd 1
+g_ore_count:    resd 1
+alignb 8
+g_ores:         resb ORE_size * MAX_ORES
 g_cfg_path:     resb PATH_CAP
 
 section .text
@@ -270,7 +439,7 @@ section .text
 PROC warn, 0
     mov r8, rdx
     mov rdx, rcx
-    lea rcx, [rel str_cfg_label]
+    mov rcx, [rel g_label]
     call cfg_warn
     RETURN
 ENDPROC
@@ -360,6 +529,35 @@ PROC terrain_pair, 16, rbx, rsi, rdi, r12
     mov dword [rel g_kind], 1
     RETURN
 .not_noise:
+    lea rdx, [rel k_ore]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_ore
+    mov eax, [rel g_ore_count]
+    cmp eax, MAX_ORES
+    jae .bad_rec
+    inc dword [rel g_ore_count]
+    mov [rel g_rec], eax
+    imul rcx, rax, ORE_size
+    lea rdx, [rel g_ores]
+    add rdx, rcx
+    ; defaults: 1..3 blocks, once per section, nowhere until min/max are set
+    mov dword [rdx + ORE.block], 0
+    mov dword [rdx + ORE.deep], 0
+    mov dword [rdx + ORE.min_y], 1
+    mov dword [rdx + ORE.max_y], 0
+    mov dword [rdx + ORE.peak_y], 0x80000000
+    mov dword [rdx + ORE.size_min], 1
+    mov dword [rdx + ORE.size_max], 3
+    mov dword [rdx + ORE.per_section], 0x3F800000
+    mov dword [rdx + ORE.mountain_only], 0
+    mov dword [rdx + ORE.mountain_bonus], 0
+    mov dword [rdx + ORE.deep_only], 0
+    mov dword [rdx + ORE.vein_chance], 0
+    mov dword [rdx + ORE.vein_size], 0
+    mov dword [rel g_kind], 3
+    RETURN
+.not_ore:
     lea rdx, [rel k_spline]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
@@ -388,19 +586,30 @@ PROC terrain_pair, 16, rbx, rsi, rdi, r12
     je .noise
     cmp eax, 2
     je .spline
-    ; top-level setting
+    xor r8d, r8d                        ; address base: absolute
     lea rdi, [rel settings]
+    cmp eax, 3
+    jne .setting
+    ; ore record: offsets within the current ORE
+    mov eax, [rel g_rec]
+    imul r8, rax, ORE_size
+    lea rax, [rel g_ores]
+    add r8, rax
+    lea rdi, [rel ore_settings]
 .setting:
     mov rcx, [rdi]
     test rcx, rcx
     jz .unknown
+    mov [LOCAL(8)], r8
     INVOKE str_ieq, rcx, rbx
+    mov r8, [LOCAL(8)]
     test eax, eax
     jnz .set
     add rdi, 24
     jmp .setting
 .set:
-    mov r12, [rdi + 16]                 ; address
+    mov r12, [rdi + 16]                 ; address (or offset)
+    add r12, r8
     mov rax, [rdi + 8]
     cmp eax, T_FLOAT
     je .set_float
@@ -535,6 +744,39 @@ PROC terrain_pair, 16, rbx, rsi, rdi, r12
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; load_cfg — read and parse one generator data file (records allowed).
+;   in:  rcx = relative path, rdx = label      out: eax = 1 ok, 0 missing
+; -----------------------------------------------------------------------------
+PROC load_cfg, 0, rbx, rsi
+    mov rbx, rcx
+    mov rsi, rdx
+    mov [rel g_label], rsi
+    mov dword [rel g_kind], 0
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [rel g_cfg_mark], rax
+    lea rcx, [rel g_cfg_path]
+    mov rdx, rbx
+    call path_make
+    lea rcx, [rel g_cfg_path]
+    lea rdx, [rel g_arena_scratch]
+    call file_load
+    test rax, rax
+    jz .fail
+    lea rdx, [rel terrain_pair]
+    INVOKE cfg_parse_ex, rax, rdx, 0, rsi, CFG_SECTIONS
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [rel g_cfg_mark]
+    mov eax, 1
+    RETURN
+.fail:
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [rel g_cfg_mark]
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 ; terrain_load — read data/world/terrain.cfg.
 ;   out: eax = 1 ok, 0 missing file or splines (logged)
 ; -----------------------------------------------------------------------------
@@ -555,22 +797,22 @@ PROC terrain_load, 0, rbx
     inc ebx
     cmp ebx, FIELD_COUNT
     jb .def
-    lea rcx, [rel g_arena_scratch]
-    call arena_mark
-    mov [rel g_cfg_mark], rax
-    lea rcx, [rel g_cfg_path]
-    lea rdx, [rel str_cfg_path]
-    call path_make
-    lea rcx, [rel g_cfg_path]
-    lea rdx, [rel g_arena_scratch]
-    call file_load
-    test rax, rax
+    mov dword [rel g_ore_count], 0
+    lea rcx, [rel str_cfg_path]
+    lea rdx, [rel str_cfg_label]
+    call load_cfg
+    test eax, eax
     jz .missing
-    lea rdx, [rel terrain_pair]
-    lea r9, [rel str_cfg_label]
-    INVOKE cfg_parse_ex, rax, rdx, 0, r9, CFG_SECTIONS
-    lea rcx, [rel g_arena_scratch]
-    INVOKE arena_reset_to, rcx, [rel g_cfg_mark]
+    lea rcx, [rel str_caves_path]
+    lea rdx, [rel str_caves_label]
+    call load_cfg
+    test eax, eax
+    jz .missing
+    lea rcx, [rel str_ores_path]
+    lea rdx, [rel str_ores_label]
+    call load_cfg
+    test eax, eax
+    jz .missing
     ; every spline needs points, every block must be set
     xor ebx, ebx
 .check:
@@ -590,7 +832,7 @@ PROC terrain_load, 0, rbx
     mov eax, 1
     RETURN
 .missing:
-    LOG_ERROR "terrain: could not read data/world/terrain.cfg"
+    LOG_ERROR "terrain: could not read terrain.cfg, caves.cfg or ores.cfg in data/world"
     xor eax, eax
     RETURN
 .incomplete:
@@ -1066,6 +1308,7 @@ PROC terrain_survey, SV_LOCALS, rbx, rsi, rdi
     mov r8d, [LOCAL(SV_RIVER_Z)]
     call log_xz
 .done:
+    call caves_survey
     RETURN
 ENDPROC
 
@@ -1111,9 +1354,11 @@ underground:
 %define G_CX        80
 %define G_CZ        84
 %define G_CGRID     88                  ; coarse grid {h, A} f32 x 10 x 10
+%define G_CTX       (96 + TSAMPLE_size + 16)   ; CAVECTX*
+%define G_SOLID     (G_CTX + 8)                ; block before carving
 %define G_DETAIL    68                  ; (detail noise of the current block)
 %define G_SAMPLE    96                  ; TSAMPLE
-%define G_LOCALS    (96 + TSAMPLE_size + 16)
+%define G_LOCALS    (96 + TSAMPLE_size + 32)
 %define INFO_SIZE   12
 PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [LOCAL(G_COL)], rcx
@@ -1132,8 +1377,25 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [LOCAL(G_GRID)], rax
     INVOKE arena_alloc, [LOCAL(G_ARENA)], 10 * 10 * 8, 16
     mov [LOCAL(G_CGRID)], rax
+    INVOKE arena_alloc, [LOCAL(G_ARENA)], CAVECTX_size, 16
+    mov [LOCAL(G_CTX)], rax
     test rax, rax
     jz .oom
+    mov rbx, rax
+    INVOKE arena_alloc, [LOCAL(G_ARENA)], (1024 + 128) * CCOL_size, 16
+    mov [rbx + CAVECTX.cols], rax
+    INVOKE arena_alloc, [LOCAL(G_ARENA)], 9 * 9 * 9 * 4, 16
+    mov [rbx + CAVECTX.grid_c], rax
+    INVOKE arena_alloc, [LOCAL(G_ARENA)], 9 * 9 * 9 * 4, 16
+    mov [rbx + CAVECTX.grid_t], rax
+    test rax, rax
+    jz .oom
+    mov eax, [LOCAL(G_CX)]
+    mov [rbx + CAVECTX.cx], eax
+    mov eax, [LOCAL(G_CZ)]
+    mov [rbx + CAVECTX.cz], eax
+    mov rax, [LOCAL(G_H)]
+    mov [rbx + CAVECTX.heights], rax
 
     ; ---- coarse grid: every 4 blocks from -4 to 32 (10 x 10 samples) ------------
     ; the large-scale fields are smooth, so heights and overhang amplitudes
@@ -1388,6 +1650,10 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     cmp r12d, 32
     jb .sf_z
 
+    ; ---- per-column cave data -----------------------------------------------------
+    mov rcx, [LOCAL(G_CTX)]
+    call caves_column
+
     ; ---- sections ------------------------------------------------------------------------
     cvttss2si eax, [LOCAL(G_MAXA)]
     inc eax
@@ -1415,28 +1681,8 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     xor eax, eax
     jmp .store
 .not_above:
-    ; below every surface layer?
-    mov ecx, [LOCAL(G_MINH)]
-    sub ecx, [LOCAL(G_MAXA)]
-    sub ecx, 6
-    lea eax, [ebx + 31]
-    cmp eax, ecx
-    jge .detailed
-    mov eax, [rel g_deep_y]
-    add eax, 8
-    cmp ebx, eax
-    jl .maybe_deep
-    mov ecx, [rel g_b_stone]
-    jmp .uniform
-.maybe_deep:
-    mov eax, [rel g_deep_y]
-    sub eax, 8
-    lea ecx, [ebx + 31]
-    cmp ecx, eax
-    jge .detailed
-    cmp ebx, WORLD_MIN_Y + 8
-    jl .detailed
-    mov ecx, [rel g_b_deep]
+    ; everything below the surface is filled block by block: caves and ores
+    jmp .detailed
 .uniform:
     mov edx, [LOCAL(G_CX)]
     mov r8d, [LOCAL(G_SY)]
@@ -1452,6 +1698,13 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     INVOKE build_grid, [LOCAL(G_GRID)], [LOCAL(G_CX)], [LOCAL(G_CZ)], [LOCAL(G_Y0)]
     mov dword [LOCAL(G_HASGRID)], 1
 .fill:
+    ; cave fields for this section
+    mov rcx, [LOCAL(G_CTX)]
+    mov edx, ebx
+    call caves_grid
+    mov rcx, [LOCAL(G_CTX)]
+    or eax, [rcx + CAVECTX.columns_special]
+    mov [rcx + CAVECTX.active], eax
     xor r12d, r12d                      ; z
 .f_z:
     xor r13d, r13d                      ; x
@@ -1466,6 +1719,14 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     add ecx, r13d
     imul r15, rcx, INFO_SIZE
     add r15, [LOCAL(G_INFO)]            ; info
+    ; cave profile of this block column
+    mov rcx, [LOCAL(G_CTX)]
+    cmp dword [rcx + CAVECTX.active], 0
+    je .no_profile
+    mov edx, r13d
+    mov r8d, r12d
+    call caves_profile
+.no_profile:
     xor esi, esi                        ; local y
 .f_y:
     lea edi, [ebx + esi]                ; world y
@@ -1513,15 +1774,59 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     movzx edx, byte [r15 + 10]
     movsx r8d, word [r15 + 8]
     call underground
-    jmp .put
+    jmp .carve
 .top:
     movzx eax, word [r15 + 4]
-    jmp .put
+    jmp .carve
 .filler:
     movzx eax, word [r15 + 6]
-    jmp .put
+    jmp .carve
 .crag:
     mov eax, [rel g_b_stone]
+    jmp .put
+.carve:
+    ; caves, ravines, shafts (solid blocks below the surface)
+    mov rcx, [LOCAL(G_CTX)]
+    cmp dword [rcx + CAVECTX.active], 0
+    je .put
+    mov [LOCAL(G_SOLID)], eax
+    ; cavern / tunnel values here: linear between the profile's heights
+    mov eax, esi
+    shr eax, 3                          ; grid height below (every 8)
+    mov edx, esi
+    and edx, 7
+    cvtsi2ss xmm2, edx
+    mulss xmm2, [rel c_eighth]
+    movss xmm0, [rcx + CAVECTX.colc + rax * 4 + 4]
+    subss xmm0, [rcx + CAVECTX.colc + rax * 4]
+    mulss xmm0, xmm2
+    addss xmm0, [rcx + CAVECTX.colc + rax * 4]
+    movss [rcx + CAVECTX.cur_c], xmm0
+    movss xmm1, [rcx + CAVECTX.colt + rax * 4 + 4]
+    subss xmm1, [rcx + CAVECTX.colt + rax * 4]
+    mulss xmm1, xmm2
+    addss xmm1, [rcx + CAVECTX.colt + rax * 4]
+    movss [rcx + CAVECTX.cur_t], xmm1
+    ; fast reject: plain column, no tunnel, below the cavern threshold
+    cmp dword [rcx + CAVECTX.col_special], 0
+    jne .carve_call
+    xorps xmm2, xmm2
+    comiss xmm1, xmm2
+    jb .carve_call
+    comiss xmm0, [rcx + CAVECTX.thr + rsi * 4]
+    jbe .carve_keep
+.carve_call:
+    mov eax, [LOCAL(G_SOLID)]
+    mov [rsp + 32], rsi                 ; local y
+    mov [rsp + 40], r14                 ; surface H
+    mov edx, r13d
+    mov r8d, edi
+    mov r9d, r12d
+    call caves_carve
+    cmp eax, -1
+    jne .put
+.carve_keep:
+    mov eax, [LOCAL(G_SOLID)]
 .put:
     mov ecx, esi
     shl ecx, 10
@@ -1540,6 +1845,12 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     inc r12d
     cmp r12d, 32
     jb .f_z
+    ; ores, dripstone, floor patches below the surface
+    mov eax, [LOCAL(G_MAXH)]
+    cmp ebx, eax
+    jg .no_finish
+    INVOKE caves_finish, [LOCAL(G_CTX)], [LOCAL(G_IDS)], rbx, [LOCAL(G_SY)]
+.no_finish:
     INVOKE section_build, [LOCAL(G_IDS)], [LOCAL(G_CX)], [LOCAL(G_SY)], [LOCAL(G_CZ)]
 .store:
     mov rcx, [LOCAL(G_COL)]

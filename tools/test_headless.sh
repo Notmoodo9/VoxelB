@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 CONFIG=${1:-debug}
-MS=${2:-6000}
+MS=${2:-20000}
 EXE=build/$CONFIG/voxelb.exe
 LOG=build/$CONFIG/voxel.log
 [ -f "$EXE" ] || { echo "missing $EXE - run tools/build.sh $CONFIG" >&2; exit 1; }
@@ -22,7 +22,7 @@ if [ -z "${DISPLAY:-}" ]; then
     fi
 fi
 
-timeout 60 wine "$EXE" --selftest --autoclose "$MS" >/dev/null 2>&1 &
+timeout 120 wine "$EXE" --selftest --autoclose "$MS" >/dev/null 2>&1 &
 PID=$!
 sleep "$(awk "BEGIN{print ($MS/1000)*0.8}")"
 if command -v import >/dev/null; then

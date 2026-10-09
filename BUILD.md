@@ -49,7 +49,8 @@ build\debug\voxelb.exe --pos 10 105 190    start the camera at x y z (blocks)
 build\debug\voxelb.exe --look -30 -20      start view: yaw (0 north, 90 east), pitch (degrees, + up)
 build\debug\voxelb.exe --seed 42           world seed (overrides data/world/world.cfg)
 build\debug\voxelb.exe --flat              the flat test world with the block gallery
-build\debug\voxelb.exe --survey            log terrain statistics and places to visit (voxel.log)
+build\debug\voxelb.exe --survey            log terrain statistics and places to visit: highest point, giant range,
+                                          river, sky cavern, ravine, shaft (voxel.log)
 ```
 
 Default controls (rebind in `data/config/controls.cfg`, format in `DATA_FORMAT.md`):
@@ -131,6 +132,7 @@ The same build runs on Linux with the Linux builds of NASM and lld-link:
 ```
 tools/build.sh [debug|release] [clean]
 tools/test_headless.sh [debug|release] [ms]   # needs wine + Xvfb + Mesa; checks window, GL context, perf line, clean exit; takes a screenshot
+                                              # (ms: autoclose, default 20000 so the 16-chunk view finishes streaming)
 ```
 
 `tools/build.sh` mirrors `build.bat` flag for flag. If you change one, change

@@ -27,16 +27,35 @@
 
 global world_render_init, world_render_draw, world_render_shutdown
 global g_world_visible, g_world_drawn_quads, g_world_gpu_bytes, g_quad_buffer
-global g_world_draws
+global g_world_draws, g_vis_visited
 
 extern g_cam_viewproj, g_cam_pos
 extern g_loaded, g_loaded_count
 extern block_textures_init, block_textures_bind, block_textures_shutdown
-extern timer_elapsed_us
+extern timer_elapsed_us, world_column, vis_pair_bit
 
 %define QUAD_BUFFER_BYTES   (1 << 27)   ; 128 MB = gpu_alloc's 2^18 x 512 B
 %define MAX_PASS_ENTRIES    65536       ; per pass and frame (frame arena)
 %define ENTRY_SIZE          32          ; rel xyz, world xyz, SECT*
+%define MAX_WALK            65536       ; sections the visibility walk visits
+%define WALK_SIZE           16
+struc WALK
+    .col        resq 1
+    .sy         resb 1
+    .entry      resb 1                  ; faces it was entered through (mask;
+                                        ; 0x40 = the start: every exit allowed)
+    .dirs       resb 1                  ; directions taken on the way here
+    .pad        resb 5
+endstruc
+; world_render_draw locals (LOCAL(0) is used by the translucent sort)
+%define W_CX        8
+%define W_CZ        12
+%define W_ENTRY     16
+%define W_DIRS      20
+%define W_VIS       24
+%define W_D         28
+%define W_NSY       32
+%define W_CSY       36                  ; camera section y
 
 ; uniform locations (shaders/chunk.vert / chunk.frag)
 %define U_VIEWPROJ          0
@@ -66,6 +85,8 @@ g_world_visible:    resq 1
 g_world_drawn_quads: resq 1
 g_world_gpu_bytes:  resq 1
 g_world_draws:      resq 1
+g_vis_visited:      resq 1              ; sections the walk visited this frame
+g_vis_stamp:        resw 1
 g_cut_list:         resq 1              ; entries this frame
 g_cut_count:        resq 1
 g_trans_list:       resq 1
@@ -182,39 +203,81 @@ build_planes:
     ret
 
 ; -----------------------------------------------------------------------------
-; section_origins — camera-relative origin (exact: computed in double) and
-; wrapped world origin (mod 65536, for animation phases) of a section.
-;   in:  rcx = SECT*, rdx = out (6 floats: rel xyz, world xyz)
-;   clobbers: rax, xmm0
+; xyz_origins — camera-relative origin (exact: computed in double) and
+; wrapped world origin (mod 65536, for animation phases) of a section,
+; into g_vec_tmp (rel xyz) and g_vec_tmp2 (world xyz).
+;   in:  ecx = cx, edx = sy, r8d = cz
+;   clobbers: rax, rcx, rdx, xmm0
 ; -----------------------------------------------------------------------------
-section_origins:
-    mov eax, [rcx + SECT.cx]
+xyz_origins:
+    mov eax, ecx
     shl eax, 5
     cvtsi2sd xmm0, eax
     subsd xmm0, [rel g_cam_pos]
     cvtsd2ss xmm0, xmm0
-    movss [rdx], xmm0
+    movss [rel g_vec_tmp], xmm0
     and eax, 0xFFFF
     cvtsi2ss xmm0, eax
-    movss [rdx + 12], xmm0
-    mov eax, [rcx + SECT.sy]
+    movss [rel g_vec_tmp2], xmm0
+    mov eax, edx
     shl eax, 5
     add eax, WORLD_MIN_Y
     cvtsi2sd xmm0, eax
     subsd xmm0, [rel g_cam_pos + 8]
     cvtsd2ss xmm0, xmm0
-    movss [rdx + 4], xmm0
+    movss [rel g_vec_tmp + 4], xmm0
     cvtsi2ss xmm0, eax
-    movss [rdx + 16], xmm0
-    mov eax, [rcx + SECT.cz]
+    movss [rel g_vec_tmp2 + 4], xmm0
+    mov eax, r8d
     shl eax, 5
     cvtsi2sd xmm0, eax
     subsd xmm0, [rel g_cam_pos + 16]
     cvtsd2ss xmm0, xmm0
-    movss [rdx + 8], xmm0
+    movss [rel g_vec_tmp + 8], xmm0
     and eax, 0xFFFF
     cvtsi2ss xmm0, eax
-    movss [rdx + 20], xmm0
+    movss [rel g_vec_tmp2 + 8], xmm0
+    mov dword [rel g_vec_tmp + 12], 0
+    ret
+
+; -----------------------------------------------------------------------------
+; sphere_in_frustum — is the section at g_vec_tmp (rel origin) inside the 5
+; frustum planes (bounding sphere)?
+;   out: eax = 1/0   clobbers: rax, rcx, xmm0-xmm3
+; -----------------------------------------------------------------------------
+sphere_in_frustum:
+    lea rcx, [rel g_vec_tmp]
+    movss xmm3, [rcx]
+    movss xmm0, [rcx + 4]
+    unpcklps xmm3, xmm0
+    movss xmm0, [rcx + 8]
+    movlhps xmm3, xmm0                  ; (x, y, z, 0)
+    movss xmm0, [rel c_half]
+    shufps xmm0, xmm0, 0
+    addps xmm3, xmm0                    ; centre
+    lea rax, [rel g_planes]
+    xor ecx, ecx
+.plane:
+    movaps xmm0, [rax + rcx]
+    mulps xmm0, xmm3
+    movaps xmm1, xmm0
+    shufps xmm1, xmm1, 0b01_01_01_01
+    addss xmm0, xmm1
+    movaps xmm1, [rax + rcx]
+    mulps xmm1, xmm3
+    shufps xmm1, xmm1, 0b10_10_10_10
+    addss xmm0, xmm1                    ; signed distance
+    addss xmm0, [rel c_radius]
+    xorps xmm1, xmm1
+    comiss xmm0, xmm1
+    jb .out
+    add ecx, 16
+    cmp ecx, 80
+    jb .plane
+    mov eax, 1
+    ret
+.out:
+    xor eax, eax
     ret
 
 ; -----------------------------------------------------------------------------
@@ -244,7 +307,7 @@ ENDPROC
 ; layers of every visible section.
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC world_render_draw, 32, rbx, rsi, rdi, r12, r13, r14, r15
+PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     xor eax, eax
     mov [rel g_world_visible], rax
     mov [rel g_world_drawn_quads], rax
@@ -282,59 +345,92 @@ PROC world_render_draw, 32, rbx, rsi, rdi, r12, r13, r14, r15
     GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 0, [rel g_quad_buffer]
     call block_textures_bind
 
-    ; ---- pass 1: cull, draw opaque, collect cutout / translucent ---------------------
-    xor r12d, r12d                      ; loaded column index
-.column:
-    cmp r12, [rel g_loaded_count]
+    ; ---- pass 1: visibility walk from the camera's section (cave culling) -------
+    ; Breadth-first over sections (DECISIONS D51): leave a section through
+    ; face d only if one of the faces it was entered through connects to d
+    ; (SECT.vis, the mesher's flood fill), never turn back against a direction
+    ; the path already took, and only go into sections inside the frustum.
+    ; A section reached by several paths keeps all their entry faces and
+    ; allowed directions. The camera's section and its 26 neighbours pass
+    ; everything. Visited sections with geometry are drawn (opaque now,
+    ; cutout / translucent collected for passes 2 and 3).
+    inc word [rel g_vis_stamp]
+    jnz .stamp_ok
+    inc word [rel g_vis_stamp]
+.stamp_ok:
+    mov qword [rel g_vis_visited], 0
+    lea rcx, [rel g_arena_frame]
+    INVOKE arena_alloc, rcx, MAX_WALK * WALK_SIZE, 16
+    test rax, rax
+    jz .pass2
+    mov r14, rax                        ; queue
+    xor r12d, r12d                      ; head
+    xor r13d, r13d                      ; tail
+    ; camera section
+    movsd xmm0, [rel g_cam_pos]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si rax, xmm0
+    sar rax, 5
+    mov [LOCAL(W_CX)], eax
+    movsd xmm0, [rel g_cam_pos + 16]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si rax, xmm0
+    sar rax, 5
+    mov [LOCAL(W_CZ)], eax
+    movsd xmm0, [rel g_cam_pos + 8]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si rax, xmm0
+    sub rax, WORLD_MIN_Y
+    sar rax, 5
+    cmp rax, 0
+    jge .sy_lo
+    xor eax, eax
+.sy_lo:
+    cmp rax, SECTIONS_PER_COLUMN - 1
+    jle .sy_hi
+    mov eax, SECTIONS_PER_COLUMN - 1
+.sy_hi:
+    mov esi, eax
+    mov [LOCAL(W_CSY)], eax
+    mov ecx, [LOCAL(W_CX)]
+    mov edx, [LOCAL(W_CZ)]
+    call world_column
+    test rax, rax
+    jz .pass2                           ; camera column not loaded yet
+    mov [r14 + WALK.col], rax
+    mov [r14 + WALK.sy], sil
+    mov byte [r14 + WALK.entry], 0x40
+    mov byte [r14 + WALK.dirs], 0
+    mov cx, [rel g_vis_stamp]
+    mov [rax + COLUMN.vstamp + rsi * 2], cx
+    mov dword [rax + COLUMN.vqueue + rsi * 4], 0
+    mov r13d, 1
+.walk:
+    cmp r12d, r13d
     jae .pass2
-    mov rax, [rel g_loaded]
-    mov rsi, [rax + r12 * 8]            ; COLUMN*
-    inc r12
+    mov rax, r12
+    shl rax, 4
+    add rax, r14                        ; entry
+    inc r12d
+    mov rsi, [rax + WALK.col]
+    movzx edi, byte [rax + WALK.sy]
+    movzx ecx, byte [rax + WALK.entry]
+    mov [LOCAL(W_ENTRY)], ecx
+    movzx ecx, byte [rax + WALK.dirs]
+    mov [LOCAL(W_DIRS)], ecx
+    inc qword [rel g_vis_visited]
+    ; ---- draw it (if meshed with quads) ----
     cmp dword [rsi + COLUMN.state], COL_READY
-    jne .column
-    mov rdi, [rsi + COLUMN.geo_mask]    ; sections with quads
-.next:
-    test rdi, rdi
-    jz .column
-    bsf rax, rdi
-    btr rdi, rax
-    mov r13, [rsi + COLUMN.sections + rax * 8]   ; SECT*
-    mov rcx, r13
-    lea rdx, [rel g_vec_tmp]            ; rel xyz + world xyz (spills into tmp2)
-    call section_origins
-    ; sphere centre = rel + 16
-    lea rcx, [rel g_vec_tmp]
-    movss xmm3, [rcx]
-    movss xmm0, [rcx + 4]
-    unpcklps xmm3, xmm0
-    movss xmm0, [rcx + 8]
-    movlhps xmm3, xmm0                  ; (x, y, z, 0)
-    movss xmm0, [rel c_half]
-    shufps xmm0, xmm0, 0
-    addps xmm3, xmm0
-    lea rax, [rel g_planes]
-    xor ecx, ecx
-.plane:
-    movaps xmm0, [rax + rcx]
-    mulps xmm0, xmm3
-    movaps xmm1, xmm0
-    shufps xmm1, xmm1, 0b01_01_01_01
-    addss xmm0, xmm1
-    movaps xmm1, [rax + rcx]
-    mulps xmm1, xmm3
-    shufps xmm1, xmm1, 0b10_10_10_10
-    addss xmm0, xmm1                    ; signed distance
-    addss xmm0, [rel c_radius]
-    xorps xmm1, xmm1
-    comiss xmm0, xmm1
-    jb .next                            ; completely outside this plane
-    add ecx, 16
-    cmp ecx, 80
-    jb .plane
-
+    jne .expand
+    bt qword [rsi + COLUMN.geo_mask], rdi
+    jnc .expand
+    mov r15, [rsi + COLUMN.sections + rdi * 8]   ; SECT*
+    INVOKE xyz_origins, [rsi + COLUMN.cx], rdi, [rsi + COLUMN.cz]
+    call sphere_in_frustum
+    test eax, eax
+    jz .expand                          ; (the start section can be outside)
     inc qword [rel g_world_visible]
-    ; remember the section for the later passes
-    mov eax, [r13 + SECT.quad_cutout]
+    mov eax, [r15 + SECT.quad_cutout]
     test eax, eax
     jz .no_cut
     mov rax, [rel g_cut_count]
@@ -347,12 +443,12 @@ PROC world_render_draw, 32, rbx, rsi, rdi, r12, r13, r14, r15
     movups [rax], xmm0
     movq xmm0, [rcx + 16]
     movq [rax + 16], xmm0
-    mov [rax + 24], r13
+    mov [rax + 24], r15
     inc qword [rel g_cut_count]
 .no_cut:
-    mov eax, [r13 + SECT.quad_count]
-    sub eax, [r13 + SECT.quad_opaque]
-    sub eax, [r13 + SECT.quad_cutout]
+    mov eax, [r15 + SECT.quad_count]
+    sub eax, [r15 + SECT.quad_opaque]
+    sub eax, [r15 + SECT.quad_cutout]
     jz .no_trans
     mov rax, [rel g_trans_count]
     cmp rax, MAX_PASS_ENTRIES
@@ -364,17 +460,176 @@ PROC world_render_draw, 32, rbx, rsi, rdi, r12, r13, r14, r15
     movups [rax], xmm0
     movq xmm0, [rcx + 16]
     movq [rax + 16], xmm0
-    mov [rax + 24], r13
+    mov [rax + 24], r15
     inc qword [rel g_trans_count]
 .no_trans:
-    mov r9d, [r13 + SECT.quad_opaque]
+    mov r9d, [r15 + SECT.quad_opaque]
     test r9d, r9d
-    jz .next
-    mov r8d, [r13 + SECT.quad_first]
+    jz .expand
+    mov r8d, [r15 + SECT.quad_first]
     lea rdx, [rel g_vec_tmp]
     mov ecx, ebx
     call draw_range
-    jmp .next
+    ; ---- expand to the 6 neighbours ----
+.expand:
+    ; visibility bits of this section (unknown or empty: everything passes;
+    ; also the sections right around the camera, where 32-block sections are
+    ; too coarse for the walk's rules)
+    mov eax, 0x7FFF
+    mov ecx, [rsi + COLUMN.cx]
+    sub ecx, [LOCAL(W_CX)]
+    add ecx, 1
+    cmp ecx, 2
+    ja .far
+    mov ecx, [rsi + COLUMN.cz]
+    sub ecx, [LOCAL(W_CZ)]
+    add ecx, 1
+    cmp ecx, 2
+    ja .far
+    mov ecx, edi
+    sub ecx, [LOCAL(W_CSY)]
+    add ecx, 1
+    cmp ecx, 2
+    jbe .have_vis
+.far:
+    cmp dword [rsi + COLUMN.state], COL_MESHED
+    jb .have_vis
+    mov rcx, [rsi + COLUMN.sections + rdi * 8]
+    test rcx, rcx
+    jz .have_vis
+    movzx eax, word [rcx + SECT.vis]
+.have_vis:
+    mov [LOCAL(W_VIS)], eax
+    mov dword [LOCAL(W_D)], 0
+.dir:
+    mov ecx, [LOCAL(W_D)]
+    cmp ecx, 6
+    jae .walk
+    ; never against a direction already taken
+    mov eax, ecx
+    xor eax, 1                          ; opposite face
+    bt dword [LOCAL(W_DIRS)], eax
+    jc .dir_next
+    ; through this section from any entry face to face d?
+    mov eax, [LOCAL(W_ENTRY)]
+    test eax, 0x40
+    jnz .passable                       ; the start section
+    xor edx, edx                        ; faces connected to d
+    xor r8d, r8d                        ; e
+.conn:
+    imul r9d, r8d, 6
+    add r9d, ecx
+    lea r10, [rel vis_pair_bit]
+    movzx r9d, byte [r10 + r9]
+    cmp r9d, 15
+    jae .conn_next                      ; (e == d)
+    bt dword [LOCAL(W_VIS)], r9d
+    jnc .conn_next
+    bts edx, r8d
+.conn_next:
+    inc r8d
+    cmp r8d, 6
+    jb .conn
+    test eax, edx
+    jnz .passable
+    jmp .dir_next
+.passable:
+    ; neighbour section
+    mov r8d, [rsi + COLUMN.cx]
+    mov r9d, [rsi + COLUMN.cz]
+    mov r10d, edi                       ; sy
+    cmp ecx, 0
+    jne .d1
+    dec r8d
+    jmp .lookup
+.d1:
+    cmp ecx, 1
+    jne .d2
+    inc r8d
+    jmp .lookup
+.d2:
+    cmp ecx, 2
+    jne .d3
+    dec r10d
+    js .dir_next
+    mov r15, rsi
+    jmp .have_col
+.d3:
+    cmp ecx, 3
+    jne .d4
+    inc r10d
+    cmp r10d, SECTIONS_PER_COLUMN
+    jae .dir_next
+    mov r15, rsi
+    jmp .have_col
+.d4:
+    cmp ecx, 4
+    jne .d5
+    dec r9d
+    jmp .lookup
+.d5:
+    inc r9d
+.lookup:
+    mov [LOCAL(W_NSY)], r10d
+    mov ecx, r8d
+    mov edx, r9d
+    call world_column
+    test rax, rax
+    jz .dir_next                        ; not loaded
+    mov r15, rax
+    mov r10d, [LOCAL(W_NSY)]
+.have_col:
+    mov [LOCAL(W_NSY)], r10d
+    mov ax, [rel g_vis_stamp]
+    cmp [r15 + COLUMN.vstamp + r10 * 2], ax
+    jne .new_section
+    ; reached again: if it is still waiting in the queue, remember this
+    ; entry face too (a section can be seen through any of its entries)
+    mov eax, [r15 + COLUMN.vqueue + r10 * 4]
+    cmp eax, r12d
+    jb .dir_next                        ; already processed
+    shl rax, 4
+    add rax, r14
+    mov ecx, [LOCAL(W_D)]
+    xor ecx, 1
+    bts dword [rax + WALK.entry], ecx   ; (entry is the low byte)
+    ; and allow what this path allows: every path to a section has the same
+    ; length (no turning back), so all of them arrive while it is queued
+    mov edx, [LOCAL(W_DIRS)]
+    xor ecx, 1                          ; d
+    bts edx, ecx
+    and [rax + WALK.dirs], dl
+    jmp .dir_next
+.new_section:
+    mov [r15 + COLUMN.vstamp + r10 * 2], ax
+    mov dword [r15 + COLUMN.vqueue + r10 * 4], 0   ; (not queued)
+    INVOKE xyz_origins, [r15 + COLUMN.cx], r10, [r15 + COLUMN.cz]
+    call sphere_in_frustum
+    test eax, eax
+    jz .dir_next
+    cmp r13d, MAX_WALK
+    jae .dir_next
+    mov r10d, [LOCAL(W_NSY)]
+    mov [r15 + COLUMN.vqueue + r10 * 4], r13d
+    mov rax, r13
+    shl rax, 4
+    add rax, r14
+    inc r13d
+    mov [rax + WALK.col], r15
+    mov ecx, [LOCAL(W_NSY)]
+    mov [rax + WALK.sy], cl
+    mov ecx, [LOCAL(W_D)]
+    xor ecx, 1
+    mov r8d, 1
+    shl r8d, cl                         ; entry face = opposite of d
+    xor ecx, 1
+    mov [rax + WALK.entry], r8b
+    mov edx, [LOCAL(W_DIRS)]
+    bts edx, ecx
+    mov [rax + WALK.dirs], dl
+.dir_next:
+    inc dword [LOCAL(W_D)]
+    jmp .dir
 
     ; ---- pass 2: cutout (alpha-tested) -----------------------------------------------------
 .pass2:
