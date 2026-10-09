@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 6): 🎨 DESIGN — Savanna: DONE** (Windows CI: see below)
+**Milestone 10 (part 6): 🎨 DESIGN — Savanna: DONE** (Windows CI green: run #30)
 
 Next: **Milestone 10, part 7: the next biome**. Candidates are badlands,
 jungle, swamp, dark forest, meadow, snowy tundra or river
