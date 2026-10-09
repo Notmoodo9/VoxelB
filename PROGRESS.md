@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 5): 🎨 DESIGN — Taiga + snowy taiga: DONE** (Windows CI: see below)
+**Milestone 10 (part 5): 🎨 DESIGN — Taiga + snowy taiga: DONE** (Windows CI green: run #28)
 
 Next: **Milestone 10, part 6: the next biome**. Candidates are savanna,
 badlands, dark forest, meadow, snowy tundra or river
