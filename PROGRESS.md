@@ -2,7 +2,7 @@
 
 ## Current state
 **Milestone 6: Infinite streaming: load/unload around the player on worker
-threads, no stutter: DONE** (Windows CI: see below)
+threads, no stutter: DONE** (Windows CI green: run #11)
 
 The owner reports that the game runs well on a mid-range PC with integrated
 graphics. This is the first report from real GPU hardware.
@@ -58,6 +58,14 @@ textures are creative content and need a Design Interview first.
   * GPU quads fall from 107k to 932 once the hill area is left, so
     unloading frees GPU memory;
   * no errors and a clean exit.
+
+### Verified on Windows (GitHub Actions run #11, AMD EPYC 7763 × 4, Mesa llvmpipe GL 4.6)
+* Debug and release smoke tests pass; every self test passes; clean exit.
+* Release: full view (797 columns) complete after 1068 ms. `stream_update`
+  averages 44–181 µs per frame, with a 568 µs maximum while loading.
+  Uploads take at most 77 µs per frame. Meshing averages 1.9 ms per
+  column, generation 0.25 ms.
+* About 21 FPS while looking at 107k quads on software GL.
 
 ### Performance (llvmpipe software rendering, render distance 16)
 | | |
