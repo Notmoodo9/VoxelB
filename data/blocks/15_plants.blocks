@@ -57,3 +57,10 @@ sway     = 1
 shape    = plant
 textures = cactus_flower
 render   = cutout
+
+# taiga (design/biomes/taiga.md)
+[block berry_bush]
+shape    = plant
+textures = berry_bush
+render   = cutout
+sway     = 1

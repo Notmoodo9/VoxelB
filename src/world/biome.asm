@@ -147,6 +147,7 @@ v_rock:         db "rock", 0
 v_arch:         db "arch", 0
 v_fossil:       db "fossil", 0
 v_palm:         db "palm", 0
+v_conifer:      db "conifer", 0
 k_t_base_r:     db "base_radius", 0
 k_t_roots:      db "roots", 0
 v_giant:        db "giant", 0
@@ -235,8 +236,8 @@ climate_settings:
     dq k_contrast,    T_FLOAT,    g_contrast
     dq 0
 kind_names:     dq v_round, v_branching, v_bush, v_giant, v_fallen, v_stump
-                dq v_cactus, v_rock, v_arch, v_fossil, v_palm
-%define KIND_COUNT 11
+                dq v_cactus, v_rock, v_arch, v_fossil, v_palm, v_conifer
+%define KIND_COUNT 12
 
 align 4
 c_one:          dd 1.0

@@ -1628,6 +1628,39 @@ def make_desert(out):
     out["bone_block_top"] = rgba(top)
 
 
+def make_taiga(out):
+    # spruce needle floor: dark brown with short orange-brown needle strokes
+    r = rng("spruce_needle_floor")
+    nf = speckle("4e3420", r, cells=4, spread=0.2)
+    for _ in range(26):
+        x, y = r.integers(0, N, 2)
+        c = ramp(["b0682a", "8a5226", "c88838"][r.integers(3)], 3)[2]
+        dx, dy = [(1, 0), (0, 1), (1, 1), (1, -1)][r.integers(4)]
+        nf[y, x] = c
+        nf[(y + dy) % N, (x + dx) % N] = c * 0.85
+    out["spruce_needle_floor_top"] = rgba(nf)
+    dirt = out["dirt"]
+    dirt = dirt[0] if isinstance(dirt, list) else dirt
+    out["spruce_needle_floor_side"] = rgba(fringe_side(dirt[..., :3], nf, rng("snf_side"), (2, 4)))
+    # berry bush: a low round leafy bush with red berries
+    img = np.zeros((N, N, 4))
+    r = rng("berry_bush")
+    lp = ramp("3c8a34", 5, spread=0.22)
+    yy, xx = np.mgrid[0:N, 0:N]
+    d = np.sqrt(((xx - 7.5) / 7.5) ** 2 + ((yy - 10.0) / 6.0) ** 2)
+    mask = (d < 1.0) & (r.random((N, N)) < 0.85)
+    v = noise(r, 4, 2)
+    img[mask, :3] = shade(stretch(v)[mask] * 0.999, lp)
+    img[mask, 3] = 1.0
+    for _ in range(9):
+        x = int(r.integers(2, 14)); y = int(r.integers(6, 15))
+        if img[y, x, 3] > 0:
+            img[y, x, :3] = hexrgb("e0242a"); img[y, x, 3] = 1.0
+            if x + 1 < N:
+                img[y, x + 1, :3] = hexrgb("a01418"); img[y, x + 1, 3] = 1.0
+    out["berry_bush"] = img
+
+
 def build_all():
     out = {}
     make_terrain(out)
@@ -1641,6 +1674,7 @@ def build_all():
     make_plants(out)
     make_forest(out)
     make_desert(out)
+    make_taiga(out)
     return out
 
 

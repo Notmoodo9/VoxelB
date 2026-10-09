@@ -20,7 +20,8 @@ yet; each item gets its own doc in `design/` when we interview it.
 | todo | Transition biomes (forest edge, desert scrubland, …) | M10 | from the biome system interview |
 | done | Desert + oasis | M10 | `design/biomes/desert.md` |
 | todo | Hot/dry biomes: savanna, badlands/mesa, jungle, swamp | M10 | |
-| todo | Cold biomes: taiga, snowy tundra, ice spikes, glaciers, frozen ocean | M10 | |
+| done | Taiga + snowy taiga | M10 | `design/biomes/taiga.md` |
+| todo | Cold biomes: snowy tundra, ice spikes, glaciers, frozen ocean | M10 | |
 | todo | Fantasy biomes: mushroom fields, crystal caves, floating islands, glowing forests | M10 | |
 | todo | Trees and vegetation per biome | M10 | |
 | done | Block set v1 and texture style | M7 | `design/blocks/block_set.md` (262 blocks, 16x16 vibrant shaded) |

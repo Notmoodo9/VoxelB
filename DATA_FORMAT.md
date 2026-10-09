@@ -270,7 +270,7 @@ Temperature and humidity are 0..1.
 
 | Key | Meaning |
 |---|---|
-| `kind` | `round` (trunk + round crown), `branching` (trunk, diagonal branches with leaf clusters, crown), `bush` (log stub + low leaf clump), `giant` (tapering flared trunk, arching roots, heavy branches with leaf clusters, crown), `fallen` (a log lying on level ground, length = `height`), `stump` (a short upright log), `cactus` (column of `height`, `branches` arms, `leaves` = flower on top with `chance`), `rock` (discs shrinking upward from `radius`, `height` tall), `arch` (a half-ring of `radius` with legs in the ground), `fossil` (a half-buried spine `height` long with ribs, of `log`), `palm` (curved trunk of `height`, 8 drooping fronds of `radius`) |
+| `kind` | `round` (trunk + round crown), `branching` (trunk, diagonal branches with leaf clusters, crown), `bush` (log stub + low leaf clump), `giant` (tapering flared trunk, arching roots, heavy branches with leaf clusters, crown), `fallen` (a log lying on level ground, length = `height`), `stump` (a short upright log), `cactus` (column of `height`, `branches` arms, `leaves` = flower on top with `chance`), `rock` (discs shrinking upward from `radius`, `height` tall; `leaves` = optional block on its upper half), `arch` (a half-ring of `radius` with legs in the ground), `fossil` (a half-buried spine `height` long with ribs, of `log`), `palm` (curved trunk of `height`, 8 drooping fronds of `radius`), `conifer` (trunk of `height`, tiers of `leaves` shrinking from `radius` to a tip) |
 | `log`, `leaves` | blocks |
 | `height` | trunk height range `a, b` |
 | `radius` | crown radius range |

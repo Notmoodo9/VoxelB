@@ -120,7 +120,7 @@ dirs:           dd 1.0, 0.0,  0.7071, 0.7071,  0.0, 1.0,  -0.7071, 0.7071
 
 align 8
 special_gen:    dq gen_giant, gen_fallen, gen_stump, gen_cactus, gen_rock
-                dq gen_arch, gen_fossil, gen_palm
+                dq gen_arch, gen_fossil, gen_palm, gen_conifer
 
 section .text
 
@@ -2717,6 +2717,25 @@ PROC gen_rock, GR_LOCALS, rsi, r12, r13
     mov r8d, [LOCAL(GR_Z)]
     add r8d, r12d
     mov r9d, [rsi + TREE.log]
+    ; upper half: the `leaves` block if set (moss on top of boulders)
+    mov eax, [LOCAL(GR_YI)]
+    add eax, eax
+    cmp eax, [LOCAL(GR_H)]
+    jl .rock_low
+    mov eax, [rsi + TREE.leaves]
+    test eax, eax
+    jz .rock_low
+    call rng
+    comiss xmm0, [rel c_half]
+    jb .rock_low
+    mov r9d, [rsi + TREE.leaves]
+.rock_low:
+    mov ecx, [LOCAL(GR_X)]
+    add ecx, r13d
+    mov edx, [LOCAL(GR_Y)]
+    add edx, [LOCAL(GR_YI)]
+    mov r8d, [LOCAL(GR_Z)]
+    add r8d, r12d
     mov r10d, PUT_SOLID
     call put_block
 .dx_next:
@@ -3104,3 +3123,133 @@ ENDPROC
 
 section .rdata
 c_palm_off:     dd 0.4
+
+section .text
+; -----------------------------------------------------------------------------
+; gen_conifer — a spruce: a trunk of `height`, needles from a quarter of the
+; way up in discs whose radius shrinks linearly from `radius` to 0 at the
+; tip; every second layer is one block smaller (layered tiers); a needle
+; block caps the tip.   (rbx = FCTX*, edi = rng)
+;   in:  ecx = x, edx = y (first air), r8d = z, r9 = TREE*
+; -----------------------------------------------------------------------------
+%define GN_X        0
+%define GN_Y        4
+%define GN_Z        8
+%define GN_H        12
+%define GN_R0       16
+%define GN_R        20
+%define GN_RI       24
+%define GN_YI       28
+%define GN_B        32                  ; first needle layer
+%define GN_LOCALS   48
+PROC gen_conifer, GN_LOCALS, rsi, r12, r13
+    mov rsi, r9
+    mov [LOCAL(GN_X)], ecx
+    mov [LOCAL(GN_Y)], edx
+    mov [LOCAL(GN_Z)], r8d
+    mov ecx, [rsi + TREE.height]
+    mov edx, [rsi + TREE.height + 4]
+    call rand_int
+    mov [LOCAL(GN_H)], eax
+    call rng
+    movss xmm1, [rsi + TREE.radius + 4]
+    subss xmm1, [rsi + TREE.radius]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.radius]
+    movss [LOCAL(GN_R0)], xmm1
+    mov eax, [LOCAL(GN_H)]
+    shr eax, 2
+    inc eax
+    mov [LOCAL(GN_B)], eax
+    ; trunk (ends 3 below the tip, so the top is a cone of needles)
+    xor r12d, r12d
+.trunk:
+    mov eax, [LOCAL(GN_H)]
+    sub eax, 3
+    cmp r12d, eax
+    jge .needles
+    mov ecx, [LOCAL(GN_X)]
+    mov edx, [LOCAL(GN_Y)]
+    add edx, r12d
+    mov r8d, [LOCAL(GN_Z)]
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_LOG
+    call put_block
+    inc r12d
+    jmp .trunk
+.needles:
+    mov eax, [LOCAL(GN_B)]
+    mov [LOCAL(GN_YI)], eax
+.layer:
+    mov eax, [LOCAL(GN_YI)]
+    cmp eax, [LOCAL(GN_H)]
+    jg .done
+    ; r = R0 * (H - y) / (H - B), minus 0.8 on odd layers
+    mov ecx, [LOCAL(GN_H)]
+    sub ecx, eax
+    cvtsi2ss xmm0, ecx
+    mov ecx, [LOCAL(GN_H)]
+    sub ecx, [LOCAL(GN_B)]
+    cvtsi2ss xmm1, ecx
+    divss xmm0, xmm1
+    mulss xmm0, [LOCAL(GN_R0)]
+    test eax, 1
+    jz .even
+    subss xmm0, [rel c_tier]
+.even:
+    maxss xmm0, [rel c_zero]
+    movss [LOCAL(GN_R)], xmm0
+    addss xmm0, [rel c_half]
+    cvttss2si eax, xmm0
+    mov [LOCAL(GN_RI)], eax
+    mov r12d, eax
+    neg r12d
+.dz:
+    mov r13d, [LOCAL(GN_RI)]
+    neg r13d
+.dx:
+    mov eax, r13d
+    imul eax, eax
+    mov ecx, r12d
+    imul ecx, ecx
+    add eax, ecx
+    cvtsi2ss xmm0, eax
+    movss xmm1, [LOCAL(GN_R)]
+    mulss xmm1, xmm1
+    addss xmm1, [rel c_g_disc]
+    comiss xmm0, xmm1
+    ja .dx_next
+    ; ragged edge
+    movss xmm1, [LOCAL(GN_R)]
+    subss xmm1, [rel c_one]
+    mulss xmm1, xmm1
+    comiss xmm0, xmm1
+    jbe .put
+    call rng
+    comiss xmm0, [rsi + TREE.gaps]
+    jb .dx_next
+.put:
+    mov ecx, [LOCAL(GN_X)]
+    add ecx, r13d
+    mov edx, [LOCAL(GN_Y)]
+    add edx, [LOCAL(GN_YI)]
+    mov r8d, [LOCAL(GN_Z)]
+    add r8d, r12d
+    mov r9d, [rsi + TREE.leaves]
+    mov r10d, PUT_LEAVES
+    call put_block
+.dx_next:
+    inc r13d
+    cmp r13d, [LOCAL(GN_RI)]
+    jle .dx
+    inc r12d
+    cmp r12d, [LOCAL(GN_RI)]
+    jle .dz
+    inc dword [LOCAL(GN_YI)]
+    jmp .layer
+.done:
+    RETURN
+ENDPROC
+
+section .rdata
+c_tier:         dd 0.8

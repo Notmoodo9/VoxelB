@@ -150,3 +150,35 @@ log    = palm_log
 leaves = palm_leaves
 height = 6, 10
 radius = 3, 4.5
+
+# --- taiga (design/biomes/taiga.md) ----------------------------------------
+#   conifer: trunk of `height`, needles from a quarter up in tiers shrinking
+#   from `radius` to a tip (every second layer smaller)
+[tree spruce]
+kind      = conifer
+log       = spruce_log
+leaves    = spruce_leaves
+height    = 8, 16
+radius    = 2.5, 3.2
+leaf_gaps = 0.25
+
+[tree snowy_spruce]
+kind      = conifer
+log       = spruce_log
+leaves    = spruce_snowy_leaves
+height    = 7, 14
+radius    = 2.3, 3.0
+leaf_gaps = 0.25
+
+#   rock with `leaves` as the block on its upper half (moss)
+[tree mossy_boulder]
+kind   = rock
+log    = cobblestone
+leaves = mossy_cobblestone
+radius = 1.5, 2.5
+height = 2, 3
+
+[tree fallen_spruce]
+kind   = fallen
+log    = spruce_log
+height = 4, 7

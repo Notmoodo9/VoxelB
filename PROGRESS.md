@@ -1,11 +1,55 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 4): 🎨 DESIGN — Desert + oasis: DONE** (Windows CI green: run #26)
+**Milestone 10 (part 5): 🎨 DESIGN — Taiga + snowy taiga: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 5: the next biome**. Candidates are savanna or
-badlands (hot), taiga (cold), dark forest, meadow or river
+Next: **Milestone 10, part 6: the next biome**. Candidates are savanna,
+badlands, dark forest, meadow, snowy tundra or river
 (`design/BACKLOG.md`). It starts with its design interview.
+
+---
+
+## Milestone 10, part 5 — done (2026-10-09)
+
+### Design interview
+Two rounds plus approval: `design/biomes/taiga.md`.
+* A large, dense, cool-green taiga with tall layered conical spruces.
+* Ferns, grass, red berry bushes, mossy boulders and needle litter.
+* A colder snowy taiga beside it.
+
+### What was built
+* **Taiga** (`data/biomes/50_taiga.biome`) and **snowy taiga**
+  (`51_snowy_taiga.biome`). Together they cover ~27% of land near the
+  origin; the undesigned "none" land is down to ~31%.
+* **Conifer trees** (D62): layered spruce cones; snowy spruces use
+  `spruce_snowy_leaves`.
+* **New blocks**: `spruce_needle_floor` (needle litter), `berry_bush`.
+* **Mossy boulders**: rocks can take a second block for their upper half.
+* **Fallen spruces.**
+
+### How to see it (seed 20261009)
+* Taiga over a coast: `voxelb.exe --pos 384 190 -200 --look 0 -20`.
+* Inside the taiga: `voxelb.exe --pos 384 135 -230 --look 330 0`.
+* Snowy taiga beside the taiga:
+  `voxelb.exe --pos 448 200 -390 --look 0 -25`.
+
+### Bugs found and fixed while testing
+* Spruce trunks poked out above the needles. The trunk now stops 3 below
+  the tip.
+
+### Verified
+* Debug and release headless tests pass.
+* Screenshots:
+  * the taiga from the air;
+  * among the spruces;
+  * the snowy taiga next to the taiga.
+
+### Known issues
+* The snow edge between taiga and snowy taiga is a sharp line.
+
+### Performance
+Unchanged (generation ~12 ms per column, meshing ~10 ms). Dense taiga
+views draw ~900k quads, about 1.3–1.5 FPS on software GL.
 
 ---
 

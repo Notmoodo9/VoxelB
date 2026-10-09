@@ -1,0 +1,20 @@
+# Snowy taiga (design/biomes/taiga.md): the colder side of the taiga with
+# snow on the ground, spruces with snowy needles and fewer plants.
+
+[biome snowy_taiga]
+temperature   = 0.00, 0.15
+humidity      = 0.35, 1.00
+height        = 98, 300
+grass_color   = 6AA88A
+foliage_color = 3C7050
+top_block     = snow
+
+plant = fern, 0.04
+plant = berry_bush, 0.003
+
+tree         = snowy_spruce, 1
+tree_density = 0.02
+
+bush         = mossy_boulder, 2
+bush         = fallen_spruce, 1
+bush_density = 0.0008

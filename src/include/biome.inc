@@ -22,6 +22,7 @@
 %define TREE_ARCH       8               ; a half-ring with legs into the ground
 %define TREE_FOSSIL     9               ; a half-buried spine with ribs
 %define TREE_PALM       10              ; leaning curved trunk, drooping fronds
+%define TREE_CONIFER    11              ; tall trunk with tiers of needles to a tip
 
 ; per-chunk blend map: biome samples every 16 blocks from -64 to +96 around
 ; the chunk, blurred (tent filter, radius 32) into points from -32 to +64

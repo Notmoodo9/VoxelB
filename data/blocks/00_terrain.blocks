@@ -49,3 +49,7 @@ textures = side: cactus, end: cactus_top
 
 [block bone_block]
 textures = side: bone_block, end: bone_block_top
+
+# taiga: spruce needles over dirt near the trunks
+[block spruce_needle_floor]
+textures = side: spruce_needle_floor_side, top: spruce_needle_floor_top, bottom: dirt

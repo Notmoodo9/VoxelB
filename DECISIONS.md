@@ -686,3 +686,11 @@ use 128-block cells with only bluebells, so small groves still get carpets.
   pools. A per-biome `pond_slope` lets oasis pools cut into uneven ground,
   and ponds may now sit at beach height, as long as the water stays at or
   above sea level.
+
+## D62 — Conifers and the cold biomes (M10 part 5)
+`conifer` trees stack needle discs whose radius falls linearly from the
+crown radius to 0 at the tip, with every second layer 0.8 smaller, for the
+layered spruce look. The trunk stops 3 below the tip, so the top is
+needles. Snowy taiga is a separate colder biome (temperature 0–0.15) with
+snow as its top block and `spruce_snowy_leaves`. Rocks can take a second
+block for their upper half (mossy cobblestone boulders).

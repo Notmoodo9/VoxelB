@@ -1,0 +1,28 @@
+# Taiga (design/biomes/taiga.md): large, dense, cool-green spruce forests
+# with ferns, grass, red berry bushes, mossy boulders and needle litter.
+
+[biome taiga]
+temperature   = 0.15, 0.38
+humidity      = 0.35, 1.00
+height        = 98, 260
+grass_color   = 4E9E5A
+foliage_color = 2F6E3E
+
+plant = fern, 0.20
+plant = short_grass, 0.15
+plant = berry_bush, 0.015
+
+# a spruce every ~6 blocks
+tree         = spruce, 1
+tree_density = 0.028
+
+# mossy boulders (~1 per 50 x 50) and fallen spruces
+bush         = mossy_boulder, 2
+bush         = fallen_spruce, 1
+bush_density = 0.0012
+
+litter_block  = spruce_needle_floor
+litter_radius = 2
+litter_chance = 0.7
+shade_plant   = fern, 0.08
+shade_plant   = brown_mushroom, 0.006
