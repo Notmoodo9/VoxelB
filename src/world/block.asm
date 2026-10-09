@@ -129,6 +129,7 @@ PROC block_register, 0, rbx, rsi, rdi
     lea rcx, [rel g_block_opaque]
     mov byte [rcx + rbx], 1
     inc dword [rel g_block_count]
+%if BUILD_DEBUG
     mov ecx, LOG_LEVEL_DEBUG
     call log_begin
     lea rcx, [rel str_registered]
@@ -141,6 +142,7 @@ PROC block_register, 0, rbx, rsi, rdi
     mov ecx, ebx
     call log_append_dec
     call log_end
+%endif
     mov eax, ebx
     RETURN
 .fail:

@@ -2,7 +2,7 @@
 
 ## Current state
 **Milestone 5: Chunk/section data structures (palette compression), flat
-test world, mesher, render: DONE** (pending green Windows CI)
+test world, mesher, render: DONE** (Windows CI green: run #9)
 
 Next: **Milestone 6: Infinite streaming: load/unload around the player on
 worker threads, no stutter.**
@@ -63,6 +63,16 @@ worker threads, no stutter.**
   steps, pillars spanning several sections, no missing or inverted faces.
   The overlay reads `ground below: debug_grass at y 99` at the start point.
 * Clean exit (code 0).
+
+### Verified on Windows (GitHub Actions, AMD EPYC 7763 × 4, Mesa llvmpipe GL 4.6)
+* CI run https://github.com/Notmoodo9/VoxelB/actions/runs/37862551347 is
+  green. Both smoke tests require the self test (now including sections and
+  the mesher) and the world upload.
+* The same world as locally (107,924 quads, 1750 sections with geometry):
+  generation **27 ms** wall (189 µs/column avg), meshing **489 ms** wall
+  (275 µs/section avg, max 12.4 ms), about 20 FPS on llvmpipe, clean exit.
+* Fixed afterwards: the "block registered" debug lines also appeared in
+  release logs (a hand-built log line without a debug-only guard).
 
 ### Performance (4-core Xeon 2.8 GHz; rendering on llvmpipe, no GPU)
 | Measure | Value |
