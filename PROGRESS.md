@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 3): 🎨 DESIGN — Birch grove: DONE** (Windows CI: see below)
+**Milestone 10 (part 3): 🎨 DESIGN — Birch grove: DONE** (Windows CI green: run #24)
 
 Next: **Milestone 10, part 4: the next biome**. Candidates are dark
 forest, meadow, river, or the first hot/dry or cold biome
