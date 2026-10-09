@@ -2,7 +2,7 @@
 
 ## Current state
 **Milestone 10 (part 1): 🎨 DESIGN — Biome system + plains: DONE**
-(Windows CI: see below)
+(Windows CI green: run #20)
 
 Milestone 10 builds the biomes one at a time (AGENTS.md §1a). Part 1 is
 the biome engine and the first biome, plains.
