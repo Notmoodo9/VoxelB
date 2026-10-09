@@ -16,6 +16,8 @@
 ; Public API:
 ;   world_render_init() -> eax 1/0      world_render_shutdown()
 ;   world_render_draw()                 (camera matrices must be current)
+;   tint_upload(COLUMN*)                copy a column's biome colours into the
+;                                       tint map (main thread, when it becomes ready)
 ;   g_world_visible, g_world_drawn_quads, g_world_gpu_bytes, g_world_draws
 ; =============================================================================
 %include "macros.inc"
@@ -25,7 +27,7 @@
 %include "shader.inc"
 %include "world_api.inc"
 
-global world_render_init, world_render_draw, world_render_shutdown
+global world_render_init, world_render_draw, world_render_shutdown, tint_upload
 global g_world_visible, g_world_drawn_quads, g_world_gpu_bytes, g_quad_buffer
 global g_world_draws, g_vis_visited
 
@@ -64,6 +66,7 @@ endstruc
 %define U_ORIGIN_WORLD      3
 %define U_TIME              4
 %define U_PASS              5
+%define TINT_SIZE           1024        ; tint map texels per side (4 blocks each)
 
 section .rdata
 str_vs:         db "shaders/chunk.vert", 0
@@ -72,6 +75,7 @@ align 4
 c_half:         dd 16.0                 ; section half size
 c_radius:       dd 27.7128129           ; 16 * sqrt(3)
 c_million:      dd 1000000.0
+c_tint_default: dd 0xFF808080           ; factor 1.0
 align 8
 c_wrap_us:      dq 3600000000           ; animation clock wraps hourly
 
@@ -80,6 +84,7 @@ alignb 4
 g_world_prog:       resd 1
 g_world_vao:        resd 1
 g_quad_buffer:      resd 1
+g_tint_tex:         resd 1              ; biome tint map (2D array, 2 layers)
 alignb 8
 g_world_visible:    resq 1
 g_world_drawn_quads: resq 1
@@ -124,6 +129,21 @@ PROC world_render_init, 0, rbx
     test eax, eax
     jz .fail
 
+    ; biome tint map: 1024 x 1024 texels per layer, one per 4 x 4 blocks,
+    ; repeating every 4096 blocks (the loaded world is always smaller);
+    ; linear filtering blends neighbouring columns smoothly
+    lea r8, [rel g_tint_tex]
+    GL glCreateTextures, GL_TEXTURE_2D_ARRAY, 1, r8
+    mov qword [rsp + 40], 2             ; depth: 2 layers
+    GL glTextureStorage3D, [rel g_tint_tex], 1, GL_RGBA8, TINT_SIZE, TINT_SIZE
+    GL glTextureParameteri, [rel g_tint_tex], GL_TEXTURE_MIN_FILTER, GL_LINEAR
+    GL glTextureParameteri, [rel g_tint_tex], GL_TEXTURE_MAG_FILTER, GL_LINEAR
+    GL glTextureParameteri, [rel g_tint_tex], GL_TEXTURE_WRAP_S, GL_REPEAT
+    GL glTextureParameteri, [rel g_tint_tex], GL_TEXTURE_WRAP_T, GL_REPEAT
+    lea rax, [rel c_tint_default]
+    mov [rsp + 32], rax
+    GL glClearTexImage, [rel g_tint_tex], 0, GL_RGBA, GL_UNSIGNED_BYTE
+
     GL glEnable, GL_CULL_FACE
     mov eax, 1
     RETURN
@@ -138,6 +158,8 @@ ENDPROC
 ; -----------------------------------------------------------------------------
 PROC world_render_shutdown, 0
     call block_textures_shutdown
+    lea rdx, [rel g_tint_tex]
+    GL glDeleteTextures, 1, rdx
     lea rdx, [rel g_quad_buffer]
     GL glDeleteBuffers, 1, rdx
     lea rdx, [rel g_world_vao]
@@ -281,6 +303,35 @@ sphere_in_frustum:
     ret
 
 ; -----------------------------------------------------------------------------
+; tint_upload — copy a column's biome colours (COLUMN.tint, 8 x 8 texels per
+; layer) into the tint map at its place (cx * 8, cz * 8, wrapped).
+;   in:  rcx = COLUMN*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC tint_upload, 0, rbx
+    mov rbx, rcx
+    cmp dword [rbx + COLUMN.tint], 0
+    je .done                            ; no biome data (flat world): default
+    lea rax, [rbx + COLUMN.tint]
+    mov [rsp + 80], rax                 ; pixels
+    mov qword [rsp + 72], GL_UNSIGNED_BYTE
+    mov qword [rsp + 64], GL_RGBA
+    mov qword [rsp + 56], 2             ; depth (layers)
+    mov qword [rsp + 48], 8
+    mov qword [rsp + 40], 8
+    mov qword [rsp + 32], 0             ; z offset
+    mov r8d, [rbx + COLUMN.cx]
+    shl r8d, 3
+    and r8d, TINT_SIZE - 1
+    mov r9d, [rbx + COLUMN.cz]
+    shl r9d, 3
+    and r9d, TINT_SIZE - 1
+    GL glTextureSubImage3D, [rel g_tint_tex], 0, r8, r9
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 ; draw_range — draw `count` quads of a section starting at quad `first`.
 ;   in:  ecx = program, rdx = entry (rel xyz, world xyz), r8d = first,
 ;        r9d = count
@@ -344,6 +395,7 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     GL glBindVertexArray, [rel g_world_vao]
     GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 0, [rel g_quad_buffer]
     call block_textures_bind
+    GL glBindTextureUnit, 3, [rel g_tint_tex]
 
     ; ---- pass 1: visibility walk from the camera's section (cave culling) -------
     ; Breadth-first over sections (DECISIONS D51): leave a section through
@@ -634,6 +686,7 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     ; ---- pass 2: cutout (alpha-tested) -----------------------------------------------------
 .pass2:
     GL glProgramUniform1i, rbx, U_PASS, 1
+    GL glDisable, GL_CULL_FACE          ; plants are single planes seen from both sides
     xor r12d, r12d
 .cut:
     cmp r12, [rel g_cut_count]
@@ -652,6 +705,7 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
 
     ; ---- pass 3: translucent, sorted back to front ------------------------------------
 .pass3:
+    GL glEnable, GL_CULL_FACE
     mov r15, [rel g_trans_count]
     test r15, r15
     jz .done

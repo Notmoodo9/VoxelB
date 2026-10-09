@@ -14,6 +14,7 @@
 ; =============================================================================
 %include "macros.inc"
 %include "terrain.inc"
+%include "biome.inc"
 %include "gl.inc"
 %include "input.inc"
 %include "shader.inc"
@@ -112,6 +113,9 @@ s_t_eros:       db "  eros ", 0
 s_t_peaks:      db "  peaks ", 0
 s_t_giant:      db "  giant ", 0
 s_t_river:      db "  river ", 0
+s_biome:        db "biome ", 0
+s_temp:         db "   temperature ", 0
+s_humid:        db "  humidity ", 0
 s_none:         db "none", 0
 s_controls:     db 10, "controls (data/config/controls.cfg):", 10, 0
 s_indent:       db "  ", 0
@@ -135,6 +139,8 @@ section .bss
 alignb 8
 g_ov_text:      resq 1                  ; TEXT_CAP bytes from the frame arena
 g_ov_sample:    resb TSAMPLE_size
+alignb 4
+g_ov_clim:      resd 2
 
 section .text
 
@@ -464,6 +470,34 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
     PUT_FIELD s_t_peaks, TSAMPLE.fields + 8
     PUT_FIELD s_t_giant, TSAMPLE.giant
     PUT_FIELD s_t_river, TSAMPLE.river
+    PUT s_nl
+    ; biome and climate at the camera
+    PUT s_biome
+    movsd xmm0, [rel g_cam_pos]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si ecx, xmm0
+    movsd xmm0, [rel g_cam_pos + 16]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si edx, xmm0
+    call biome_at
+    PUTP rax
+    movsd xmm0, [rel g_cam_pos]
+    movsd xmm1, [rel g_cam_pos + 16]
+    call biome_climate
+    movss [rel g_ov_clim], xmm0
+    movss [rel g_ov_clim + 4], xmm1
+    PUT s_temp
+    movss xmm0, [rel g_ov_clim]
+    mulss xmm0, [rel c_100]
+    cvtss2si eax, xmm0
+    movsxd rax, eax
+    PUTSNUM rax, 2
+    PUT s_humid
+    movss xmm0, [rel g_ov_clim + 4]
+    mulss xmm0, [rel c_100]
+    cvtss2si eax, xmm0
+    movsxd rax, eax
+    PUTSNUM rax, 2
     PUT s_nl
 .no_terrain:
 

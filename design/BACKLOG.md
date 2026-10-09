@@ -11,7 +11,10 @@ yet; each item gets its own doc in `design/` when we interview it.
 | done | Ore list, depth ranges, rarity | M9 | `design/terrain/underground.md`; tool tiers in M18 |
 | todo | Underground fantasy biomes (unrelated to the surface biome) | after M10 | from the M9 interview |
 | todo | Underground structures | M23 | from the M9 interview |
-| todo | Temperate biomes: plains, forest, birch forest, dark forest, meadow, river | M10 | one biome at a time |
+| done | Biome system: size, borders, layout | M10 | `design/biomes/biome_system.md` |
+| done | Plains | M10 | `design/biomes/plains.md` |
+| todo | Temperate biomes: forest, birch forest, dark forest, meadow, river | M10 | one biome at a time |
+| todo | Transition biomes (forest edge, desert scrubland, …) | M10 | from the biome system interview |
 | todo | Hot/dry biomes: desert, savanna, badlands/mesa, jungle, swamp | M10 | |
 | todo | Cold biomes: taiga, snowy tundra, ice spikes, glaciers, frozen ocean | M10 | |
 | todo | Fantasy biomes: mushroom fields, crystal caves, floating islands, glowing forests | M10 | |

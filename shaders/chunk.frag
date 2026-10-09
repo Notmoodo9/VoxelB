@@ -5,9 +5,12 @@
 // u_pass: 0 opaque, 1 cutout (alpha test), 2 translucent (blended).
 
 layout(binding = 0) uniform sampler2DArray u_blocks;
+layout(binding = 3) uniform sampler2DArray u_tint;   // biome colours (layer 0 grass, 1 foliage)
 layout(location = 5) uniform int u_pass;
 
 in vec3 v_rel;
+in vec2 v_tuv;
+flat in uint v_tint;
 in vec2 v_uv;
 flat in uint v_face;
 flat in uvec2 v_layers;
@@ -17,7 +20,7 @@ flat in uint v_glow;
 out vec4 o_color;
 
 const vec3 SKY = vec3(0.33, 0.62, 0.98);
-const float FACE_LIGHT[6] = float[](0.80, 0.80, 0.55, 1.0, 0.68, 0.68);
+const float FACE_LIGHT[8] = float[](0.80, 0.80, 0.55, 1.0, 0.68, 0.68, 0.86, 0.86);
 
 void main() {
     vec4 c = texture(u_blocks, vec3(v_uv, float(v_layers.x)));
@@ -32,6 +35,8 @@ void main() {
         if (a < 0.5) discard;
     }
 
+    if (v_tint != 0u)   // biome colour as a factor (128 = 1.0)
+        c.rgb *= texture(u_tint, vec3(v_tuv, float(v_tint - 1u))).rgb * 1.9922;
     vec3 color = c.rgb * FACE_LIGHT[v_face];
     if (v_glow != 0u) {
         vec4 g = texture(u_blocks, vec3(v_uv, float(v_glow - 1u)));

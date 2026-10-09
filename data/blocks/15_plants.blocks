@@ -1,0 +1,29 @@
+# Plants (design/biomes/plains.md). `plant` is two crossed planes; a
+# `tall_plant` is two blocks: state 0 the lower half, state 1 the upper half
+# (upper_textures). Grass takes the biome's grass colour.
+
+[template plant]
+name     = {}
+shape    = plant
+textures = {}
+render   = cutout
+sway     = 1
+
+[block short_grass]
+shape    = plant
+textures = short_grass
+render   = cutout
+sway     = 1
+tint     = grass
+
+[block tall_grass]
+shape          = tall_plant
+textures       = tall_grass_lower
+upper_textures = tall_grass_upper
+render         = cutout
+sway           = 1
+tint           = grass
+
+[family flowers]
+templates = plant
+members   = poppy, dandelion, cornflower, oxeye_daisy, allium, red_tulip, orange_tulip, white_tulip, pink_tulip

@@ -587,3 +587,58 @@ density test around `peak_y`, and a random-walk cluster of `size_min..max`
 blocks that replaces only stone (normal ore) or deep stone (`deep_block`).
 Rare long veins snake through a section. All randomness is a hash of world
 seed, section and ore, so chunks are reproducible in any order.
+
+## D53 — Biomes: climate boxes and a blurred blend map (M10)
+`src/world/biome.asm`, data in `data/biomes/*.biome`
+(`design/biomes/biome_system.md`). Temperature and humidity come from two
+large-scale noise fields (0..1). A biome declares a climate box and a height
+range. The box containing the sample wins (nearest centre on overlap);
+nothing → biome 0, "none" (plain M8 terrain, untinted). Box size controls
+biome size and rarity per biome, as the owner asked ("some smaller, some
+massive").
+
+Per chunk, biomes are picked every 16 blocks over -64..+96 and blurred
+with a 5×5 tent filter (radius 32), giving a weight vector per biome on a
+7×7 grid, interpolated per block. The weights drive:
+* the hill factor (hills = height above the base × blended `hill_scale`,
+  applied on the coarse height grid);
+* the grass/foliage colour (blended RGB factors);
+* vegetation density (0 at weight 0.5 = the border, full at 0.85).
+
+This gives the requested 30–60 block soft borders with vegetation thinning
+out. Sharp borders at rivers and cliffs come naturally from the terrain
+(rivers cut to the bed, steep slopes are stone).
+
+## D54 — Biome tint map instead of per-vertex colours (M10)
+Tinted faces (grass tops, oak leaves, plants: `tint = grass|foliage`) look
+up a world-space RGBA8 texture: 2 layers (grass, foliage) of 1024×1024
+texels, one per 4×4 blocks, wrapping every 4096 blocks (the loaded world is
+smaller). Each column writes its 8×8 texels when it becomes ready. The
+texture is linearly filtered, so colours blend smoothly with no quad
+format change and no mesh cost. The texel is a factor (128 = ×1.0) relative
+to the texture's own colour (`grass_reference`), so the existing vibrant
+textures stay as authored outside biomes.
+
+## D55 — Plants as crossed planes in the model-quad stream (M10)
+New shapes `plant` and `tall_plant` (2 states). shapes.asm emits two model
+quads with face codes 6 and 7 (diagonals). The vertex shader builds the
+diagonal plane, uses face 0's texture, and bends the top with the wind
+(lower half of a tall plant moves only at its top, the upper half
+continues the bend: hi bit 28). The cutout pass disables back-face culling.
+That costs nothing for cubes (their back faces are never emitted).
+
+## D56 — Flora: hashed candidates that cross chunk borders (M10)
+`src/world/flora.asm`. The terrain heightmap now has a 16-block border
+(HB), so features spilling into neighbours are computed identically by
+every chunk:
+* ponds (one candidate per 128² cell, radius ≤ 6, a flat rim of ≤ 3 height
+  difference) are dug into the heightmap before surfaces are chosen;
+* trees and bushes are candidates per 4×4 cell (chance = density × 16 ×
+  blend density), listed if their trunk is within 8 blocks of the chunk and
+  grown section by section;
+* plants are decided per column: meadow (one candidate per 512² cell,
+  ragged radius), flower clusters (8×8 cells), then ground cover.
+
+Pond banks ignore the pond's own height drop when picking slope blocks, so
+they stay grassy. Logs do not yet have an axis, so branch logs show their
+end grain.

@@ -42,6 +42,7 @@ warnings, as above.
 | `data/world/world.cfg` | `src/world/world.asm` | world seed and generator (`terrain` or `flat_test`) |
 | `data/world/terrain.cfg` | `src/world/terrain.asm` | the terrain generator: noise fields, splines, heights, surface blocks |
 | `data/world/caves.cfg` | `src/world/terrain.asm` (used by `caves.asm`) | caves, ravines, shafts, aquifers, lava, cave decoration |
+| `data/biomes/*.biome` | `src/world/biome.asm` | climate fields, tree generators, biomes (colours, terrain, plants, flowers, meadows, trees, ponds) |
 | `data/world/ores.cfg` | `src/world/terrain.asm` (used by `caves.asm`) | ores: blocks, heights, cluster sizes and counts |
 | `data/world/flat_test.cfg` | `src/world/world.asm` | **debug** test world: layers, block gallery, test structures |
 | `assets/textures/blocks/*.png` | `src/render/block_textures.asm` | block textures (16×16, animated strips, glow layers) |
@@ -79,7 +80,8 @@ Defines a block, or changes one defined earlier (the later settings win).
 | `textures` | `face: texture, …` or `texture` | which texture each face uses. Faces: `all`, `side` (the 4 vertical faces), `top`, `bottom`, `end` (top + bottom), `north` (−Z), `south` (+Z), `east` (+X), `west` (−X). Later entries override earlier ones. A face without a texture uses the texture named like the block |
 | `render` | `opaque` (default), `cutout`, `translucent` | `cutout`: alpha-tested, pixels are fully see-through or solid (leaves). `translucent`: blended (glass, ice); faces between two equal translucent blocks are hidden |
 | `light` | `r, g, b` (0–15 each) | coloured light the block emits (used from Milestone 13) |
-| `sway` | `0`/`1` | the block waves in the wind (leaves) |
+| `sway` | `0`/`1` | the block waves in the wind (leaves; plants bend from the ground) |
+| `tint` | `grass` / `foliage` / `none` [`, faces…`] | the faces (default all) take the biome's grass or foliage colour, blended across biome borders |
 | `shape` | see below (default `cube`) | a non-cube shape. **Must be the first setting of a new block** (in a template: the first line after `name`), because it reserves one block id per state |
 | `upper_textures` | like `textures` | door shapes only: textures of the upper half |
 
@@ -101,6 +103,8 @@ every setting applies to all states):
 | `pillar` | 1 | base / shaft / capital when stacked |
 | `pane` | 1 | joins panes, walls and solid blocks |
 | `spike` | hanging (from above), standing (from below) | base / middle / tip by the spikes it touches (dripstone) |
+| `plant` | 1 | two crossed planes, seen from both sides (grass, flowers) |
+| `tall_plant` | lower, upper | two blocks high; the upper half uses `upper_textures` |
 
 Faces of a shape take the block's textures by direction, projected like
 a cube's (so a slab shows the lower half of its texture).
@@ -247,6 +251,50 @@ One `[ore <name>]` record per ore (up to 32):
 
 Ores replace only stone and deep stone. Placement is a hash of world seed,
 section and ore, so it is the same every time.
+
+## Biome files (`data/biomes/*.biome`, Milestone 10)
+
+Read in file-name order (`design/biomes/`). Trees must be defined before the
+biomes that use them. Records:
+
+`[climate]` — `grass_reference`, `foliage_reference` (RRGGBB): the average
+colour of the grass / oak leaf textures (a biome colour equal to these leaves
+the texture unchanged); `contrast` (climate noise spread, default 1).
+
+`[noise temperature]`, `[noise humidity]` — the climate fields (`scale`,
+`octaves`, `persistence`, `salt`); larger scale = larger biomes.
+Temperature and humidity are 0..1.
+
+`[tree <name>]` — a tree or bush generator:
+
+| Key | Meaning |
+|---|---|
+| `kind` | `round` (trunk + round crown), `branching` (trunk, diagonal branches with leaf clusters, crown), `bush` (log stub + low leaf clump) |
+| `log`, `leaves` | blocks |
+| `height` | trunk height range `a, b` |
+| `radius` | crown radius range |
+| `branches` | branch count range (branching) |
+| `leaf_gaps` | chance that an edge leaf is left out (irregular crowns) |
+
+`[biome <name>]`:
+
+| Key | Meaning |
+|---|---|
+| `temperature`, `humidity` | climate box `lo, hi`: the biome whose box contains the climate wins (nearest box centre when they overlap); nothing matches → "none" (plain terrain) |
+| `height` | surface height range where it may appear |
+| `hill_scale` | hills (height above the base) × this; blended across borders |
+| `grass_color`, `foliage_color` | RRGGBB biome colours (blended) |
+| `top_block`, `filler_block` | override the terrain's grass / dirt on flat ground |
+| `plant` | `block, chance`: ground cover on grass (repeat; chances add up) |
+| `flowers`, `flower_chance` | flower blocks; share of grass in small same-colour clusters |
+| `meadow_chance`, `meadow_radius`, `meadow_density`, `meadow_mixed` | chance per 512×512 cell of a flower meadow; radius range; flower share inside; share of mixed (rainbow) meadows, the others are one colour |
+| `tree`, `tree_density` | `tree name, weight` (repeat); trees per block² |
+| `bush`, `bush_density` | the same for bushes |
+| `pond_chance`, `pond_radius`, `pond_depth`, `pond_floor` | chance per 128×128 cell; radius range (max 6); deepest water; floor block |
+
+Vegetation thins out towards biome borders (blend weight 0.85 → 0.5). Trees
+grow only on flat dry land away from ponds. Everything is placed from hashes
+of world seed and position, so neighbouring chunks agree.
 
 ### `flat_test.cfg` (debug layout, Milestones 5–7)
 

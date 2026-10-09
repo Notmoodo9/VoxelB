@@ -1,12 +1,129 @@
 # Progress
 
 ## Current state
-**Milestone 9: 🎨 DESIGN — Caves, ravines, aquifers, lava, ores: DONE**
-(Windows CI green: run #18)
+**Milestone 10 (part 1): 🎨 DESIGN — Biome system + plains: DONE**
+(Windows CI: see below)
 
-Next: **Milestone 10: 🎨 DESIGN — Biomes + blending + vegetation/trees.**
-It starts with a design interview, one biome at a time, starting with the
-temperate biomes.
+Milestone 10 builds the biomes one at a time (AGENTS.md §1a). Part 1 is
+the biome engine and the first biome, plains.
+
+Next: **Milestone 10, part 2: the next temperate biome (forest)**. It starts
+with its design interview. The remaining biomes are listed in
+`design/BACKLOG.md`.
+
+---
+
+## Milestone 10, part 1 — done (2026-10-09)
+
+### Design interview
+Three rounds plus approval, recorded in `design/biomes/biome_system.md` and
+`design/biomes/plains.md`.
+
+Biome system:
+* sizes set per biome (mostly medium-small, some massive);
+* vanilla-like smooth borders with vegetation thinning over 30–60 blocks,
+  occasional transition biomes, sharp edges at rivers and cliffs;
+* layout by climate + height.
+
+Plains:
+* bright spring-green grass with waving short and tall grass;
+* the classic flowers (poppy, dandelion, cornflower, oxeye daisy, allium,
+  four tulips) in small clusters;
+* rare meadows (single-colour and rainbow);
+* very sparse varied oaks (small round, occasionally big branching);
+* plain and flowering bushes;
+* occasional small ponds;
+* gentle hills.
+
+### What was built
+* **Biome engine** (`src/world/biome.asm`, D53):
+  * data-driven registry: `data/biomes/*.biome` with `[climate]`,
+    `[noise …]`, `[tree …]` and `[biome …]` records (DATA_FORMAT.md);
+  * temperature/humidity climate fields; biomes picked by climate box and
+    height;
+  * a blurred per-chunk blend map that drives hills, colours and
+    vegetation density.
+* **Biome colours** (D54): a world-space tint map (one texel per 4×4
+  blocks, linearly filtered), filled per column. Blocks opt in with
+  `tint = grass | foliage [, faces]`: grass block tops, oak leaves, grass
+  plants.
+* **Plants** (D55): new `plant` (crossed planes) and `tall_plant` shapes
+  that bend in the wind from the ground. 12 new blocks: `short_grass`,
+  `tall_grass`, nine flowers and `flowering_oak_leaves`, with textures in
+  `tools/texgen/texgen.py`.
+* **Flora** (`src/world/flora.asm`, D56), consistent across chunk borders:
+  * ponds dug into the terrain with grassy banks and mud floors;
+  * ground cover, flower clusters and meadows;
+  * trees and bushes from data-driven generators (`round`, `branching`,
+    `bush`).
+* **Terrain**: the heightmap border grew from 1 to 16 blocks; biomes scale
+  the hills; biomes may override top and filler blocks.
+* **Debug overlay**: a `biome` line (name, temperature, humidity).
+  `--survey` also logs biome shares and the nearest meadow and pond.
+
+### How to see it (seed 20261009, the default)
+* Start the game: you spawn on a plains coast with grass, flowers and a
+  bush or two.
+* A rainbow flower meadow next to a river:
+  `voxelb.exe --pos -95 110.5 -70 --look 30 -25`.
+* A small pond: `voxelb.exe --pos 56 116 -80 --look 330 -45`.
+* A plains / unbiomed border from above (colours and vegetation fade):
+  `voxelb.exe --pos 0 260 80 --look 0 -35`.
+* `voxelb.exe --survey` lists biome shares and places for other seeds.
+* Lone trees are deliberately rare (about one per 100×100 blocks). To see
+  many at once, raise `tree_density` in `data/biomes/20_plains.biome`
+  (e.g. to 0.004) and restart.
+
+### Bugs found and fixed while testing
+* A register clobbered by a macro gave a worker crash (stack overflow in
+  Wine) on the first pond. Found with Wine's `+seh` trace and the
+  disassembly at the faulting address.
+* Plant planes read the texture entry of the *next* block (face codes 6/7
+  index past the block's 6 faces), so flowers showed other blocks'
+  textures. Plants now use face 0's texture.
+* `glTextureStorage3D` got its depth in the wrong argument slot (GL debug
+  error); fixed.
+* Pond rims turned to stone (the steep-slope rule saw the dug hole);
+  pond neighbours are now ignored when choosing slope blocks.
+* Bush crowns could hang over ponds; trees keep a wider distance and ponds
+  are listed further out.
+
+### Verified (Wine 9 + Xvfb + Mesa llvmpipe)
+* Debug and release headless tests pass, clean exits, no GL errors.
+* Screenshots:
+  * plains at spawn;
+  * a dense rainbow meadow;
+  * flowers up close (all nine distinct);
+  * a pond;
+  * round and branching oaks and flowering bushes (with density raised
+    for the test);
+  * the colour blend at a biome border.
+
+### Performance (release, llvmpipe, render distance 16)
+| | |
+|---|---|
+| View complete at spawn | 7.4 s (M9: 7.1 s) |
+| Column generation | avg 11–12 ms (M9 ~10–12; blend map + flora + wider border) |
+| Column meshing | avg 11 ms |
+| Spawn view | ~450 sections, ~300k quads drawn; 4 FPS on software GL (M9: 7) |
+| `stream_update` | avg 40–90 µs |
+
+Plants add many two-sided cutout quads (meadows especially), and software
+GL fills them slowly. GPU-driven rendering (M11) and LOD (M12) are the
+planned performance work. A plant-density setting in graphics.cfg could
+follow if needed.
+
+### Known issues
+* Most land is still "none" (plain terrain) until more biomes are
+  designed. Plains covers ~23% of land near the origin.
+* Logs have no axis states yet, so big-oak branches show end grain on
+  their sides.
+* Ponds need a flat rim; on terraced hills few qualify.
+
+### Deferred
+* Other biomes, transition biomes and biome-specific trees: the next M10
+  parts, one interview each.
+* Reeds/sugar cane at pond edges, berries on bushes (later items/farming).
 
 ---
 

@@ -23,7 +23,7 @@ struc CAVECTX
     .cz             resd 1
     .cx_blocks      resd 1              ; cx * 32
     .cz_blocks      resd 1
-    .heights        resq 1              ; i32[34*34] surface heights
+    .heights        resq 1              ; i32[HM*HM] surface heights (terrain.inc)
     .cols           resq 1              ; CCOL[32*32]
     .grid_c         resq 1              ; f32[9^3] cavern noise
     .grid_t         resq 1              ; f32[9^3] tunnel distance

@@ -1330,6 +1330,138 @@ def make_underground(out):
             out[name + "_glow"] = glow_layer(glow, col_hex, 1.0)
 
 
+# ---------------------------------------------------------------------------
+# plants (Milestone 10): crossed-plane sprites with transparent background.
+# Grass is drawn in the grass texture's own green so the biome tint factor
+# applies to it the same way as to the grass block.
+# ---------------------------------------------------------------------------
+FLOWERS = {
+    # name: (petal colour, centre colour, style)
+    "poppy": ("e8322a", "2a1a14", "cup"),
+    "dandelion": ("ffd21f", "e8a010", "puff"),
+    "cornflower": ("3f6fe8", "26318c", "spiky"),
+    "oxeye_daisy": ("f4f4ee", "f2c21c", "daisy"),
+    "allium": ("b56ae8", "7f3fb8", "ball"),
+    "red_tulip": ("e8323a", "9a1a20", "tulip"),
+    "orange_tulip": ("ff8a24", "c45a10", "tulip"),
+    "white_tulip": ("f2f2f0", "c8d0c8", "tulip"),
+    "pink_tulip": ("ff8fc0", "d0508a", "tulip"),
+}
+
+
+def blades(r, n, hmin, hmax, pal, full=False, taper=True):
+    img = np.zeros((N, N, 4))
+    for _ in range(n):
+        x = int(r.integers(1, N - 1))
+        h = N if full else int(r.integers(hmin, hmax + 1))
+        lean = r.choice([-1, 0, 0, 1])
+        for k in range(h):
+            y = N - 1 - k
+            xx = x + (lean if k > h * 0.6 else 0)
+            if not 0 <= xx < N:
+                continue
+            shade_i = min(len(pal) - 1, 1 + k * (len(pal) - 2) // max(h, 1))
+            img[y, xx, :3] = pal[shade_i]
+            img[y, xx, 3] = 1.0
+            if not taper and k < h - 1 and xx + 1 < N and r.random() < 0.25:
+                img[y, xx + 1, :3] = pal[max(0, shade_i - 1)]
+                img[y, xx + 1, 3] = 1.0
+    return img
+
+
+def stem(img, x, top, pal):
+    for y in range(top, N):
+        img[y, x, :3] = pal[2]
+        img[y, x, 3] = 1.0
+    # two small leaves
+    for (dx, y) in ((-1, N - 4), (1, N - 6)):
+        if 0 <= x + dx < N:
+            img[y, x + dx, :3] = pal[3]
+            img[y, x + dx, 3] = 1.0
+
+
+def flower(name, petal, centre, style):
+    r = rng(name)
+    sp = ramp("3f9a32", 6, spread=0.2)
+    pp = ramp(petal, 4, spread=0.22)
+    cp = hexrgb(centre)
+    img = np.zeros((N, N, 4))
+    cx = 8
+    top = {"ball": 3, "tulip": 6}.get(style, 5)
+    stem(img, cx, top + 2, sp)
+
+    def px(x, y, c):
+        if 0 <= x < N and 0 <= y < N:
+            img[y, x, :3] = c
+            img[y, x, 3] = 1.0
+    cy = top
+    if style == "cup":            # poppy: four broad petals, dark heart
+        for dx in range(-2, 3):
+            for dy in range(-2, 2):
+                if abs(dx) + abs(dy) <= 3:
+                    px(cx + dx, cy + dy, pp[2 if dy < 0 else 1])
+        px(cx, cy, cp); px(cx - 1, cy - 1, pp[3]); px(cx + 1, cy - 2, pp[3])
+    elif style == "puff":         # dandelion: round yellow head
+        for dx in range(-2, 3):
+            for dy in range(-2, 2):
+                if dx * dx + dy * dy <= 5:
+                    px(cx + dx, cy + dy, pp[1 + (dx + dy) % 3])
+        px(cx, cy, cp)
+    elif style == "spiky":        # cornflower: ragged petals
+        for a in range(10):
+            ang = a * 2 * np.pi / 10
+            for d in (1, 2, 3 if a % 2 else 2):
+                px(int(round(cx + np.cos(ang) * d)), int(round(cy + np.sin(ang) * d * 0.7)), pp[1 + a % 3])
+        px(cx, cy, cp)
+    elif style == "daisy":        # oxeye daisy: white ring, yellow centre
+        for a in range(12):
+            ang = a * 2 * np.pi / 12
+            for d in (2, 3):
+                px(int(round(cx + np.cos(ang) * d)), int(round(cy + np.sin(ang) * d * 0.75)), pp[2 + a % 2])
+        for dx in (-1, 0, 1):
+            px(cx + dx, cy, cp)
+        px(cx, cy - 1, cp)
+    elif style == "ball":         # allium: purple sphere of florets
+        for dx in range(-3, 4):
+            for dy in range(-3, 3):
+                if dx * dx + dy * dy <= 9 and r.random() < 0.85:
+                    px(cx + dx, cy + dy, pp[int(r.integers(0, 4))])
+    elif style == "tulip":        # tulip: closed cup
+        for dy in range(-3, 1):
+            w = 2 if dy > -3 else 1
+            for dx in range(-w, w + 1):
+                px(cx + dx, cy + dy, pp[3 if dx < 0 else 1])
+        px(cx - 1, cy - 4, pp[2]); px(cx + 1, cy - 4, pp[2])
+        px(cx, cy - 1, hexrgb(centre))
+    return img
+
+
+def make_plants(out):
+    gp = ramp("56ca42", 6, spread=0.22)
+    out["short_grass"] = blades(rng("short_grass"), 18, 4, 12, gp, taper=False)
+    lower = blades(rng("tall_grass_lower"), 14, N, N, gp, full=True, taper=False)
+    upper = blades(rng("tall_grass_upper"), 13, 5, 15, gp, taper=False)
+    out["tall_grass_lower"] = lower
+    out["tall_grass_upper"] = upper
+    for name, (petal, centre, style) in FLOWERS.items():
+        out[name] = flower(name, petal, centre, style)
+    # flowering oak leaves: the oak leaves with small white-pink blossoms
+    base = out["oak_leaves"]
+    base = base[0] if isinstance(base, list) else base
+    img = base.copy()
+    r = rng("flowering_oak_leaves")
+    bp = [hexrgb("fff4f8"), hexrgb("ffc8dc"), hexrgb("ff9ec2")]
+    for _ in range(9):
+        x, y = r.integers(0, N, 2)
+        if img[y, x, 3] < 0.5:
+            continue
+        for (dx, dy) in ((0, 0), (1, 0), (0, 1), (-1, 0), (0, -1)):
+            xx, yy = (x + dx) % N, (y + dy) % N
+            img[yy, xx, :3] = bp[0 if (dx, dy) == (0, 0) else int(r.integers(1, 3))]
+            img[yy, xx, 3] = 1.0
+    out["flowering_oak_leaves"] = img
+
+
 def build_all():
     out = {}
     make_terrain(out)
@@ -1340,6 +1472,7 @@ def build_all():
     make_shapes(out)
     make_water(out)
     make_underground(out)
+    make_plants(out)
     return out
 
 

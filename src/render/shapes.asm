@@ -9,8 +9,10 @@
 ; Each visible box face becomes one "model quad" (bit 31 set) in the
 ; section's quad list; shaders/chunk.vert expands it:
 ;   lo: bits 0-14 block x, y, z (5 bits each)   15-26 box min x, y, z (4 bits)
-;       28-30 face   31 = 1 (model quad)
+;       28-30 face (0-5 box faces, 6/7 the two diagonal planes of a plant)
+;       31 = 1 (model quad)
 ;   hi: bits 0-15 block id   16-27 box size-1 x, y, z (4 bits each)
+;       28 = upper half of a tall plant (its sway continues the lower half)
 ; A box face lying on the block's boundary is skipped when the neighbour
 ; there is opaque.
 ;
@@ -77,6 +79,7 @@ shape_jump:     dq shapes_emit.s_none, shapes_emit.s_slab, shapes_emit.s_stairs
                 dq shapes_emit.s_trapdoor, shapes_emit.s_ladder, shapes_emit.s_sign
                 dq shapes_emit.s_wall_sign, shapes_emit.s_plate, shapes_emit.s_wall
                 dq shapes_emit.s_pillar, shapes_emit.s_pane, shapes_emit.s_spike
+                dq shapes_emit.s_plant, shapes_emit.s_tall_plant
 
 section .text
 
@@ -165,7 +168,9 @@ add_quadrants:
 %define S_STATE     40
 %define S_CONN      44                  ; connection bits N, E, S, W
 %define S_BOXES     48                  ; MAX_BOXES * 6 bytes
-%define S_LOCALS    (48 + MAX_BOXES * 6 + 8)
+%define S_FACE0     (48 + MAX_BOXES * 6 + 8)   ; first face to emit (6: plant)
+%define S_HIFLAGS   (S_FACE0 + 4)
+%define S_LOCALS    (S_FACE0 + 8)
 PROC shapes_emit, S_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [LOCAL(S_VOL)], rcx
     mov [LOCAL(S_OUT)], rdx
@@ -210,6 +215,8 @@ PROC shapes_emit, S_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     movzx ecx, byte [rcx + r14]
     mov [LOCAL(S_STATE)], ecx
     lea r15, [LOCAL(S_BOXES)]           ; box cursor
+    mov dword [LOCAL(S_FACE0)], 0
+    mov dword [LOCAL(S_HIFLAGS)], 0
     lea rcx, [rel shape_jump]
     jmp [rcx + rax * 8]
 
@@ -524,6 +531,22 @@ PROC shapes_emit, S_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     jb .pane_dir
     jmp .emit
 
+.s_tall_plant:
+    test dword [LOCAL(S_STATE)], 1
+    jz .s_plant
+    mov dword [LOCAL(S_HIFLAGS)], 1 << 28
+.s_plant:
+    ; two crossed vertical planes through the block (faces 6 and 7)
+    mov byte [r15], 1
+    mov byte [r15 + 1], 0
+    mov byte [r15 + 2], 1
+    mov byte [r15 + 3], 15
+    mov byte [r15 + 4], 16
+    mov byte [r15 + 5], 15
+    add r15, 6
+    mov dword [LOCAL(S_FACE0)], 6
+    jmp .emit
+
 ; ---- emit the visible faces of the collected boxes -------------------------------
 .emit:
     mov rbx, [LOCAL(S_VOL)]
@@ -531,8 +554,10 @@ PROC shapes_emit, S_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
 .box:
     cmp r14, r15
     jae .box_done
-    xor r9d, r9d                        ; face
+    mov r9d, [LOCAL(S_FACE0)]           ; face
 .face:
+    cmp r9d, 6
+    jae .face_visible                   ; plant planes: always drawn
     ; on the block boundary next to an opaque neighbour? then hidden
     mov eax, r9d
     shr eax, 1                          ; axis 0 x, 1 y, 2 z
@@ -625,13 +650,19 @@ PROC shapes_emit, S_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     dec ecx
     shl ecx, 24
     or edx, ecx
+    or edx, [LOCAL(S_HIFLAGS)]
     mov rcx, [LOCAL(S_OUT)]
     mov [rcx + rdi * 8], eax
     mov [rcx + rdi * 8 + 4], edx
     inc rdi
 .face_next:
     inc r9d
-    cmp r9d, 6
+    mov eax, 6
+    cmp dword [LOCAL(S_FACE0)], 6
+    jne .face_end
+    mov eax, 8
+.face_end:
+    cmp r9d, eax
     jb .face
     add r14, 6
     jmp .box

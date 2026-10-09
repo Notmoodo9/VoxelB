@@ -1,0 +1,14 @@
+# Biome colours (design/biomes/biome_system.md): these blocks are tinted by
+# the biome they stand in. `tint = grass | foliage [, faces]`.
+
+[block grass_block]
+tint = grass, top
+
+[block oak_leaves]
+tint = foliage
+
+# oak leaves with white-pink blossoms (flowering bushes); not tinted
+[block flowering_oak_leaves]
+textures = flowering_oak_leaves
+render   = cutout
+sway     = 1

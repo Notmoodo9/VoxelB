@@ -1,0 +1,22 @@
+# Climate fields and colour references (design/biomes/biome_system.md).
+# Temperature and humidity are 0..1: 0.5 + noise * contrast, clamped.
+# Bigger scale = bigger climate zones = bigger biomes.
+
+[climate]
+# the average colours of the grass and oak leaf textures: a biome colour
+# equal to these leaves the texture unchanged
+grass_reference   = 56CA42
+foliage_reference = 389D24
+contrast          = 1.0
+
+[noise temperature]
+scale       = 1100
+octaves     = 2
+persistence = 0.5
+salt        = 301
+
+[noise humidity]
+scale       = 900
+octaves     = 2
+persistence = 0.5
+salt        = 302

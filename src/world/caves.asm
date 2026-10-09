@@ -75,7 +75,6 @@ extern g_b_deep, g_b_gravel, g_b_clay
 %define G9              9               ; grid points along x and z (every 4)
 %define GY              5               ; grid points along y (every 8)
 %define GRID_N          (G9 * GY * G9)
-%define HM              34
 
 section .rdata
 align 4
@@ -339,9 +338,9 @@ PROC caves_column, 32, rbx, rsi, rdi, r12, r13
     add eax, r12d
     mov [LOCAL(CC_WZ)], eax
     ; surface height H
-    lea eax, [r12d + 1]
+    lea eax, [r12d + HB]
     imul eax, eax, HM
-    lea eax, [eax + r13d + 1]
+    lea eax, [eax + r13d + HB]
     mov rcx, [rbx + CAVECTX.heights]
     mov eax, [rcx + rax * 4]
     mov [LOCAL(CC_H)], eax
@@ -519,10 +518,10 @@ PROC caves_column, 32, rbx, rsi, rdi, r12, r13
     imul rdi, rdi, CCOL_size
     add rdi, [rbx + CAVECTX.cols]
     mov eax, [LOCAL(CC_Z)]
-    inc eax
+    add eax, HB
     imul eax, eax, HM
     add eax, [LOCAL(CC_X)]
-    inc eax
+    add eax, HB
     mov rcx, [rbx + CAVECTX.heights]
     mov eax, [rcx + rax * 4]
     mov ecx, [rel g_sea_level]
@@ -1078,9 +1077,9 @@ PROC caves_finish, 64, rbx, rsi, rdi, r12, r13, r14, r15
     mov edx, eax
     shr edx, 5
     and edx, 31                         ; z
-    lea edx, [edx + 1]
+    lea edx, [edx + HB]
     imul edx, edx, HM
-    lea edx, [edx + ecx + 1]
+    lea edx, [edx + ecx + HB]
     mov r8, [LOCAL(FN_CTX)]
     mov r8, [r8 + CAVECTX.heights]
     mov r8d, [r8 + rdx * 4]             ; column surface
@@ -1222,9 +1221,9 @@ PROC caves_finish, 64, rbx, rsi, rdi, r12, r13, r14, r15
     add eax, r14d
     imul rdi, rax, CCOL_size
     add rdi, [r12 + CAVECTX.cols]
-    lea eax, [r13d + 1]
+    lea eax, [r13d + HB]
     imul eax, eax, HM
-    lea eax, [eax + r14d + 1]
+    lea eax, [eax + r14d + HB]
     mov rcx, [r12 + CAVECTX.heights]
     mov eax, [rcx + rax * 4]
     mov [LOCAL(FN_H)], eax              ; surface

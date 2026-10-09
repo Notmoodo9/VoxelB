@@ -1,0 +1,39 @@
+# Plains (design/biomes/plains.md): open, gentle grassland in bright spring
+# green with waving grass, wildflowers, rare flower meadows, very sparse
+# lone oaks and bushes, and occasional small ponds.
+
+[biome plains]
+temperature   = 0.35, 0.65
+humidity      = 0.20, 0.60
+height        = 98, 160          # surface heights (sea level 96)
+hill_scale    = 0.5              # hills at half the usual height
+grass_color   = 6ED33C           # bright spring green
+foliage_color = 48B02C
+
+# ground cover: share of grass blocks
+plant = short_grass, 0.30
+plant = tall_grass, 0.05
+
+# wildflowers in small same-colour clusters
+flowers       = poppy, dandelion, cornflower, oxeye_daisy, allium, red_tulip, orange_tulip, white_tulip, pink_tulip
+flower_chance = 0.03
+
+# rare meadows: chance per 512 x 512 cell; half one colour, half mixed
+meadow_chance  = 0.7
+meadow_radius  = 20, 50
+meadow_density = 0.6
+meadow_mixed   = 0.5
+
+# very sparse lone trees (about one per 100 x 100 blocks), a few more bushes
+tree         = small_oak, 8
+tree         = big_oak, 2
+tree_density = 0.0001
+bush         = oak_bush, 1
+bush         = flowering_bush, 1
+bush_density = 0.00025
+
+# occasional small ponds: chance per 128 x 128 cell (~one per 300 x 300)
+pond_chance = 0.18
+pond_radius = 2.5, 6
+pond_depth  = 2
+pond_floor  = mud

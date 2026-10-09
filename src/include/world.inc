@@ -20,6 +20,8 @@
 %define LAYER_CUTOUT        1           ; alpha-tested (leaves)
 %define LAYER_TRANSLUCENT   2           ; blended, back to front (glass, ice)
 %define BLOCKF_SWAY         1           ; g_block_flags: vertex sway (leaves)
+%define BLOCKF_TINT_GRASS   2           ; biome grass colour (faces: g_block_tintmask)
+%define BLOCKF_TINT_FOLIAGE 4           ; biome foliage colour
 
 ; mesher output capacity per section (greedy worst case is 98304 quads;
 ; the rest is room for shaped-block quads)
@@ -42,7 +44,9 @@
 %define SHAPE_PILLAR        12
 %define SHAPE_PANE          13
 %define SHAPE_SPIKE         14          ; bit 0: points down (base/middle/tip automatic)
-%define SHAPE_COUNT         15
+%define SHAPE_PLANT         15          ; two crossed planes (grass, flowers)
+%define SHAPE_TALL_PLANT    16          ; bit 0: upper half (upper_textures)
+%define SHAPE_COUNT         17
 ; facings: 0 north (-Z), 1 east (+X), 2 south (+Z), 3 west (-X)
 
 ; Neighbour sentinel for the mesher: a solid boundary (below the world).
@@ -94,6 +98,8 @@ struc COLUMN
     .pad        resd 1
     .vstamp     resw SECTIONS_PER_COLUMN ; visibility walk: frame stamp per section
     .vqueue     resd SECTIONS_PER_COLUMN ; visibility walk: queue slot this frame
+    .tint       resd 2 * 64             ; biome colours, 8 x 8 per layer (grass,
+                                        ;  foliage), RGBA8 factors (128 = 1.0); 0 = unset
 endstruc
 
 %endif

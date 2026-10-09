@@ -43,10 +43,12 @@
 %include "world_api.inc"
 %include "terrain.inc"
 %include "caves.inc"
+%include "biome.inc"
+%include "flora.inc"
 
 global terrain_load, terrain_gen_column, terrain_sample, terrain_find_spawn, log_xz
 global terrain_survey
-global g_world_seed, g_sea_level
+global g_world_seed, g_sea_level, g_beach_high, g_b_top, g_b_fill, g_snow_line
 global g_noise, g_splines, g_ores, g_ore_count, spline_eval
 global g_tunnel_w, g_pass_w, g_crust, g_entr_thr, g_sky_thr, g_sky_depth, g_sky_open
 global g_rav_thr, g_rav_w, g_rav_dmin, g_rav_dmax, g_shaft_space, g_shaft_chance
@@ -102,7 +104,6 @@ endstruc
 %define T_INT           1
 %define T_BLOCK         2
 
-%define HM              34              ; heightmap side (column + 1 border)
 %define MAX_ORES        32
 
 section .rdata
@@ -341,6 +342,7 @@ c_spawn_up: dd 24.0
 c_08:       dd 0.8
 c_six:      dd 6.0
 c_1000:     dd 1000.0
+c_255:          dd 255.0
 c_quarter:  dd 0.25
 c_eighth:   dd 0.125
 align 8
@@ -918,6 +920,7 @@ PROC terrain_sample, 16, rbx, rsi
     movss xmm0, [rbx + TSAMPLE.fields + F_CONT * 4]
     call spline_eval
     movss [rbx + TSAMPLE.height], xmm0
+    movss [rbx + TSAMPLE.base], xmm0
     ; land = clamp((C - land_start) / land_ramp)
     movss xmm0, [rbx + TSAMPLE.fields + F_CONT * 4]
     subss xmm0, [rel g_land_start]
@@ -1309,6 +1312,7 @@ PROC terrain_survey, SV_LOCALS, rbx, rsi, rdi
     call log_xz
 .done:
     call caves_survey
+    call flora_survey
     RETURN
 ENDPROC
 
@@ -1358,8 +1362,12 @@ underground:
 %define G_SOLID     (G_CTX + 8)                ; block before carving
 %define G_DETAIL    68                  ; (detail noise of the current block)
 %define G_SAMPLE    96                  ; TSAMPLE
-%define G_LOCALS    (96 + TSAMPLE_size + 32)
-%define INFO_SIZE   12
+%define G_FCTX      (96 + TSAMPLE_size + 32)   ; FCTX*
+%define G_BMAP      (G_FCTX + 8)               ; BMAP*
+%define G_POND      (G_FCTX + 16)              ; i16[HM*HM] pond levels
+%define G_TOPF      (G_FCTX + 24)              ; highest flora block
+%define G_LOCALS    (96 + TSAMPLE_size + 64)
+%define CG          (HM / 4 + 1)               ; coarse grid side (every 4 blocks)
 PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [LOCAL(G_COL)], rcx
     mov [LOCAL(G_ARENA)], rdx
@@ -1375,8 +1383,16 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [LOCAL(G_IDS)], rax
     INVOKE arena_alloc, [LOCAL(G_ARENA)], 9 * 5 * 9 * 4, 16
     mov [LOCAL(G_GRID)], rax
-    INVOKE arena_alloc, [LOCAL(G_ARENA)], 10 * 10 * 8, 16
+    INVOKE arena_alloc, [LOCAL(G_ARENA)], CG * CG * 8, 16
     mov [LOCAL(G_CGRID)], rax
+    INVOKE arena_alloc, [LOCAL(G_ARENA)], HM * HM * 2, 16
+    mov [LOCAL(G_POND)], rax
+    INVOKE arena_alloc, [LOCAL(G_ARENA)], BMAP_size, 16
+    mov [LOCAL(G_BMAP)], rax
+    INVOKE arena_alloc, [LOCAL(G_ARENA)], FCTX_size, 16
+    mov [LOCAL(G_FCTX)], rax
+    test rax, rax
+    jz .oom
     INVOKE arena_alloc, [LOCAL(G_ARENA)], CAVECTX_size, 16
     mov [LOCAL(G_CTX)], rax
     test rax, rax
@@ -1397,42 +1413,60 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov rax, [LOCAL(G_H)]
     mov [rbx + CAVECTX.heights], rax
 
-    ; ---- coarse grid: every 4 blocks from -4 to 32 (10 x 10 samples) ------------
+    ; ---- biomes around the chunk (blend map) -----------------------------------------
+    INVOKE bmap_build, [LOCAL(G_BMAP)], [LOCAL(G_CX)], [LOCAL(G_CZ)]
+
+    ; ---- coarse grid: every 4 blocks from -HB to 32 + HB --------------------------
     ; the large-scale fields are smooth, so heights and overhang amplitudes
-    ; are interpolated; only the detail noise is evaluated per block
+    ; are interpolated; only the detail noise is evaluated per block. The
+    ; biomes' hill factors scale the hills (height above the base).
     xor r12d, r12d                      ; gz
 .cg_z:
     xor r13d, r13d                      ; gx
 .cg_x:
     mov eax, [LOCAL(G_CX)]
     shl eax, 5
-    lea eax, [eax + r13d * 4 - 4]
+    lea eax, [eax + r13d * 4 - HB]
     cvtsi2sd xmm0, eax
     mov eax, [LOCAL(G_CZ)]
     shl eax, 5
-    lea eax, [eax + r12d * 4 - 4]
+    lea eax, [eax + r12d * 4 - HB]
     cvtsi2sd xmm1, eax
     lea rcx, [LOCAL(G_SAMPLE)]
     call terrain_sample
-    imul ecx, r12d, 10
-    add ecx, r13d
-    mov rdx, [LOCAL(G_CGRID)]
-    ; height without its detail part, overhang amplitude
+    ; height without its detail part
     movss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.fields + F_DETAIL * 4]
     mulss xmm0, [rel g_detail_height]
     movss xmm1, [LOCAL(G_SAMPLE) + TSAMPLE.height]
     subss xmm1, xmm0
+    movss [LOCAL(G_SAMPLE) + TSAMPLE.height], xmm1
+    comiss xmm1, [LOCAL(G_SAMPLE) + TSAMPLE.base]
+    jbe .cg_store                       ; (at or below the base: unchanged)
+    mov rcx, [LOCAL(G_BMAP)]
+    lea edx, [r13d * 4 - HB]
+    lea r8d, [r12d * 4 - HB]
+    call bmap_col                       ; xmm1 = hill factor
+    movss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.height]
+    subss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.base]
+    mulss xmm0, xmm1
+    addss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.base]
+    movss [LOCAL(G_SAMPLE) + TSAMPLE.height], xmm0
+.cg_store:
+    imul ecx, r12d, CG
+    add ecx, r13d
+    mov rdx, [LOCAL(G_CGRID)]
+    movss xmm1, [LOCAL(G_SAMPLE) + TSAMPLE.height]
     movss [rdx + rcx * 8], xmm1
     movss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.overhang]
     movss [rdx + rcx * 8 + 4], xmm0
     inc r13d
-    cmp r13d, 10
+    cmp r13d, CG
     jb .cg_x
     inc r12d
-    cmp r12d, 10
+    cmp r12d, CG
     jb .cg_z
 
-    ; ---- heightmap with a one-block border --------------------------------------------
+    ; ---- heightmap with an HB-block border -----------------------------------------
     mov dword [LOCAL(G_MINH)], 0x7FFFFFFF
     mov dword [LOCAL(G_MAXH)], 0x80000000
     xorps xmm0, xmm0
@@ -1444,42 +1478,42 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     ; detail noise at this block
     mov eax, [LOCAL(G_CX)]
     shl eax, 5
-    lea eax, [eax + r13d - 1]
+    lea eax, [eax + r13d - HB]
     cvtsi2sd xmm1, eax
     mov eax, [LOCAL(G_CZ)]
     shl eax, 5
-    lea eax, [eax + r12d - 1]
+    lea eax, [eax + r12d - HB]
     cvtsi2sd xmm2, eax
     lea rcx, [rel g_noise + F_DETAIL * NOISE_size]
     mov edx, [rel g_world_seed]
     call fbm2
     movss [LOCAL(G_DETAIL)], xmm0
-    ; bilinear from the coarse grid: local x + 4 = 4 * gx + fx
-    lea ecx, [r13d + 3]                 ; (hx - 1) + 4
+    ; bilinear from the coarse grid: local x + HB = hx = 4 * gx + fx
+    mov ecx, r13d
     mov r8d, ecx
     shr r8d, 2                          ; gx
     and ecx, 3
     cvtsi2ss xmm4, ecx
     mulss xmm4, [rel c_quarter]         ; fx
-    lea ecx, [r12d + 3]
+    mov ecx, r12d
     mov r9d, ecx
     shr r9d, 2                          ; gz
     and ecx, 3
     cvtsi2ss xmm5, ecx
     mulss xmm5, [rel c_quarter]         ; fz
-    imul eax, r9d, 10
+    imul eax, r9d, CG
     add eax, r8d
     mov rdx, [LOCAL(G_CGRID)]
-    lea rdx, [rdx + rax * 8]            ; cell (gx, gz); +8 = gx+1, +80 = gz+1
+    lea rdx, [rdx + rax * 8]            ; cell (gx, gz); +8 = gx+1, +CG*8 = gz+1
 %macro BILERP 2                         ; dst xmm, component offset (0 h, 4 A)
     movss %1, [rdx + 8 + (%2)]
     subss %1, [rdx + (%2)]
     mulss %1, xmm4
     addss %1, [rdx + (%2)]
-    movss xmm3, [rdx + 88 + (%2)]
-    subss xmm3, [rdx + 80 + (%2)]
+    movss xmm3, [rdx + CG * 8 + 8 + (%2)]
+    subss xmm3, [rdx + CG * 8 + (%2)]
     mulss xmm3, xmm4
-    addss xmm3, [rdx + 80 + (%2)]
+    addss xmm3, [rdx + CG * 8 + (%2)]
     subss xmm3, %1
     mulss xmm3, xmm5
     addss %1, xmm3
@@ -1495,10 +1529,10 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov r10, [LOCAL(G_H)]
     mov [r10 + rcx * 4], eax
     ; interior: min/max, overhang, deep boundary, bedrock jitter
-    lea ecx, [r13d - 1]
+    lea ecx, [r13d - HB]
     cmp ecx, 31
     ja .hm_next
-    lea ecx, [r12d - 1]
+    lea ecx, [r12d - HB]
     cmp ecx, 31
     ja .hm_next
     cmp eax, [LOCAL(G_MINH)]
@@ -1509,9 +1543,9 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     jle .not_max
     mov [LOCAL(G_MAXH)], eax
 .not_max:
-    lea ecx, [r12d - 1]
+    lea ecx, [r12d - HB]
     shl ecx, 5
-    lea ecx, [ecx + r13d - 1]
+    lea ecx, [ecx + r13d - HB]
     imul rcx, rcx, INFO_SIZE
     add rcx, [LOCAL(G_INFO)]
     BILERP xmm0, 4
@@ -1543,20 +1577,98 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     cmp r12d, HM
     jb .hm_z
 
+    ; ---- ponds (dug into the heightmap) ------------------------------------------
+    mov rdi, [LOCAL(G_POND)]
+    mov eax, POND_NONE
+    mov ecx, HM * HM
+    rep stosw
+    mov rbx, [LOCAL(G_FCTX)]
+    mov eax, [LOCAL(G_CX)]
+    mov [rbx + FCTX.cx], eax
+    mov eax, [LOCAL(G_CZ)]
+    mov [rbx + FCTX.cz], eax
+    mov rax, [LOCAL(G_H)]
+    mov [rbx + FCTX.heights], rax
+    mov rax, [LOCAL(G_POND)]
+    mov [rbx + FCTX.pond], rax
+    mov rax, [LOCAL(G_INFO)]
+    mov [rbx + FCTX.info], rax
+    mov rax, [LOCAL(G_BMAP)]
+    mov [rbx + FCTX.bmap], rax
+    mov rcx, rbx
+    call flora_ponds
+
+    ; ---- biome, vegetation density and pond level per interior column ----------
+    xor r12d, r12d                      ; z
+.bi_z:
+    xor r13d, r13d                      ; x
+.bi_x:
+    mov rcx, [LOCAL(G_BMAP)]
+    mov edx, r13d
+    mov r8d, r12d
+    call bmap_col
+    mov ecx, r12d
+    shl ecx, 5
+    add ecx, r13d
+    imul rcx, rcx, INFO_SIZE
+    add rcx, [LOCAL(G_INFO)]
+    mov [rcx + INFO_BIOME], al
+    mulss xmm0, [rel c_255]
+    cvttss2si eax, xmm0
+    mov [rcx + INFO_DENS], al
+    lea eax, [r12d + HB]
+    imul eax, eax, HM
+    lea eax, [eax + r13d + HB]
+    mov rdx, [LOCAL(G_POND)]
+    mov ax, [rdx + rax * 2]
+    mov [rcx + INFO_POND], ax
+    inc r13d
+    cmp r13d, 32
+    jb .bi_x
+    inc r12d
+    cmp r12d, 32
+    jb .bi_z
+
+    ; ---- biome colours for the tint map (8 x 8 per layer) ----------------------
+    xor r12d, r12d
+.ti_z:
+    xor r13d, r13d
+.ti_x:
+    mov rcx, [LOCAL(G_BMAP)]
+    lea edx, [r13d * 4 + 2]
+    lea r8d, [r12d * 4 + 2]
+    call bmap_tint
+    mov ecx, r12d
+    shl ecx, 3
+    add ecx, r13d
+    mov r8, [LOCAL(G_COL)]
+    mov [r8 + COLUMN.tint + rcx * 4], eax
+    mov [r8 + COLUMN.tint + 256 + rcx * 4], edx
+    inc r13d
+    cmp r13d, 8
+    jb .ti_x
+    inc r12d
+    cmp r12d, 8
+    jb .ti_z
+
     ; ---- surface blocks by height and slope --------------------------------------------
     xor r12d, r12d                      ; z
 .sf_z:
     xor r13d, r13d                      ; x
 .sf_x:
-    lea ecx, [r12d + 1]
+    lea ecx, [r12d + HB]
     imul ecx, ecx, HM
-    lea ecx, [ecx + r13d + 1]
+    lea ecx, [ecx + r13d + HB]
     mov rdx, [LOCAL(G_H)]
     mov eax, [rdx + rcx * 4]            ; H
     ; slope = max |H - neighbour|
     xor r8d, r8d
+    ; (pond neighbours do not count: their banks stay grassy)
+    mov r11, [LOCAL(G_POND)]
 %macro SLOPE_NB 1
     mov r9d, [rdx + rcx * 4 + (%1) * 4]
+    cmp word [r11 + rcx * 2 + (%1) * 2], POND_NONE
+    cmovne r9d, eax
     sub r9d, eax
     mov r10d, r9d
     neg r10d
@@ -1614,7 +1726,19 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     cmp r9d, [rel g_scree_y]
     jge .gravel_top
 .grass:
+    ; the biome's own top and filler blocks, if it sets them
+    movzx r10d, byte [rcx + INFO_BIOME]
+    imul r10, r10, BIOME_size
+    lea rax, [rel g_biomes]
+    add r10, rax
+    mov eax, [r10 + BIOME.top]
+    test eax, eax
+    jnz .grass_top
     mov eax, [rel g_b_top]
+.grass_top:
+    mov edx, [r10 + BIOME.filler]
+    test edx, edx
+    jnz .sf_store
     mov edx, [rel g_b_fill]
     jmp .sf_store
 .gravel_top:
@@ -1641,6 +1765,23 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
 .seabed_store:
     mov edx, eax
 .sf_store:
+    ; pond floor: the biome's pond_floor, else its filler
+    cmp word [rcx + INFO_POND], POND_NONE
+    je .sf_put
+    movzx r10d, byte [rcx + INFO_BIOME]
+    imul r10, r10, BIOME_size
+    lea rax, [rel g_biomes]
+    add r10, rax
+    mov edx, [r10 + BIOME.filler]
+    test edx, edx
+    jnz .pond_fill
+    mov edx, [rel g_b_fill]
+.pond_fill:
+    mov eax, [r10 + BIOME.pond_floor]
+    test eax, eax
+    jnz .sf_put
+    mov eax, edx
+.sf_put:
     mov [rcx + 4], ax
     mov [rcx + 6], dx
     inc r13d
@@ -1654,6 +1795,19 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov rcx, [LOCAL(G_CTX)]
     call caves_column
 
+    ; ---- trees and bushes that reach this chunk ----------------------------------
+    mov rcx, [LOCAL(G_FCTX)]
+    call flora_prepare
+    mov rcx, [LOCAL(G_FCTX)]
+    mov eax, [rcx + FCTX.top]
+    mov ecx, [LOCAL(G_MAXH)]
+    add ecx, 2                          ; (tall plants)
+    cmp eax, ecx
+    jge .topf
+    mov eax, ecx
+.topf:
+    mov [LOCAL(G_TOPF)], eax
+
     ; ---- sections ------------------------------------------------------------------------
     cvttss2si eax, [LOCAL(G_MAXA)]
     inc eax
@@ -1665,9 +1819,15 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     add eax, WORLD_MIN_Y
     mov [LOCAL(G_Y0)], eax
     mov ebx, eax                        ; y0
-    ; above every surface (plus overhang margin)?
+    ; above every surface (plus overhang margin) and every plant and tree?
     mov ecx, [LOCAL(G_MAXH)]
     add ecx, [LOCAL(G_MAXA)]
+    mov eax, [LOCAL(G_TOPF)]
+    inc eax
+    cmp ecx, eax
+    jge .above_ok
+    mov ecx, eax
+.above_ok:
     cmp ebx, ecx
     jl .not_above
     cmp ebx, [rel g_sea_level]
@@ -1709,9 +1869,9 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
 .f_z:
     xor r13d, r13d                      ; x
 .f_x:
-    lea ecx, [r12d + 1]
+    lea ecx, [r12d + HB]
     imul ecx, ecx, HM
-    lea ecx, [ecx + r13d + 1]
+    lea ecx, [ecx + r13d + HB]
     mov rdx, [LOCAL(G_H)]
     mov r14d, [rdx + rcx * 4]           ; H
     mov ecx, r12d
@@ -1756,10 +1916,13 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     cmp edi, r14d
     jl .solid
 .not_solid:
-    xor eax, eax
-    cmp edi, [rel g_sea_level]
-    jg .put
     mov eax, [rel g_b_water]
+    cmp edi, [rel g_sea_level]
+    jle .put
+    movsx ecx, word [r15 + INFO_POND]   ; pond water
+    cmp edi, ecx
+    jle .put
+    xor eax, eax
     jmp .put
 .solid:
     cmp edi, r14d
@@ -1851,6 +2014,11 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     jg .no_finish
     INVOKE caves_finish, [LOCAL(G_CTX)], [LOCAL(G_IDS)], rbx, [LOCAL(G_SY)]
 .no_finish:
+    ; plants and trees
+    cmp ebx, [LOCAL(G_TOPF)]
+    jg .no_flora
+    INVOKE flora_section, [LOCAL(G_FCTX)], [LOCAL(G_IDS)], rbx
+.no_flora:
     INVOKE section_build, [LOCAL(G_IDS)], [LOCAL(G_CX)], [LOCAL(G_SY)], [LOCAL(G_CZ)]
 .store:
     mov rcx, [LOCAL(G_COL)]

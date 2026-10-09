@@ -8,7 +8,7 @@
 ; that are absent or invalid (with a warning naming them).
 ; Two shader storage buffers describe them to shaders/chunk.*:
 ;   binding 1  block faces: u32 per (block, face) = texture | flags << 16
-;              (flags: bit 0 sway, bits 1-2 render layer)
+;              (flags: bit 0 sway, bits 1-2 render layer, bits 3-4 biome tint)
 ;   binding 2  textures: uvec4 per texture = (first layer,
 ;              frames | interpolate << 16, frame_ms, glow first layer + 1 |
 ;              glow frames << 16)
@@ -410,6 +410,14 @@ PROC block_textures_init, PATH_CAP + 32, rbx, rsi, rdi, r12, r13
     shl eax, 1
     or r8d, eax
     shl r8d, 16                         ; flags
+    ; biome tint: mode (1 grass, 2 foliage) at bit 19 on the tinted faces
+    lea rax, [rel g_block_flags]
+    movzx r9d, byte [rax + rbx]
+    shr r9d, 1
+    and r9d, 3                          ; BLOCKF_TINT_GRASS -> 1, FOLIAGE -> 2
+    shl r9d, 19
+    lea rax, [rel g_block_tintmask]
+    movzx r10d, byte [rax + rbx]
     xor ecx, ecx
 .face:
     lea rax, [rel g_block_tex]
@@ -417,6 +425,10 @@ PROC block_textures_init, PATH_CAP + 32, rbx, rsi, rdi, r12, r13
     add rax, rdx
     movzx eax, word [rax + rcx * 2]
     or eax, r8d
+    bt r10d, ecx
+    jnc .face_untinted
+    or eax, r9d
+.face_untinted:
     imul rdx, rbx, 24
     add rdx, rsi
     mov [rdx + rcx * 4], eax

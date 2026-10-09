@@ -112,6 +112,6 @@ and `<colour>_wool`.
 
 ## Open
 * Exact shading of each texture: iterate in-game; owner repaints if wanted.
-* Biome tinting of grass and leaves: M10 (biome interview).
+* Biome tinting of grass and leaves: done in M10 (`tint` setting, D54).
 * Ores: M9 interview.
 * Shaped blocks: M7b.

@@ -1,0 +1,42 @@
+# Tree and bush generators. Biomes refer to them by name, so they come
+# first (files load in name order).
+#   kind      round (trunk + round crown), branching (trunk, diagonal branches
+#             with leaf clusters, crown), bush (log stub + low leaf clump)
+#   height    trunk height range;  radius  crown radius range
+#   branches  branch count range (branching);  leaf_gaps  chance that an
+#             edge leaf is left out (irregular crowns)
+
+# plains: small round oaks (5-7 tall)
+[tree small_oak]
+kind      = round
+log       = oak_log
+leaves    = oak_leaves
+height    = 4, 6
+radius    = 2.0, 2.8
+leaf_gaps = 0.3
+
+# plains: occasional big branching oaks (10-14 tall)
+[tree big_oak]
+kind      = branching
+log       = oak_log
+leaves    = oak_leaves
+height    = 8, 11
+radius    = 2.8, 3.4
+branches  = 2, 4
+leaf_gaps = 0.35
+
+[tree oak_bush]
+kind      = bush
+log       = oak_log
+leaves    = oak_leaves
+height    = 1, 1
+radius    = 1.4, 2.1
+leaf_gaps = 0.3
+
+[tree flowering_bush]
+kind      = bush
+log       = oak_log
+leaves    = flowering_oak_leaves
+height    = 1, 1
+radius    = 1.4, 2.1
+leaf_gaps = 0.3

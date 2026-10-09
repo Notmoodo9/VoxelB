@@ -57,6 +57,7 @@ GLFN glDeleteTextures,          1
 GLFN glProgramUniform1ui,       1
 GLFN glTextureStorage3D,        1
 GLFN glTextureSubImage3D,       1
+GLFN glClearTexImage,           1
 GLFN glGenerateTextureMipmap,   1
 GLFN glDepthMask,               1
 GLFN glProgramUniform1f,        1

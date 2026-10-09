@@ -20,7 +20,8 @@
 ;   Tables, indexed by block id (ids are u16, capacity MAX_BLOCK_TYPES):
 ;     g_block_count, g_block_names (char*), g_block_colors (RGBA8 average of
 ;     the top texture, set by the texture loader), g_block_light (u16:
-;     r | g << 4 | b << 8, 0..15 each), g_block_flags (BLOCKF_*),
+;     r | g << 4 | b << 8, 0..15 each), g_block_flags (BLOCKF_*, tint faces in
+;     g_block_tintmask),
 ;     g_block_tex (u16 texture index per face: -X +X -Y +Y -Z +Z)
 ;   Mesher tables, 64 K entries so any u16 id can be looked up:
 ;     g_block_opaque (hides neighbour faces), g_block_layer (LAYER_*),
@@ -41,10 +42,10 @@
 %include "cfg.inc"
 %include "block.inc"
 
-global blocks_load, block_find, tex_find
+global blocks_load, block_find, tex_find, str_dup
 global g_block_count, g_block_names, g_block_colors, g_block_opaque
 global g_block_layer, g_block_cullself, g_block_light, g_block_flags, g_block_tex
-global g_block_shape, g_block_state, g_block_nstates
+global g_block_shape, g_block_state, g_block_nstates, g_block_tintmask
 global g_tex_count, g_tex_names, g_tex_frame_ms, g_tex_glow, g_tex_interp
 
 extern str_ieq, str_len, str_copy, str_parse_u64
@@ -87,6 +88,10 @@ k_textures:     db "textures", 0
 k_render:       db "render", 0
 k_light:        db "light", 0
 k_sway:         db "sway", 0
+k_tint:         db "tint", 0
+v_grass:        db "grass", 0
+v_foliage:      db "foliage", 0
+v_none:         db "none", 0
 k_shape:        db "shape", 0
 k_upper_tex:    db "upper_textures", 0
 s_cube:         db "cube", 0
@@ -104,10 +109,13 @@ s_wall:         db "wall", 0
 s_pillar:       db "pillar", 0
 s_pane:         db "pane", 0
 s_spike:        db "spike", 0
+s_plant:        db "plant", 0
+s_tall_plant:   db "tall_plant", 0
 align 8
 shape_names:    dq s_cube, s_slab, s_stairs, s_fence, s_gate, s_door, s_trapdoor
                 dq s_ladder, s_sign, s_wall_sign, s_plate, s_wall, s_pillar, s_pane, s_spike
-shape_states:   db 1, 2, 8, 1, 8, 32, 16, 4, 4, 4, 2, 1, 1, 1, 2
+                dq s_plant, s_tall_plant
+shape_states:   db 1, 2, 8, 1, 8, 32, 16, 4, 4, 4, 2, 1, 1, 1, 2, 1, 2
 str_shape_late:     db "shape must be the first setting of a new block: ", 0
 k_templates:    db "templates", 0
 k_members:      db "members", 0
@@ -174,6 +182,7 @@ g_block_tex:        resw MAX_BLOCK_TYPES * 6
 g_block_utex:       resw MAX_BLOCK_TYPES * 6    ; door upper-half textures
 g_block_nstates:    resw MAX_BLOCK_TYPES
 g_block_flags:      resb MAX_BLOCK_TYPES
+g_block_tintmask:   resb MAX_BLOCK_TYPES
 g_tex_interp:       resb MAX_TEXTURES
 alignb 16
 g_block_opaque:     resb 65536
@@ -337,6 +346,8 @@ PROC block_get, 0, rbx, rsi
     lea rcx, [rel g_block_light]
     mov word [rcx + rbx * 2], 0
     lea rcx, [rel g_block_flags]
+    mov byte [rcx + rbx], 0
+    lea rcx, [rel g_block_tintmask]
     mov byte [rcx + rbx], 0
     lea rcx, [rel g_block_layer]
     mov byte [rcx + rbx], LAYER_OPAQUE
@@ -524,6 +535,9 @@ PROC sync_states, 0, rbx, rsi, rdi
     lea rax, [rel g_block_flags]
     mov cl, [rax + rbx]
     mov [rax + r8], cl
+    lea rax, [rel g_block_tintmask]
+    mov cl, [rax + rbx]
+    mov [rax + r8], cl
     lea rax, [rel g_block_light]
     mov cx, [rax + rbx * 2]
     mov [rax + r8 * 2], cx
@@ -532,10 +546,13 @@ PROC sync_states, 0, rbx, rsi, rdi
     lea r10, [rel g_block_tex]
     add r10, r9                         ; source row
     lea rax, [rel g_block_shape]
+    cmp byte [rax + rbx], SHAPE_TALL_PLANT
+    je .copy_upper                      ; (state 1 is the upper half)
     cmp byte [rax + rbx], SHAPE_DOOR
     jne .copy_tex
     test edi, 4
     jz .copy_tex
+.copy_upper:
     lea rax, [rel g_block_utex]
     cmp word [rax + r9], TEX_UNSET
     je .copy_tex
@@ -681,6 +698,10 @@ PROC block_apply_one, 0, rbx, rsi, rdi, r12, r13
     INVOKE str_ieq, rsi, rdx
     test eax, eax
     jnz .shape
+    lea rdx, [rel k_tint]
+    INVOKE str_ieq, rsi, rdx
+    test eax, eax
+    jnz .tint
     lea rdx, [rel k_upper_tex]
     INVOKE str_ieq, rsi, rdx
     test eax, eax
@@ -753,6 +774,67 @@ PROC block_apply_one, 0, rbx, rsi, rdi, r12, r13
     jb .light_ch
     lea rax, [rel g_block_light]
     mov [rax + rbx * 2], r12w
+    RETURN
+
+.tint:                                  ; tint = grass|foliage|none [, faces...]
+    mov rcx, rdi
+    call cfg_next_token
+    mov rdi, rdx                        ; rest: face names
+    mov r12, rax
+    xor r13d, r13d                      ; flag
+    lea rdx, [rel v_none]
+    INVOKE str_ieq, r12, rdx
+    test eax, eax
+    jnz .tint_set
+    mov r13d, BLOCKF_TINT_GRASS
+    lea rdx, [rel v_grass]
+    INVOKE str_ieq, r12, rdx
+    test eax, eax
+    jnz .tint_set
+    mov r13d, BLOCKF_TINT_FOLIAGE
+    lea rdx, [rel v_foliage]
+    INVOKE str_ieq, r12, rdx
+    test eax, eax
+    jz .bad
+.tint_set:
+    lea rcx, [rel g_block_flags]
+    and byte [rcx + rbx], ~(BLOCKF_TINT_GRASS | BLOCKF_TINT_FOLIAGE)
+    or [rcx + rbx], r13b
+    ; faces (default all)
+    mov r12d, 0x3F
+    test rdi, rdi
+    jz .tint_mask
+    xor r12d, r12d
+.tint_face:
+    test rdi, rdi
+    jz .tint_done
+    mov rcx, rdi
+    call cfg_next_token
+    mov rdi, rdx
+    mov [rsp + 32], rax                 ; (spare outgoing slot: face name)
+    cmp byte [rax], 0
+    je .tint_face
+    xor r13d, r13d
+.tint_lookup:
+    cmp r13d, FACE_NAME_COUNT
+    jae .bad
+    lea rax, [rel face_names]
+    INVOKE str_ieq, [rax + r13 * 8], [rsp + 32]
+    test eax, eax
+    jnz .tint_found
+    inc r13d
+    jmp .tint_lookup
+.tint_found:
+    lea rax, [rel face_masks]
+    or r12b, [rax + r13]
+    jmp .tint_face
+.tint_done:
+    test r12d, r12d
+    jnz .tint_mask
+    mov r12d, 0x3F                      ; ("tint = grass," with no faces)
+.tint_mask:
+    lea rax, [rel g_block_tintmask]
+    mov [rax + rbx], r12b
     RETURN
 
 .sway:

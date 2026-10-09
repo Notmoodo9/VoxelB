@@ -39,7 +39,7 @@ global g_stream_quads, g_stream_mesh_count, g_stream_mesh_total_us
 global g_stream_mesh_max_us, g_stream_cpu_mesh_bytes, g_stream_view_ms
 
 extern timer_elapsed_us, g_render_distance, g_frame_us
-extern mesh_section
+extern mesh_section, tint_upload
 extern gpu_alloc_init, gpu_alloc, gpu_free, gpu_alloc_units_needed
 extern g_quad_buffer, g_cam_pos
 
@@ -444,6 +444,8 @@ PROC upload_column, 0, rbx, rsi, rdi, r12, r13
     API VirtualFree, r13, 0, MEM_RELEASE
     mov qword [rbx + COLUMN.mesh_buf], 0
 .done:
+    mov rcx, rbx
+    call tint_upload
     mov dword [rbx + COLUMN.state], COL_READY
     mov eax, r12d
     RETURN
