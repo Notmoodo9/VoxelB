@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 8: 🎨 DESIGN — Terrain: DONE** (Windows CI: see below)
+**Milestone 8: 🎨 DESIGN — Terrain: DONE** (Windows CI green: run #16)
 
 Next: **Milestone 9: 🎨 DESIGN — Caves, ravines, aquifers, lava, ores.**
 It starts with a design interview, one item at a time: caves first, then
@@ -80,6 +80,15 @@ Two rounds plus approval, recorded in `design/terrain/overworld_terrain.md`:
 * Screenshots: the spawn coast (beach, grass terraces, sea, distant
   mountain); a river valley with sandy banks; a giant ridgeline with a deep
   pass and snowy spires; jagged spires from above.
+
+### Verified on Windows (GitHub Actions run #16, Mesa llvmpipe GL 4.6)
+* Debug and release smoke tests pass: terrain generator loaded, clean
+  exit.
+* Release:
+  * the spawn view (797 columns, 344k quads) completes in 1.76 s;
+  * meshing averages 2.6 ms per column;
+  * `stream_update` averages 36–39 µs;
+  * about 16 FPS on software GL.
 
 ### Performance (release, llvmpipe, render distance 16)
 | | |
