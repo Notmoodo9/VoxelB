@@ -1,15 +1,106 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 1): 🎨 DESIGN — Biome system + plains: DONE**
-(Windows CI green: run #20)
+**Milestone 10 (part 2): 🎨 DESIGN — Forest + old-growth forest: DONE**
+(Windows CI: see below)
 
-Milestone 10 builds the biomes one at a time (AGENTS.md §1a). Part 1 is
-the biome engine and the first biome, plains.
+Next: **Milestone 10, part 3: the next temperate biome**. The candidates
+are birch forest, dark forest, meadow and river (`design/BACKLOG.md`). It
+starts with its design interview.
 
-Next: **Milestone 10, part 2: the next temperate biome (forest)**. It starts
-with its design interview. The remaining biomes are listed in
-`design/BACKLOG.md`.
+---
+
+## Milestone 10, part 2 — done (2026-10-09)
+
+### Design interview
+Three rounds plus approval: `design/biomes/forest.md` and
+`design/biomes/old_growth_forest.md`.
+
+Forest:
+* a large, common mixed oak forest in rich deep green;
+* oaks with tall slim birches and round maples (some in autumn colours);
+* dense, with clearings;
+* ferns, leaf litter near trunks, mushrooms, fallen logs and mossy stumps.
+
+At approval the owner added old growth: "massive old growth trees with
+huge trunks… rarer but magnificent", realistic giants that taper ("a giant
+trunk then it gets to a 3x3 … and then branches"). The design:
+* rare old-growth hearts inside about 1 in 6 forests;
+* giant oaks over an understorey of smaller trees;
+* moss and ferns, huge roots, mushroom rings, a dim feel.
+
+### What was built
+* **Log axis states** (D57): logs lie along X or Z. Fallen logs, roots and
+  branches use them, which fixes part 1's end-grain branches.
+* **Rare pockets** (D58): a third climate field (weirdness) and a biome
+  `priority`.
+* **Giant trees** (D59, `kind = giant`):
+  * tapering disc trunks with a flared base;
+  * arching roots;
+  * heavy branches with leaf clusters, and a crown;
+  * 30–65 tall.
+* **Fallen logs and stumps** (`kind = fallen | stump`).
+* **Forest floor**:
+  * leaf-litter patches near trunks with shade plants (ferns, mushrooms);
+  * clearings without trees, with flowers;
+  * mushroom rings;
+  * top patches (moss).
+* **New blocks**: `fern` (grass-tinted), `red_mushroom`, `brown_mushroom`,
+  `moss_block`, `mossy_oak_log`.
+* **Data**: `data/biomes/30_forest.biome`,
+  `31_old_growth_forest.biome`, and new trees in `10_trees.biome`
+  (birch, maple, autumn maple, fallen oak, mossy stump, giant oak, fallen
+  giant). Everything is documented in DATA_FORMAT.md.
+* `--survey` also gives the nearest place well inside each biome.
+* The heightmap border grew to 22 blocks (trees reach 20 blocks).
+
+### How to see it (seed 20261009, the default)
+* Forest next to spawn: `voxelb.exe --pos -64 175 60 --look 330 -30`.
+  Oaks, white birches and red autumn maples, litter patches.
+* Forest floor: `voxelb.exe --pos -90 142 40 --look 300 -45`.
+* Old-growth giants on a coast:
+  `voxelb.exe --pos 790 200 640 --look 330 -18`.
+* Under the giants (roots, flared trunks):
+  `voxelb.exe --pos 780 132 600 --look 320 5`.
+* `voxelb.exe --survey` for other seeds.
+
+### Bugs found and fixed while testing
+* The first giants had thin, short branches and narrow crowns. Branch
+  length, count, start height, leaf clusters and base radius were raised.
+  The tree reach and heightmap border grew with them, so crowns are not cut
+  at chunk borders.
+* The survey's "nearest sample" landed on thin biome slivers. It now
+  needs the neighbouring sample to be the same biome.
+* Moss looked like grass; the moss block is now yellow-olive.
+* The new biome choice code used xmm6, a callee-saved register; changed to
+  a stack slot.
+
+### Verified (Wine 9 + Xvfb + Mesa llvmpipe)
+* Debug and release headless tests pass, with clean exits and no warnings.
+* Screenshots:
+  * the forest from above;
+  * the forest floor (ferns, litter, birch bark);
+  * old-growth giants from the air and from the ground (flared trunks,
+    roots, branches, wide canopies);
+  * moss ground.
+
+### Performance (release, llvmpipe, render distance 16)
+| | |
+|---|---|
+| Column generation | avg 11–13 ms (max ~60 ms in old-growth) |
+| Column meshing | avg 10–12 ms |
+| Spawn view | ~4 FPS (software GL) |
+| Old-growth view | ~3 FPS, ~450k quads drawn |
+
+### Known issues
+* Mushroom rings are rare to stumble on; their chance is per 128×128
+  cell, inside old growth only.
+* Mist in old-growth waits for fog (M14).
+* Over half the land is still "none" until more biomes exist.
+
+### Deferred
+* Forest edge transition biome; other temperate, hot, cold and fantasy
+  biomes: later M10 parts, one interview each.
 
 ---
 

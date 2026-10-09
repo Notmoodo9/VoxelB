@@ -105,6 +105,7 @@ every setting applies to all states):
 | `spike` | hanging (from above), standing (from below) | base / middle / tip by the spikes it touches (dripstone) |
 | `plant` | 1 | two crossed planes, seen from both sides (grass, flowers) |
 | `tall_plant` | lower, upper | two blocks high; the upper half uses `upper_textures` |
+| `axis` | upright, east-west, north-south | a cube log: the `end` texture faces along its axis (logs lying in fallen trees and branches) |
 
 Faces of a shape take the block's textures by direction, projected like
 a cube's (so a slab shows the lower half of its texture).
@@ -261,7 +262,7 @@ biomes that use them. Records:
 colour of the grass / oak leaf textures (a biome colour equal to these leaves
 the texture unchanged); `contrast` (climate noise spread, default 1).
 
-`[noise temperature]`, `[noise humidity]` — the climate fields (`scale`,
+`[noise temperature]`, `[noise humidity]`, `[noise weirdness]` — the climate fields (`scale`,
 `octaves`, `persistence`, `salt`); larger scale = larger biomes.
 Temperature and humidity are 0..1.
 
@@ -269,12 +270,14 @@ Temperature and humidity are 0..1.
 
 | Key | Meaning |
 |---|---|
-| `kind` | `round` (trunk + round crown), `branching` (trunk, diagonal branches with leaf clusters, crown), `bush` (log stub + low leaf clump) |
+| `kind` | `round` (trunk + round crown), `branching` (trunk, diagonal branches with leaf clusters, crown), `bush` (log stub + low leaf clump), `giant` (tapering flared trunk, arching roots, heavy branches with leaf clusters, crown), `fallen` (a log lying on level ground, length = `height`), `stump` (a short upright log) |
 | `log`, `leaves` | blocks |
 | `height` | trunk height range `a, b` |
 | `radius` | crown radius range |
 | `branches` | branch count range (branching) |
 | `leaf_gaps` | chance that an edge leaf is left out (irregular crowns) |
+| `base_radius` | giant: trunk radius range at the ground (it tapers to 3×3 at 55% of the height) |
+| `roots` | giant: root count range |
 
 `[biome <name>]`:
 
@@ -291,6 +294,16 @@ Temperature and humidity are 0..1.
 | `tree`, `tree_density` | `tree name, weight` (repeat); trees per block² |
 | `bush`, `bush_density` | the same for bushes |
 | `pond_chance`, `pond_radius`, `pond_depth`, `pond_floor` | chance per 128×128 cell; radius range (max 6); deepest water; floor block |
+| `weirdness`, `priority` | rare pockets: a weirdness range; where several boxes match, the highest priority wins (old-growth inside forest) |
+| `litter_block`, `litter_radius`, `litter_chance` | ground block near tree trunks (leaf litter), radius, share |
+| `shade_plant` | `block, chance` on litter (ferns, mushrooms) |
+| `clearing_chance`, `clearing_radius`, `clearing_flower_chance` | treeless clearings: chance per 160×160 cell, radius range, flower share |
+| `ring_chance`, `ring_radius`, `ring_plants` | mushroom rings: chance per 128×128 cell, radius range, blocks |
+| `top_patch` | `block, level`: replaces the top block where the detail noise is above `level` (moss) |
+
+The `bush` list holds the second layer of a biome: bushes, the understorey,
+fallen logs and stumps. Trees and the second layer can reach 20 blocks into
+neighbouring chunks.
 
 Vegetation thins out towards biome borders (blend weight 0.85 → 0.5). Trees
 grow only on flat dry land away from ponds. Everything is placed from hashes

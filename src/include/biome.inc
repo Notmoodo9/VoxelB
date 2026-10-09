@@ -14,6 +14,9 @@
 %define TREE_ROUND      0               ; trunk + round crown (small oak)
 %define TREE_BRANCHING  1               ; trunk + branches with leaf clusters
 %define TREE_BUSH       2               ; log stub + low leaf clump
+%define TREE_GIANT      3               ; tapering trunk, roots, heavy branches
+%define TREE_FALLEN     4               ; a log lying on the ground
+%define TREE_STUMP      5               ; a short upright log
 
 ; per-chunk blend map: biome samples every 16 blocks from -64 to +96 around
 ; the chunk, blurred (tent filter, radius 32) into points from -32 to +64
@@ -55,6 +58,23 @@ struc BIOME
     .nbushes        resd 1
     .bush           resd BIOME_TREES
     .bush_w         resd BIOME_TREES
+    .weird          resd 2              ; weirdness range (rare pockets)
+    .priority       resd 1              ; higher wins where boxes overlap
+    .litter         resd 1              ; block near tree trunks (0 = none)
+    .litter_r       resd 1              ; int radius around trunks
+    .litter_ch      resd 1              ; float share inside the radius
+    .nshade         resd 1              ; plants on litter: block, chance
+    .shade          resd BIOME_PLANTS
+    .shade_ch       resd BIOME_PLANTS
+    .clear_ch       resd 1              ; clearing chance per 160 x 160 cell
+    .clear_r        resd 2              ; float radius range
+    .clear_fl       resd 1              ; flower share inside clearings
+    .ring_ch        resd 1              ; mushroom ring chance per 128 x 128
+    .ring_r         resd 2              ; float radius range
+    .nrings         resd 1              ; ring plants (block list)
+    .ring           resd BIOME_FLOWERS
+    .patch          resd 1              ; top patch block (0 = none)
+    .patch_lvl      resd 1              ; float: detail noise above this
 endstruc
 
 struc TREE
@@ -66,6 +86,8 @@ struc TREE
     .radius         resd 2              ; float crown radius range
     .branches       resd 2              ; int branch count range
     .gaps           resd 1              ; float: chance to drop an edge leaf
+    .base_r         resd 2              ; float trunk base radius range (giant)
+    .roots          resd 2              ; int root count range (giant)
 endstruc
 
 struc BMAP
@@ -77,7 +99,7 @@ endstruc
 
 %ifndef BIOME_IMPL
 extern biomes_load, biome_climate, biome_pick, bmap_build, bmap_col, bmap_tint
-extern biome_at
+extern biome_at, biome_point
 extern g_biomes, g_biome_count, g_trees, g_tree_count
 %endif
 %endif

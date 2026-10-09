@@ -1,0 +1,46 @@
+# Forest (design/biomes/forest.md): a large, common mixed oak forest in rich
+# deep green, dense with touching canopies, occasional sunny clearings, ferns,
+# leaf litter near trunks, mushrooms in the shade, fallen logs and stumps.
+
+[biome forest]
+temperature   = 0.35, 0.70
+humidity      = 0.55, 1.00
+height        = 98, 220
+grass_color   = 3FA82E           # rich deep green
+foliage_color = 2E8A22
+
+plant = short_grass, 0.25
+plant = fern, 0.15
+
+# trees: about one per 40 blocks^2 (a trunk every 5-8 blocks)
+tree         = small_oak, 40
+tree         = big_oak, 20
+tree         = birch, 25
+tree         = maple, 11
+tree         = autumn_maple, 4
+tree_density = 0.025
+
+# fallen logs (~1 per 1200 blocks^2) and mossy stumps (~1 per 1500)
+bush         = fallen_oak, 5
+bush         = mossy_stump, 4
+bush_density = 0.0015
+
+# leaf litter in patches near trunks, with mushrooms and ferns on it
+litter_block  = forest_floor
+litter_radius = 2
+litter_chance = 0.7
+shade_plant   = fern, 0.10
+shade_plant   = brown_mushroom, 0.012
+shade_plant   = red_mushroom, 0.008
+
+# sunny clearings (~one per 150 blocks) with grass and flowers
+flowers                = poppy, dandelion, cornflower, oxeye_daisy, allium
+flower_chance          = 0.004
+clearing_chance        = 0.9
+clearing_radius        = 8, 16
+clearing_flower_chance = 0.12
+
+pond_chance = 0.05
+pond_radius = 2.5, 5
+pond_depth  = 2
+pond_floor  = mud

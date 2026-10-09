@@ -46,7 +46,7 @@
 %include "biome.inc"
 
 global biomes_load, biome_climate, biome_pick, bmap_build, bmap_col, bmap_tint
-global biome_at
+global biome_at, biome_point
 global g_biomes, g_biome_count, g_trees, g_tree_count
 
 extern str_ieq, str_len, str_copy, str_dup, str_parse_float
@@ -70,6 +70,7 @@ IMPORT FindFirstFileA, FindNextFileA, FindClose
 %define T_TREEREF       7               ; tree name, weight (appended)
 %define T_BLOCKLIST     8               ; blocks (appended)
 %define T_KIND          9               ; tree kind name
+%define T_PATCH         10              ; block, float level
 
 ; record kinds
 %define K_NONE          0
@@ -88,6 +89,7 @@ k_climate:      db "climate", 0
 k_noise:        db "noise", 0
 n_temp:         db "temperature", 0
 n_humid:        db "humidity", 0
+n_weird:        db "weirdness", 0
 k_scale:        db "scale", 0
 k_octaves:      db "octaves", 0
 k_persistence:  db "persistence", 0
@@ -119,6 +121,24 @@ k_b_pond_ch:    db "pond_chance", 0
 k_b_pond_r:     db "pond_radius", 0
 k_b_pond_d:     db "pond_depth", 0
 k_b_pond_f:     db "pond_floor", 0
+k_b_weird:      db "weirdness", 0
+k_b_prio:       db "priority", 0
+k_b_litter:     db "litter_block", 0
+k_b_litter_r:   db "litter_radius", 0
+k_b_litter_ch:  db "litter_chance", 0
+k_b_shade:      db "shade_plant", 0
+k_b_clear_ch:   db "clearing_chance", 0
+k_b_clear_r:    db "clearing_radius", 0
+k_b_clear_fl:   db "clearing_flower_chance", 0
+k_b_ring_ch:    db "ring_chance", 0
+k_b_ring_r:     db "ring_radius", 0
+k_b_ring:       db "ring_plants", 0
+k_b_patch:      db "top_patch", 0
+k_t_base_r:     db "base_radius", 0
+k_t_roots:      db "roots", 0
+v_giant:        db "giant", 0
+v_fallen:       db "fallen", 0
+v_stump:        db "stump", 0
 ; tree keys
 k_t_kind:       db "kind", 0
 k_t_log:        db "log", 0
@@ -165,6 +185,19 @@ biome_settings:
     dq k_b_pond_r,    T_RANGE_F,  BIOME.pond_r
     dq k_b_pond_d,    T_INT,      BIOME.pond_depth
     dq k_b_pond_f,    T_BLOCK,    BIOME.pond_floor
+    dq k_b_weird,     T_RANGE_F,  BIOME.weird
+    dq k_b_prio,      T_INT,      BIOME.priority
+    dq k_b_litter,    T_BLOCK,    BIOME.litter
+    dq k_b_litter_r,  T_INT,      BIOME.litter_r
+    dq k_b_litter_ch, T_FLOAT,    BIOME.litter_ch
+    dq k_b_shade,     T_PLANT,    BIOME.nshade
+    dq k_b_clear_ch,  T_FLOAT,    BIOME.clear_ch
+    dq k_b_clear_r,   T_RANGE_F,  BIOME.clear_r
+    dq k_b_clear_fl,  T_FLOAT,    BIOME.clear_fl
+    dq k_b_ring_ch,   T_FLOAT,    BIOME.ring_ch
+    dq k_b_ring_r,    T_RANGE_F,  BIOME.ring_r
+    dq k_b_ring,      T_BLOCKLIST, BIOME.nrings
+    dq k_b_patch,     T_PATCH,    BIOME.patch
     dq 0
 tree_settings:
     dq k_t_kind,      T_KIND,     TREE.kind
@@ -174,13 +207,16 @@ tree_settings:
     dq k_t_radius,    T_RANGE_F,  TREE.radius
     dq k_t_branches,  T_RANGE_I,  TREE.branches
     dq k_t_gaps,      T_FLOAT,    TREE.gaps
+    dq k_t_base_r,    T_RANGE_F,  TREE.base_r
+    dq k_t_roots,     T_RANGE_I,  TREE.roots
     dq 0
 climate_settings:
     dq k_grass_ref,   T_COLOR,    g_grass_ref
     dq k_foliage_ref, T_COLOR,    g_foliage_ref
     dq k_contrast,    T_FLOAT,    g_contrast
     dq 0
-kind_names:     dq v_round, v_branching, v_bush
+kind_names:     dq v_round, v_branching, v_bush, v_giant, v_fallen, v_stump
+%define KIND_COUNT 6
 
 align 4
 c_one:          dd 1.0
@@ -207,7 +243,7 @@ section .bss
 alignb 16
 g_biomes:       resb MAX_BIOMES * BIOME_size
 g_trees:        resb MAX_TREES * TREE_size
-g_clim_noise:   resb 2 * NOISE_size     ; temperature, humidity
+g_clim_noise:   resb 3 * NOISE_size     ; temperature, humidity, weirdness
 alignb 4
 g_biome_count:  resd 1
 g_tree_count:   resd 1
@@ -310,7 +346,7 @@ PROC biomes_load, 0, rbx, rsi
     mov dword [rbx + NOISE.ridged], 0
     add rbx, NOISE_size
     inc esi
-    cmp esi, 2
+    cmp esi, 3
     jb .nd
     ; biome 0: none
     lea rcx, [rel g_biomes]
@@ -436,6 +472,12 @@ biome_defaults:
     mov dword [rdx + BIOME.pond_r], 0x40400000        ; 3
     mov dword [rdx + BIOME.pond_r + 4], 0x40C00000    ; 6
     mov dword [rdx + BIOME.pond_depth], 2
+    mov dword [rdx + BIOME.weird + 4], 0x3F800000     ; 0 .. 1
+    mov dword [rdx + BIOME.litter_r], 2
+    mov dword [rdx + BIOME.clear_r], 0x41000000       ; 8
+    mov dword [rdx + BIOME.clear_r + 4], 0x41800000   ; 16
+    mov dword [rdx + BIOME.ring_r], 0x40400000        ; 3
+    mov dword [rdx + BIOME.ring_r + 4], 0x40A00000    ; 5
     ret
 
 ; -----------------------------------------------------------------------------
@@ -628,6 +670,11 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     lea rdx, [rel n_humid]
     INVOKE str_ieq, rdi, rdx
     test eax, eax
+    jnz .noise_rec
+    mov r12d, 2
+    lea rdx, [rel n_weird]
+    INVOKE str_ieq, rdi, rdx
+    test eax, eax
     jz .bad_rec
 .noise_rec:
     mov [rel g_rec], r12d
@@ -658,6 +705,10 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     mov dword [r12 + TREE.branches], 2
     mov dword [r12 + TREE.branches + 4], 4
     mov dword [r12 + TREE.gaps], 0x3E4CCCCD         ; 0.2
+    mov dword [r12 + TREE.base_r], 0x40400000       ; 3
+    mov dword [r12 + TREE.base_r + 4], 0x40900000   ; 4.5
+    mov dword [r12 + TREE.roots], 4
+    mov dword [r12 + TREE.roots + 4], 7
     inc dword [rel g_tree_count]
     mov dword [rel g_kind], K_TREE
     RETURN
@@ -753,10 +804,12 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     je .t_treeref
     cmp eax, T_BLOCKLIST
     je .t_blocklist
+    cmp eax, T_PATCH
+    je .t_patch
     ; T_KIND
     xor edi, edi
 .kind_find:
-    cmp edi, 3
+    cmp edi, KIND_COUNT
     jae .bad
     lea rax, [rel kind_names]
     INVOKE str_ieq, [rax + rdi * 8], rsi
@@ -890,6 +943,27 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     mov rdx, [LOCAL(0)]
     call warn
     RETURN
+.t_patch:                               ; block, level
+    mov rcx, rsi
+    call cfg_next_token
+    mov rdi, rdx
+    mov [LOCAL(0)], rax
+    INVOKE block_find, rax
+    cmp eax, -1
+    je .patch_bad
+    mov [r13], eax
+    mov rcx, rdi
+    mov rdx, rbx
+    call parse_f
+    test eax, eax
+    jz .done
+    movss [r13 + 4], xmm0
+    RETURN
+.patch_bad:
+    lea rcx, [rel str_bad_block]
+    mov rdx, [LOCAL(0)]
+    call warn
+    RETURN
 .t_blocklist:
     mov rdi, rsi
 .bl_token:
@@ -974,29 +1048,44 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; biome_climate — temperature and humidity at a world point (0..1).
+; biome_climate — temperature, humidity and weirdness at a point (0..1).
 ;   in:  xmm0 = x, xmm1 = z (doubles)
-;   out: xmm0 = temperature, xmm1 = humidity
+;   out: xmm0 = temperature, xmm1 = humidity, xmm2 = weirdness
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC biome_climate, 32
+PROC biome_climate, 32, rbx
     movsd [LOCAL(0)], xmm0
     movsd [LOCAL(8)], xmm1
-    lea rcx, [rel g_clim_noise]
+    xor ebx, ebx
+.f:
+    imul rcx, rbx, NOISE_size
+    lea rax, [rel g_clim_noise]
+    add rcx, rax
     movsd xmm1, [LOCAL(0)]
     movsd xmm2, [LOCAL(8)]
     mov edx, [rel g_world_seed]
     call fbm2
     call clim_norm
-    movss [LOCAL(16)], xmm0
-    lea rcx, [rel g_clim_noise + NOISE_size]
-    movsd xmm1, [LOCAL(0)]
-    movsd xmm2, [LOCAL(8)]
-    mov edx, [rel g_world_seed]
-    call fbm2
-    call clim_norm
-    movss xmm1, xmm0
+    movss [LOCAL(16) + rbx * 4], xmm0
+    inc ebx
+    cmp ebx, 3
+    jb .f
     movss xmm0, [LOCAL(16)]
+    movss xmm1, [LOCAL(20)]
+    movss xmm2, [LOCAL(24)]
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; biome_point — the (unblended) biome at a world point with a surface height.
+;   in:  xmm0 = x, xmm1 = z (doubles), ecx = surface height
+;   out: eax = biome      clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC biome_point, 0, rbx
+    mov ebx, ecx
+    call biome_climate
+    mov ecx, ebx
+    call biome_pick
     RETURN
 ENDPROC
 
@@ -1009,14 +1098,18 @@ clim_norm:
     ret
 
 ; -----------------------------------------------------------------------------
-; biome_pick — the biome for a climate and surface height.
-;   in:  xmm0 = temperature, xmm1 = humidity, ecx = surface height
+; biome_pick — the biome for a climate and surface height: among the boxes
+; that contain the climate, the highest priority, then the nearest centre.
+;   in:  xmm0 = temperature, xmm1 = humidity, xmm2 = weirdness,
+;        ecx = surface height
 ;   out: eax = biome index (0 = none)
-;   clobbers: rax, rcx, rdx, r8-r10, xmm2-xmm5
+;   clobbers: rax, rcx, rdx, r8-r11, xmm3-xmm5
 ; -----------------------------------------------------------------------------
 biome_pick:
+    sub rsp, 8                          ; (one float of scratch)
     xor eax, eax                        ; best
     movss xmm5, [rel c_big]             ; best distance
+    mov r11d, 0x80000000                ; best priority
     mov edx, 1
     lea r8, [rel g_biomes + BIOME_size]
 .b:
@@ -1034,16 +1127,21 @@ biome_pick:
     jb .next
     comiss xmm1, [r8 + BIOME.humid + 4]
     ja .next
+    comiss xmm2, [r8 + BIOME.weird]
+    jb .next
+    comiss xmm2, [r8 + BIOME.weird + 4]
+    ja .next
     ; distance to the box centre, relative to its size
-    movss xmm2, [r8 + BIOME.temp]
-    addss xmm2, [r8 + BIOME.temp + 4]
-    mulss xmm2, [rel c_half]
-    subss xmm2, xmm0
-    movss xmm3, [r8 + BIOME.temp + 4]
-    subss xmm3, [r8 + BIOME.temp]
-    addss xmm3, [rel c_inv16]           ; (never 0)
-    divss xmm2, xmm3
-    mulss xmm2, xmm2
+    movss xmm3, [r8 + BIOME.temp]
+    addss xmm3, [r8 + BIOME.temp + 4]
+    mulss xmm3, [rel c_half]
+    subss xmm3, xmm0
+    movss xmm4, [r8 + BIOME.temp + 4]
+    subss xmm4, [r8 + BIOME.temp]
+    addss xmm4, [rel c_inv16]           ; (never 0)
+    divss xmm3, xmm4
+    mulss xmm3, xmm3
+    movss [rsp], xmm3
     movss xmm3, [r8 + BIOME.humid]
     addss xmm3, [r8 + BIOME.humid + 4]
     mulss xmm3, [rel c_half]
@@ -1053,16 +1151,23 @@ biome_pick:
     addss xmm4, [rel c_inv16]
     divss xmm3, xmm4
     mulss xmm3, xmm3
-    addss xmm2, xmm3
-    comiss xmm2, xmm5
+    addss xmm3, [rsp]                   ; distance^2
+    mov r10d, [r8 + BIOME.priority]
+    cmp r10d, r11d
+    jg .take                            ; higher priority
+    jl .next
+    comiss xmm3, xmm5
     jae .next
-    movss xmm5, xmm2
+.take:
+    movss xmm5, xmm3
+    mov r11d, r10d
     mov eax, edx
 .next:
     inc edx
     add r8, BIOME_size
     jmp .b
 .done:
+    add rsp, 8
     ret
 
 ; -----------------------------------------------------------------------------
@@ -1099,17 +1204,12 @@ PROC bmap_build, BB_LOCALS, rbx, rsi, rdi, r12, r13
     mov [LOCAL(BB_Z)], eax
     cvtsi2sd xmm0, dword [LOCAL(BB_X)]
     cvtsi2sd xmm1, dword [LOCAL(BB_Z)]
-    call biome_climate
-    movss [LOCAL(BB_T)], xmm0
-    movss [LOCAL(BB_H)], xmm1
-    cvtsi2sd xmm0, dword [LOCAL(BB_X)]
-    cvtsi2sd xmm1, dword [LOCAL(BB_Z)]
     lea rcx, [LOCAL(BB_S)]
     call terrain_sample
+    cvtsi2sd xmm0, dword [LOCAL(BB_X)]
+    cvtsi2sd xmm1, dword [LOCAL(BB_Z)]
     cvttss2si ecx, [LOCAL(BB_S) + TSAMPLE.height]
-    movss xmm0, [LOCAL(BB_T)]
-    movss xmm1, [LOCAL(BB_H)]
-    call biome_pick
+    call biome_point
     imul ecx, r12d, BM_RAW
     add ecx, r13d
     mov [rbx + BMAP.raw + rcx], al

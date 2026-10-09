@@ -1736,6 +1736,16 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     jnz .grass_top
     mov eax, [rel g_b_top]
 .grass_top:
+    ; top patches (moss): where the detail noise is above the biome's level
+    cmp dword [r10 + BIOME.patch], 0
+    je .no_patch
+    movsx edx, byte [rcx + INFO_SNOW]   ; detail * snow_line_variation
+    cvtsi2ss xmm0, edx
+    divss xmm0, [rel g_snow_var]
+    comiss xmm0, [r10 + BIOME.patch_lvl]
+    jbe .no_patch
+    mov eax, [r10 + BIOME.patch]
+.no_patch:
     mov edx, [r10 + BIOME.filler]
     test edx, edx
     jnz .sf_store

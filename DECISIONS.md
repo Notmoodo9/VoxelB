@@ -642,3 +642,27 @@ every chunk:
 Pond banks ignore the pond's own height drop when picking slope blocks, so
 they stay grassy. Logs do not yet have an axis, so branch logs show their
 end grain.
+
+## D57 — Log axis states (M10 part 2)
+`shape = axis` on a cube block reserves 3 states: upright, along X, along Z.
+The registry swaps the `end` texture onto the faces along the axis (no
+mesher change: they are ordinary cubes with their own face textures).
+Fallen logs, giant roots and branches pick the axis from their direction,
+which also fixed the end grain on the big-oak branches from part 1.
+
+## D58 — Rare pockets: weirdness + priority (M10 part 2)
+A third climate field, weirdness (0..1), and a per-biome `priority` let a
+biome sit inside another one's climate box as a rare pocket. Old-growth
+forest uses the forest's box with weirdness 0.8–1 and priority 1. About 1 in
+6 forest areas gets one, as designed (the survey gives forest 13.8% and
+old-growth 1.8% of land near the origin).
+
+## D59 — Giant trees as tapering discs (M10 part 2)
+The owner asked for realistic giants: "a giant trunk then it gets to a 3x3
+or something and then branches". `giant` trees stack discs whose radius
+follows 1.5 + (R0 − 1.5)(1 − t/0.55)² up to the crown base, then tapers to
+0.8, with a flare of +0.4 per block near the ground. 4–7 roots arch out and
+down, 6–10 heavy branches (two logs thick near the trunk) rise from 45–87%
+of the height and end in leaf clusters, and a crown sits on top. Trees now
+reach 20 blocks beyond their trunk, so the heightmap border (HB) grew to 22
+blocks (it must be ≥ reach + 2 for neighbours to agree).

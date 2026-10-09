@@ -19,7 +19,7 @@ endstruc
 
 ; heightmap of a chunk with a border: HB blocks on each side (trees and
 ; ponds reach into neighbouring chunks)
-%define HB              16
+%define HB              22              ; (>= TREE_REACH + 2)
 %define HM              (32 + 2 * HB)
 
 ; per-column info of the 32 x 32 interior (terrain_gen_column)

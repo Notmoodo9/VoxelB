@@ -1,0 +1,31 @@
+# Old-growth forest (design/biomes/old_growth_forest.md): rare hearts inside
+# forests (the same climate, high weirdness, higher priority) with colossal
+# giant oaks over a mossy, fern-filled floor, mushroom rings and fallen
+# giants. Deeper, darker greens (mist arrives with fog in M14).
+
+[biome old_growth_forest]
+temperature   = 0.35, 0.70
+humidity      = 0.55, 1.00
+weirdness     = 0.80, 1.00
+priority      = 1
+height        = 98, 220
+grass_color   = 2F8F2A
+foliage_color = 25761C
+
+top_patch = moss_block, -0.12      # moss where the detail noise is above this
+plant = fern, 0.30
+plant = short_grass, 0.10
+
+# giants (~one per 45 x 45 blocks) over an understorey of smaller trees
+tree         = giant_oak, 1
+tree_density = 0.00049
+bush         = small_oak, 4
+bush         = birch, 3
+bush         = oak_bush, 3
+bush         = fallen_giant, 1
+bush_density = 0.0069
+
+# mushroom rings in small glades (one candidate per 128 x 128 blocks)
+ring_chance = 0.5
+ring_radius = 3, 5
+ring_plants = red_mushroom, brown_mushroom

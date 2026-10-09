@@ -45,6 +45,8 @@ extern terrain_sample, log_xz
 %define PUT_PLANT       2
 
 section .rdata
+align 16
+c_abs:          dd 0x7FFFFFFF, 0, 0, 0
 align 4
 c_one:          dd 1.0
 c_half:         dd 0.5
@@ -57,7 +59,25 @@ c_rim:          dd 1.5                  ; rim: this far outside the ellipse
 c_aspect_lo:    dd 0.6
 c_aspect_span:  dd 0.4
 c_keep_out:     dd 2.6                  ; trees: e (rim radii) to keep away
-c_edge:         dd 0.55                 ; crown: leaves beyond this may drop
+c_edge:         dd 0.55
+c_ring_w:       dd 0.55                 ; ring thickness (half)
+c_g_crown:      dd 0.55                 ; giant: crown base at this share of the height
+c_g_top_r:      dd 1.5                  ; trunk radius at the crown base (3 x 3)
+c_g_end_r:      dd 0.8                  ; and at the top
+c_g_taper:      dd 0.7                  ; (1.5 - 0.8)
+c_g_upper:      dd 0.45                 ; (1 - 0.55)
+c_g_flare:      dd 0.4                  ; extra radius per block below y 3
+c_g_disc:       dd 0.35                 ; disc test slack
+c_g_branch_lo:  dd 0.45
+c_g_branch_span: dd 0.42
+c_g_rise:       dd 0.55                 ; branch rise per block
+c_g_root_drop:  dd 0.45                 ; root fall per block
+c_g_root_in:    dd 0.6
+c_g_cl_dn:      dd 0.7
+c_g_cl_up:      dd 0.8
+c_g_top_scale:  dd 1.1
+c_3:            dd 3.0
+c_clear_cell:   dd 0.00625              ; 1 / 160                 ; crown: leaves beyond this may drop
 c_16:           dd 16.0
 c_flower_cl:    dd 12.8                 ; cluster chance per flower share
 c_cl_fill:      dd 0.6                  ; share of a cluster that flowers
@@ -71,6 +91,9 @@ c_branch_up:    dd 0.6
 c_branch_lo:    dd 0.45
 c_branch_span:  dd 0.3
 c_branch_r:     dd 0.75
+; 16 directions (cos, sin) for giant roots and branches
+dirs16:         dd 1.00000, 0.00000, 0.92388, 0.38268, 0.70711, 0.70711, 0.38268, 0.92388, 0.00000, 1.00000, -0.38268, 0.92388, -0.70711, 0.70711, -0.92388, 0.38268
+                dd -1.00000, 0.00000, -0.92388, -0.38268, -0.70711, -0.70711, -0.38268, -0.92388, -0.00000, -1.00000, 0.38268, -0.92388, 0.70711, -0.70711, 0.92388, -0.38268
 ; 8 directions (cos, sin) for pond axes and branches
 dirs:           dd 1.0, 0.0,  0.7071, 0.7071,  0.0, 1.0,  -0.7071, 0.7071
                 dd -1.0, 0.0,  -0.7071, -0.7071,  0.0, -1.0,  0.7071, -0.7071
@@ -571,6 +594,10 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov rbx, rcx
     mov dword [rbx + FCTX.ncand], 0
     mov dword [rbx + FCTX.top], -100000
+    lea rdi, [rbx + FCTX.litter]
+    xor eax, eax
+    mov ecx, 1024 / 4
+    rep stosq
     mov eax, [rbx + FCTX.cx]
     shl eax, 5
     sub eax, TREE_REACH
@@ -694,6 +721,20 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     inc r13d
     jmp .pond_check
 .ground_ok:
+    ; trees keep out of clearings
+    cmp dword [LOCAL(FR_KIND)], 0
+    jne .not_clearing
+    mov ecx, [rbx + FCTX.cx]
+    shl ecx, 5
+    add ecx, [LOCAL(FR_X)]
+    mov edx, [rbx + FCTX.cz]
+    shl edx, 5
+    add edx, [LOCAL(FR_Z)]
+    mov r8, [LOCAL(FR_B)]
+    call in_clearing
+    test eax, eax
+    jnz .next_kind
+.not_clearing:
     ; which tree (weighted list)
     mov ecx, [LOCAL(FR_CX)]
     mov edx, [LOCAL(FR_CZ)]
@@ -739,6 +780,60 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [rbx + FCTX.top], ecx
 .counted:
     inc dword [rbx + FCTX.ncand]
+    ; leaf litter around the trunks of the tree layer
+    cmp dword [LOCAL(FR_KIND)], 0
+    jne .next_kind
+    mov rsi, [LOCAL(FR_B)]
+    cmp dword [rsi + BIOME.litter], 0
+    je .next_kind
+    mov r13d, [rsi + BIOME.litter_r]
+    neg r13d                            ; dz
+.lit_z:
+    mov r12d, [rsi + BIOME.litter_r]
+    neg r12d                            ; dx
+.lit_x:
+    mov eax, r12d
+    imul eax, eax
+    mov ecx, r13d
+    imul ecx, ecx
+    add eax, ecx
+    mov ecx, [rsi + BIOME.litter_r]
+    imul ecx, ecx
+    inc ecx
+    cmp eax, ecx
+    jg .lit_next
+    mov r14d, [LOCAL(FR_X)]
+    add r14d, r12d
+    cmp r14d, 31
+    ja .lit_next
+    mov r15d, [LOCAL(FR_Z)]
+    add r15d, r13d
+    cmp r15d, 31
+    ja .lit_next
+    mov ecx, [rbx + FCTX.cx]
+    shl ecx, 5
+    add ecx, r14d
+    mov edx, [rbx + FCTX.cz]
+    shl edx, 5
+    add edx, r15d
+    mov r8d, 0x4C49                     ; "LI"
+    xor r9d, r9d
+    call hash4
+    FRAC16 ax
+    comiss xmm0, [rsi + BIOME.litter_ch]
+    jae .lit_next
+    mov eax, r15d
+    shl eax, 5
+    add eax, r14d
+    mov ecx, [rsi + BIOME.litter]
+    mov [rbx + FCTX.litter + rax * 2], cx
+.lit_next:
+    inc r12d
+    cmp r12d, [rsi + BIOME.litter_r]
+    jle .lit_x
+    inc r13d
+    cmp r13d, [rsi + BIOME.litter_r]
+    jle .lit_z
 .next_kind:
     inc dword [LOCAL(FR_KIND)]
     cmp dword [LOCAL(FR_KIND)], 2
@@ -751,6 +846,87 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov eax, [LOCAL(FR_CZ)]
     cmp eax, [LOCAL(FR_CZ1)]
     jle .cz
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; in_clearing — is a world column inside a clearing of the biome? (one
+; candidate per 160 x 160 cell, centre inside the cell)
+;   in:  ecx = world x, edx = world z, r8 = BIOME*
+;   out: eax = 1 inside
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define IC_X        0
+%define IC_Z        4
+%define IC_H        8
+%define IC_OX       12                  ; cell origin
+%define IC_OZ       16
+%define IC_LOCALS   32
+PROC in_clearing, IC_LOCALS, rbx
+    mov rbx, r8
+    xorps xmm0, xmm0
+    comiss xmm0, [rbx + BIOME.clear_ch]
+    jae .no
+    mov [LOCAL(IC_X)], ecx
+    mov [LOCAL(IC_Z)], edx
+    mov eax, ecx
+    mov ecx, 160
+    call floordiv
+    mov r9d, eax                        ; cell x
+    mov eax, [LOCAL(IC_Z)]
+    mov ecx, 160
+    call floordiv
+    mov edx, eax                        ; cell z
+    imul eax, r9d, 160
+    mov [LOCAL(IC_OX)], eax
+    imul eax, edx, 160
+    mov [LOCAL(IC_OZ)], eax
+    mov ecx, r9d
+    mov r8d, 0x434C                     ; "CL"
+    xor r9d, r9d
+    call hash4
+    mov [LOCAL(IC_H)], eax
+    FRAC16 ax
+    comiss xmm0, [rbx + BIOME.clear_ch]
+    jae .no
+    ; centre 24 .. 136 inside the cell
+    mov eax, [LOCAL(IC_H)]
+    shr eax, 16
+    and eax, 0xFF
+    imul eax, eax, 112
+    shr eax, 8
+    add eax, 24
+    add eax, [LOCAL(IC_OX)]
+    mov ecx, [LOCAL(IC_X)]
+    sub ecx, eax
+    mov eax, [LOCAL(IC_H)]
+    shr eax, 24
+    imul eax, eax, 112
+    shr eax, 8
+    add eax, 24
+    add eax, [LOCAL(IC_OZ)]
+    mov edx, [LOCAL(IC_Z)]
+    sub edx, eax
+    imul ecx, ecx
+    imul edx, edx
+    add ecx, edx
+    cvtsi2ss xmm3, ecx                  ; distance^2
+    mov eax, [LOCAL(IC_H)]
+    shr eax, 8
+    and eax, 0xFF
+    cvtsi2ss xmm0, eax
+    mulss xmm0, [rel c_inv255]
+    movss xmm1, [rbx + BIOME.clear_r + 4]
+    subss xmm1, [rbx + BIOME.clear_r]
+    mulss xmm1, xmm0
+    addss xmm1, [rbx + BIOME.clear_r]   ; radius
+    mulss xmm1, xmm1
+    comiss xmm3, xmm1
+    ja .no
+    mov eax, 1
+    RETURN
+.no:
+    xor eax, eax
     RETURN
 ENDPROC
 
@@ -772,6 +948,88 @@ PROC decide_plant, DP_LOCALS, rbx, rsi
     mov [LOCAL(DP_Z)], edx
     movss [LOCAL(DP_D)], xmm0
     mov rbx, r8
+    ; ---- mushroom rings (one candidate per 128 x 128 cell) ----
+    cmp dword [rbx + BIOME.nrings], 0
+    je .no_ring
+    mov ecx, [LOCAL(DP_X)]
+    sar ecx, 7
+    mov edx, [LOCAL(DP_Z)]
+    sar edx, 7
+    mov r8d, 0x5249                     ; "RI"
+    xor r9d, r9d
+    call hash4
+    mov [LOCAL(DP_HM)], eax
+    FRAC16 ax
+    comiss xmm0, [rbx + BIOME.ring_ch]
+    jae .no_ring
+    mov eax, [LOCAL(DP_HM)]
+    shr eax, 16
+    and eax, 0x7F
+    add eax, ((128 - 0x7F) / 2)         ; (centre inside the cell)
+    mov ecx, [LOCAL(DP_X)]
+    and ecx, 127
+    sub ecx, eax
+    mov eax, [LOCAL(DP_HM)]
+    shr eax, 23
+    and eax, 0x7F
+    mov edx, [LOCAL(DP_Z)]
+    and edx, 127
+    sub edx, eax
+    imul ecx, ecx
+    imul edx, edx
+    add ecx, edx
+    cvtsi2ss xmm3, ecx
+    sqrtss xmm3, xmm3                   ; distance
+    mov eax, [LOCAL(DP_HM)]
+    shr eax, 8
+    and eax, 0xFF
+    cvtsi2ss xmm0, eax
+    mulss xmm0, [rel c_inv255]
+    movss xmm1, [rbx + BIOME.ring_r + 4]
+    subss xmm1, [rbx + BIOME.ring_r]
+    mulss xmm1, xmm0
+    addss xmm1, [rbx + BIOME.ring_r]    ; radius
+    subss xmm3, xmm1
+    andps xmm3, [rel c_abs]
+    comiss xmm3, [rel c_ring_w]
+    ja .no_ring
+    mov eax, [LOCAL(DP_X)]
+    imul eax, eax, 0x9E3779B1
+    add eax, [LOCAL(DP_Z)]
+    shr eax, 20
+    xor edx, edx
+    div dword [rbx + BIOME.nrings]
+    mov eax, [rbx + BIOME.ring + rdx * 4]
+    RETURN
+.no_ring:
+    ; ---- clearings: scattered flowers ----
+    xorps xmm0, xmm0
+    comiss xmm0, [rbx + BIOME.clear_ch]
+    jae .no_clearing
+    cmp dword [rbx + BIOME.nflowers], 0
+    je .no_clearing
+    mov ecx, [LOCAL(DP_X)]
+    mov edx, [LOCAL(DP_Z)]
+    mov r8, rbx
+    call in_clearing
+    test eax, eax
+    jz .no_clearing
+    mov ecx, [LOCAL(DP_X)]
+    mov edx, [LOCAL(DP_Z)]
+    mov r8d, 0x4346                     ; "CF"
+    xor r9d, r9d
+    call hash4
+    mov esi, eax
+    FRAC16 ax
+    comiss xmm0, [rbx + BIOME.clear_fl]
+    jae .cover
+    mov eax, esi
+    shr eax, 16
+    xor edx, edx
+    div dword [rbx + BIOME.nflowers]
+    mov eax, [rbx + BIOME.flower + rdx * 4]
+    RETURN
+.no_clearing:
     cmp dword [rbx + BIOME.nflowers], 0
     je .cover
     ; ---- meadow (one candidate per 512 x 512 cell) ----
@@ -1034,6 +1292,23 @@ PROC blob, BL_LOCALS, r12, r13, r14
     RETURN
 ENDPROC
 
+; AXIS_LOG reg — turn log id `reg` (32-bit) into its lying state for the
+; horizontal direction (xmm4 = dx, xmm5 = dz): 1 along X, 2 along Z, if the
+; block has axis states.   clobbers: rax, xmm4, xmm5
+%macro AXIS_LOG 1
+    lea rax, [rel g_block_flags]
+    add rax, r9                         ; (the id is always in r9)
+    test byte [rax], BLOCKF_AXIS
+    jz %%done
+    andps xmm4, [rel c_abs]
+    andps xmm5, [rel c_abs]
+    inc %1
+    comiss xmm4, xmm5
+    jae %%done
+    inc %1
+%%done:
+%endmacro
+
 ; rand_int — eax = lo + rng % (hi - lo + 1).  in: ecx = lo, edx = hi
 ;   clobbers: rax, rcx, rdx, r8, xmm0
 rand_int:
@@ -1081,6 +1356,13 @@ PROC gen_tree, GT_LOCALS, rbx, rsi, rdi, r12
     imul rsi, rax, TREE_size
     lea rax, [rel g_trees]
     add rsi, rax
+    mov eax, [rsi + TREE.kind]
+    cmp eax, TREE_GIANT
+    je .special
+    cmp eax, TREE_FALLEN
+    je .special
+    cmp eax, TREE_STUMP
+    je .special
     ; trunk height, crown radius
     mov ecx, [rsi + TREE.height]
     mov edx, [rsi + TREE.height + 4]
@@ -1162,6 +1444,9 @@ PROC gen_tree, GT_LOCALS, rbx, rsi, rdi, r12
     roundss xmm0, [LOCAL(GT_BZ)], 9
     cvttss2si r8d, xmm0
     mov r9d, [rsi + TREE.log]
+    movss xmm4, [LOCAL(GT_DX)]
+    movss xmm5, [LOCAL(GT_DZ)]
+    AXIS_LOG r9d
     mov r10d, PUT_LOG
     call put_block
     dec dword [LOCAL(GT_L)]
@@ -1207,6 +1492,508 @@ PROC gen_tree, GT_LOCALS, rbx, rsi, rdi, r12
     movss xmm2, [rel c_bush_up]
     call blob
     RETURN
+.special:
+    ; giants, fallen logs and stumps: their own generators
+    mov ecx, [LOCAL(GT_X)]
+    mov edx, [LOCAL(GT_Y)]
+    mov r8d, [LOCAL(GT_Z)]
+    mov r9, rsi
+    mov eax, [rsi + TREE.kind]
+    cmp eax, TREE_GIANT
+    jne .not_giant
+    call gen_giant
+    RETURN
+.not_giant:
+    cmp eax, TREE_FALLEN
+    jne .stump
+    call gen_fallen
+    RETURN
+.stump:
+    call gen_stump
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; gen_stump — a short upright log.   (rbx = FCTX*, edi = rng state)
+;   in:  ecx = x, edx = y (first air), r8d = z, r9 = TREE*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC gen_stump, 16, rsi, r12, r13
+    mov rsi, r9
+    mov [LOCAL(0)], ecx
+    mov r12d, edx
+    mov [LOCAL(4)], r8d
+    mov ecx, [rsi + TREE.height]
+    mov edx, [rsi + TREE.height + 4]
+    call rand_int
+    lea r13d, [r12d + eax]
+.s:
+    cmp r12d, r13d
+    jge .done
+    mov ecx, [LOCAL(0)]
+    mov edx, r12d
+    mov r8d, [LOCAL(4)]
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_LOG
+    call put_block
+    inc r12d
+    jmp .s
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; gen_fallen — a log lying on the ground along X or Z, as long as the ground
+; stays level.   (rbx = FCTX*, edi = rng state)
+;   in:  ecx = x, edx = y (first air), r8d = z, r9 = TREE*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define GF_X        0
+%define GF_Y        4
+%define GF_Z        8
+%define GF_DX       12
+%define GF_DZ       16
+%define GF_LOG      20
+%define GF_LOCALS   32
+PROC gen_fallen, GF_LOCALS, rsi, r12, r13
+    mov rsi, r9
+    mov [LOCAL(GF_X)], ecx
+    mov [LOCAL(GF_Y)], edx
+    mov [LOCAL(GF_Z)], r8d
+    mov ecx, [rsi + TREE.height]
+    mov edx, [rsi + TREE.height + 4]
+    call rand_int
+    mov r12d, eax                       ; length
+    ; direction: +-X or +-Z
+    mov eax, edi
+    shr eax, 29
+    mov dword [LOCAL(GF_DX)], 0
+    mov dword [LOCAL(GF_DZ)], 0
+    mov ecx, 1
+    test eax, 4
+    jz .pos
+    neg ecx
+.pos:
+    mov r9d, [rsi + TREE.log]
+    lea rdx, [rel g_block_flags]
+    test eax, 1
+    jz .along_z
+    mov [LOCAL(GF_DX)], ecx
+    test byte [rdx + r9], BLOCKF_AXIS
+    jz .have_log
+    inc r9d                             ; lying along X
+    jmp .have_log
+.along_z:
+    mov [LOCAL(GF_DZ)], ecx
+    test byte [rdx + r9], BLOCKF_AXIS
+    jz .have_log
+    add r9d, 2                          ; lying along Z
+.have_log:
+    mov [LOCAL(GF_LOG)], r9d
+    xor r13d, r13d                      ; step
+.l:
+    cmp r13d, r12d
+    jge .done
+    ; this column: inside the heightmap and level with the start?
+    mov ecx, [LOCAL(GF_DX)]
+    imul ecx, r13d
+    add ecx, [LOCAL(GF_X)]
+    mov edx, [LOCAL(GF_DZ)]
+    imul edx, r13d
+    add edx, [LOCAL(GF_Z)]
+    lea eax, [ecx + HB]
+    cmp eax, HM - 1
+    ja .done
+    lea eax, [edx + HB]
+    cmp eax, HM - 1
+    ja .done
+    HM_INDEX ecx, edx
+    mov r8, [rbx + FCTX.heights]
+    mov eax, [r8 + rax * 4]
+    cmp eax, [LOCAL(GF_Y)]
+    jne .done
+    mov r8d, edx
+    mov edx, [LOCAL(GF_Y)]
+    mov r9d, [LOCAL(GF_LOG)]
+    mov r10d, PUT_LOG
+    call put_block
+    inc r13d
+    jmp .l
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; gen_giant — an old-growth giant (design/biomes/old_growth_forest.md): a
+; trunk of discs that flares at the ground and tapers from base_radius to
+; 3 x 3 at the crown base (55% up) and thinner above, arching roots, heavy
+; branches rising outwards with leaf clusters, and a crown on top.
+;   (rbx = FCTX*, edi = rng state)
+;   in:  ecx = x, edx = y (first air), r8d = z, r9 = TREE*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define GG_X        0
+%define GG_Y        4
+%define GG_Z        8
+%define GG_H        12                  ; height
+%define GG_R0       16                  ; f32 base radius
+%define GG_R        20                  ; f32 radius of this disc
+%define GG_RI       24
+%define GG_YI       28                  ; disc y (relative)
+%define GG_N        32                  ; roots / branches left
+%define GG_I        36
+%define GG_CNT      40
+%define GG_DX       44                  ; f32 direction
+%define GG_DZ       48
+%define GG_L        52                  ; steps
+%define GG_K        56
+%define GG_PX       60                  ; f32 position
+%define GG_PY       64
+%define GG_PZ       68
+%define GG_LOG      72
+%define GG_LOCALS   80
+PROC gen_giant, GG_LOCALS, rsi, r12, r13, r14
+    mov rsi, r9
+    mov [LOCAL(GG_X)], ecx
+    mov [LOCAL(GG_Y)], edx
+    mov [LOCAL(GG_Z)], r8d
+    mov ecx, [rsi + TREE.height]
+    mov edx, [rsi + TREE.height + 4]
+    call rand_int
+    mov [LOCAL(GG_H)], eax
+    call rng
+    movss xmm1, [rsi + TREE.base_r + 4]
+    subss xmm1, [rsi + TREE.base_r]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.base_r]
+    movss [LOCAL(GG_R0)], xmm1
+
+    ; ---- trunk: discs from 3 below the ground to the top ----
+    mov dword [LOCAL(GG_YI)], -3
+.disc:
+    mov eax, [LOCAL(GG_YI)]
+    cmp eax, [LOCAL(GG_H)]
+    jge .roots
+    ; t = max(y, 0) / H
+    xor ecx, ecx
+    test eax, eax
+    cmovs eax, ecx
+    cvtsi2ss xmm0, eax
+    cvtsi2ss xmm1, dword [LOCAL(GG_H)]
+    divss xmm0, xmm1                    ; t
+    comiss xmm0, [rel c_g_crown]
+    jae .upper
+    ; below the crown: 1.5 + (R0 - 1.5) * (1 - t / 0.55)^2
+    divss xmm0, [rel c_g_crown]
+    movss xmm1, [rel c_one]
+    subss xmm1, xmm0
+    mulss xmm1, xmm1
+    movss xmm2, [LOCAL(GG_R0)]
+    subss xmm2, [rel c_g_top_r]
+    mulss xmm1, xmm2
+    addss xmm1, [rel c_g_top_r]
+    jmp .flare
+.upper:
+    ; above: 1.5 .. 0.8
+    subss xmm0, [rel c_g_crown]
+    divss xmm0, [rel c_g_upper]
+    mulss xmm0, [rel c_g_taper]
+    movss xmm1, [rel c_g_top_r]
+    subss xmm1, xmm0
+.flare:
+    ; flare: + 0.4 per block below y 3
+    mov eax, 3
+    sub eax, [LOCAL(GG_YI)]
+    jle .radius
+    cvtsi2ss xmm0, eax
+    mulss xmm0, [rel c_g_flare]
+    addss xmm1, xmm0
+.radius:
+    movss [LOCAL(GG_R)], xmm1
+    addss xmm1, [rel c_half]
+    cvttss2si eax, xmm1
+    mov [LOCAL(GG_RI)], eax
+    mov r12d, eax
+    neg r12d                            ; dz
+.dz:
+    mov r13d, [LOCAL(GG_RI)]
+    neg r13d                            ; dx
+.dx:
+    mov eax, r13d
+    imul eax, eax
+    mov ecx, r12d
+    imul ecx, ecx
+    add eax, ecx
+    cvtsi2ss xmm0, eax
+    movss xmm1, [LOCAL(GG_R)]
+    mulss xmm1, xmm1
+    addss xmm1, [rel c_g_disc]
+    comiss xmm0, xmm1
+    ja .dx_next
+    mov ecx, [LOCAL(GG_X)]
+    add ecx, r13d
+    mov edx, [LOCAL(GG_Y)]
+    add edx, [LOCAL(GG_YI)]
+    mov r8d, [LOCAL(GG_Z)]
+    add r8d, r12d
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_LOG
+    call put_block
+.dx_next:
+    inc r13d
+    cmp r13d, [LOCAL(GG_RI)]
+    jle .dx
+    inc r12d
+    cmp r12d, [LOCAL(GG_RI)]
+    jle .dz
+    inc dword [LOCAL(GG_YI)]
+    jmp .disc
+
+    ; ---- roots: arching outwards and down from the base ----
+.roots:
+    mov ecx, [rsi + TREE.roots]
+    mov edx, [rsi + TREE.roots + 4]
+    call rand_int
+    mov [LOCAL(GG_CNT)], eax
+    mov dword [LOCAL(GG_I)], 0
+.root:
+    mov eax, [LOCAL(GG_I)]
+    cmp eax, [LOCAL(GG_CNT)]
+    jge .branches
+    ; direction: evenly spread (16 steps) with a random offset
+    imul eax, eax, 16
+    xor edx, edx
+    div dword [LOCAL(GG_CNT)]
+    mov r12d, eax
+    mov ecx, 0
+    mov edx, 2
+    call rand_int
+    add eax, r12d
+    and eax, 15
+    lea rcx, [rel dirs16]
+    movss xmm0, [rcx + rax * 8]
+    movss [LOCAL(GG_DX)], xmm0
+    movss xmm0, [rcx + rax * 8 + 4]
+    movss [LOCAL(GG_DZ)], xmm0
+    mov ecx, 5
+    mov edx, 9
+    call rand_int
+    mov [LOCAL(GG_L)], eax
+    mov r9d, [rsi + TREE.log]
+    movss xmm4, [LOCAL(GG_DX)]
+    movss xmm5, [LOCAL(GG_DZ)]
+    AXIS_LOG r9d
+    mov [LOCAL(GG_LOG)], r9d
+    mov dword [LOCAL(GG_K)], 0
+.root_step:
+    mov eax, [LOCAL(GG_K)]
+    cmp eax, [LOCAL(GG_L)]
+    jge .root_next
+    ; distance from the axis: base radius * 0.6 + k
+    cvtsi2ss xmm2, eax
+    movss xmm3, [LOCAL(GG_R0)]
+    mulss xmm3, [rel c_g_root_in]
+    addss xmm2, xmm3
+    movss xmm0, [LOCAL(GG_DX)]
+    mulss xmm0, xmm2
+    cvtsi2ss xmm1, dword [LOCAL(GG_X)]
+    addss xmm0, xmm1
+    addss xmm0, [rel c_half]
+    roundss xmm0, xmm0, 9
+    cvttss2si ecx, xmm0
+    mov [LOCAL(GG_PX)], ecx
+    movss xmm0, [LOCAL(GG_DZ)]
+    mulss xmm0, xmm2
+    cvtsi2ss xmm1, dword [LOCAL(GG_Z)]
+    addss xmm0, xmm1
+    addss xmm0, [rel c_half]
+    roundss xmm0, xmm0, 9
+    cvttss2si r8d, xmm0
+    mov [LOCAL(GG_PZ)], r8d
+    ; height: 1 above the ground at the trunk, falling outwards
+    cvtsi2ss xmm0, dword [LOCAL(GG_K)]
+    mulss xmm0, [rel c_g_root_drop]
+    cvttss2si eax, xmm0
+    mov edx, [LOCAL(GG_Y)]
+    inc edx
+    sub edx, eax
+    mov [LOCAL(GG_PY)], edx
+    mov r9d, [LOCAL(GG_LOG)]
+    mov r10d, PUT_LOG
+    call put_block
+    ; thick near the trunk: a second block below
+    mov eax, [LOCAL(GG_K)]
+    add eax, eax
+    cmp eax, [LOCAL(GG_L)]
+    jge .root_thin
+    mov ecx, [LOCAL(GG_PX)]
+    mov edx, [LOCAL(GG_PY)]
+    dec edx
+    mov r8d, [LOCAL(GG_PZ)]
+    mov r9d, [LOCAL(GG_LOG)]
+    mov r10d, PUT_LOG
+    call put_block
+.root_thin:
+    inc dword [LOCAL(GG_K)]
+    jmp .root_step
+.root_next:
+    inc dword [LOCAL(GG_I)]
+    jmp .root
+
+    ; ---- heavy branches from 55% up, each with a leaf cluster ----
+.branches:
+    mov ecx, [rsi + TREE.branches]
+    mov edx, [rsi + TREE.branches + 4]
+    call rand_int
+    mov [LOCAL(GG_CNT)], eax
+    mov dword [LOCAL(GG_I)], 0
+.branch:
+    mov eax, [LOCAL(GG_I)]
+    cmp eax, [LOCAL(GG_CNT)]
+    jge .crown
+    imul eax, eax, 16
+    xor edx, edx
+    div dword [LOCAL(GG_CNT)]
+    mov r12d, eax
+    mov ecx, 0
+    mov edx, 3
+    call rand_int
+    add eax, r12d
+    and eax, 15
+    lea rcx, [rel dirs16]
+    movss xmm0, [rcx + rax * 8]
+    movss [LOCAL(GG_DX)], xmm0
+    movss xmm0, [rcx + rax * 8 + 4]
+    movss [LOCAL(GG_DZ)], xmm0
+    ; start height: 55 .. 88% up
+    call rng
+    mulss xmm0, [rel c_g_branch_span]
+    addss xmm0, [rel c_g_branch_lo]
+    cvtsi2ss xmm1, dword [LOCAL(GG_H)]
+    mulss xmm0, xmm1
+    cvtsi2ss xmm1, dword [LOCAL(GG_Y)]
+    addss xmm0, xmm1
+    movss [LOCAL(GG_PY)], xmm0
+    cvtsi2ss xmm0, dword [LOCAL(GG_X)]
+    addss xmm0, [rel c_half]
+    movss [LOCAL(GG_PX)], xmm0
+    cvtsi2ss xmm0, dword [LOCAL(GG_Z)]
+    addss xmm0, [rel c_half]
+    movss [LOCAL(GG_PZ)], xmm0
+    ; length: H / 7 .. H / 5 (at most 12)
+    mov eax, [LOCAL(GG_H)]
+    xor edx, edx
+    mov ecx, 7
+    div ecx
+    mov r12d, eax
+    mov eax, [LOCAL(GG_H)]
+    xor edx, edx
+    mov ecx, 5
+    div ecx
+    mov edx, 12
+    cmp eax, edx
+    cmova eax, edx
+    mov edx, eax
+    mov ecx, r12d
+    cmp ecx, edx
+    cmova ecx, edx
+    call rand_int
+    mov [LOCAL(GG_L)], eax
+    mov r9d, [rsi + TREE.log]
+    movss xmm4, [LOCAL(GG_DX)]
+    movss xmm5, [LOCAL(GG_DZ)]
+    AXIS_LOG r9d
+    mov [LOCAL(GG_LOG)], r9d
+    mov dword [LOCAL(GG_K)], 0
+.b_step:
+    mov eax, [LOCAL(GG_K)]
+    cmp eax, [LOCAL(GG_L)]
+    jge .b_end
+    movss xmm0, [LOCAL(GG_PX)]
+    addss xmm0, [LOCAL(GG_DX)]
+    movss [LOCAL(GG_PX)], xmm0
+    movss xmm0, [LOCAL(GG_PZ)]
+    addss xmm0, [LOCAL(GG_DZ)]
+    movss [LOCAL(GG_PZ)], xmm0
+    movss xmm0, [LOCAL(GG_PY)]
+    addss xmm0, [rel c_g_rise]
+    movss [LOCAL(GG_PY)], xmm0
+    call .put_branch
+    ; thick near the trunk: a second log above
+    mov eax, [LOCAL(GG_K)]
+    add eax, eax
+    cmp eax, [LOCAL(GG_L)]
+    jge .b_thin
+    movss xmm0, [LOCAL(GG_PY)]
+    addss xmm0, [rel c_one]
+    movss [LOCAL(GG_PY)], xmm0
+    call .put_branch
+    movss xmm0, [LOCAL(GG_PY)]
+    subss xmm0, [rel c_one]
+    movss [LOCAL(GG_PY)], xmm0
+.b_thin:
+    inc dword [LOCAL(GG_K)]
+    jmp .b_step
+.b_end:
+    ; leaf cluster at the end
+    roundss xmm0, [LOCAL(GG_PX)], 9
+    cvttss2si ecx, xmm0
+    roundss xmm0, [LOCAL(GG_PY)], 9
+    cvttss2si edx, xmm0
+    inc edx
+    roundss xmm0, [LOCAL(GG_PZ)], 9
+    cvttss2si r8d, xmm0
+    mov [LOCAL(GG_PX)], ecx             ; (reuse as ints for the call)
+    mov [LOCAL(GG_PY)], edx
+    mov [LOCAL(GG_PZ)], r8d
+    call rng
+    movss xmm1, [rsi + TREE.radius + 4]
+    subss xmm1, [rsi + TREE.radius]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.radius]
+    movss xmm0, xmm1
+    mov ecx, [LOCAL(GG_PX)]
+    mov edx, [LOCAL(GG_PY)]
+    mov r8d, [LOCAL(GG_PZ)]
+    movss xmm1, [rel c_g_cl_dn]
+    movss xmm2, [rel c_g_cl_up]
+    call blob
+    inc dword [LOCAL(GG_I)]
+    jmp .branch
+
+    ; ---- crown on top ----
+.crown:
+    call rng
+    movss xmm1, [rsi + TREE.radius + 4]
+    subss xmm1, [rsi + TREE.radius]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.radius]
+    mulss xmm1, [rel c_g_top_scale]
+    movss xmm0, xmm1
+    mov ecx, [LOCAL(GG_X)]
+    mov edx, [LOCAL(GG_Y)]
+    add edx, [LOCAL(GG_H)]
+    mov r8d, [LOCAL(GG_Z)]
+    movss xmm1, [rel c_g_cl_dn]
+    movss xmm2, [rel c_g_cl_up]
+    call blob
+    RETURN
+
+    ; put one branch log at the rounded current position (inner call:
+    ; locals are 8 bytes further away; reserves its own shadow space)
+.put_branch:
+    sub rsp, 40
+    roundss xmm0, [LOCAL(GG_PX) + 48], 9
+    cvttss2si ecx, xmm0
+    roundss xmm0, [LOCAL(GG_PY) + 48], 9
+    cvttss2si edx, xmm0
+    roundss xmm0, [LOCAL(GG_PZ) + 48], 9
+    cvttss2si r8d, xmm0
+    mov r9d, [LOCAL(GG_LOG) + 48]
+    mov r10d, PUT_LOG
+    call put_block
+    add rsp, 40
+    ret
 ENDPROC
 
 ; -----------------------------------------------------------------------------
@@ -1218,7 +2005,9 @@ ENDPROC
 %define FS_Z        4
 %define FS_H        8
 %define FS_ID       12
-%define FS_LOCALS   16
+%define FS_GROUND   16                  ; the block the plant stands on
+%define FS_B        24                  ; BIOME*
+%define FS_LOCALS   32
 PROC flora_section, FS_LOCALS, rbx, rsi, rdi, r12, r13
     mov rbx, rcx
     mov [rbx + FCTX.ids], rdx
@@ -1240,9 +2029,21 @@ PROC flora_section, FS_LOCALS, rbx, rsi, rdi, r12, r13
     je .pnext
     cmp word [rsi + INFO_POND], POND_NONE
     jne .pnext
+    ; plants grow on grass and on the biome's top patch block (moss)
+    movzx eax, byte [rsi + INFO_BIOME]
+    imul r8, rax, BIOME_size
+    lea rax, [rel g_biomes]
+    add r8, rax
+    mov [LOCAL(FS_B)], r8
     movzx ecx, word [rsi + INFO_TOP]
+    mov [LOCAL(FS_GROUND)], ecx
     cmp ecx, [rel g_b_top]
+    je .ground_kind
+    cmp ecx, [r8 + BIOME.patch]
     jne .pnext
+    test ecx, ecx
+    jz .pnext
+.ground_kind:
     HM_INDEX r13d, r12d
     mov rcx, [rbx + FCTX.heights]
     mov edi, [rcx + rax * 4]            ; H: the plant's block
@@ -1255,21 +2056,69 @@ PROC flora_section, FS_LOCALS, rbx, rsi, rdi, r12, r13
     inc eax
     cmp eax, 32
     ja .pnext
-    ; decide
+    ; leaf litter near trunks: replaces the grass top, shade plants on it
+    mov eax, r12d
+    shl eax, 5
+    add eax, r13d
+    movzx eax, word [rbx + FCTX.litter + rax * 2]
+    test eax, eax
+    jz .decide
+    mov ecx, [LOCAL(FS_GROUND)]
+    cmp ecx, [rel g_b_top]
+    jne .decide
+    mov [LOCAL(FS_GROUND)], eax
+    lea edx, [edi - 1]
+    sub edx, [rbx + FCTX.y0]
+    cmp edx, 31
+    ja .litter_plant
+    shl edx, 10
+    mov ecx, r12d
+    shl ecx, 5
+    or edx, ecx
+    or edx, r13d
+    mov rcx, [rbx + FCTX.ids]
+    movzx r8d, word [rcx + rdx * 2]
+    cmp r8d, [rel g_b_top]
+    jne .litter_plant                   ; (a cave opened it, or a tree stands there)
+    mov [rcx + rdx * 2], ax
+.litter_plant:
     mov ecx, [rbx + FCTX.cx]
     shl ecx, 5
     add ecx, r13d
     mov edx, [rbx + FCTX.cz]
     shl edx, 5
     add edx, r12d
-    movzx eax, byte [rsi + INFO_BIOME]
-    imul r8, rax, BIOME_size
-    lea rax, [rel g_biomes]
-    add r8, rax
+    mov r8d, 0x5348                     ; "SH"
+    xor r9d, r9d
+    call hash4
+    FRAC16 ax
+    mov r8, [LOCAL(FS_B)]
+    xorps xmm2, xmm2
+    xor ecx, ecx
+.sh:
+    cmp ecx, [r8 + BIOME.nshade]
+    jae .pnext
+    addss xmm2, [r8 + BIOME.shade_ch + rcx * 4]
+    comiss xmm0, xmm2
+    jb .sh_found
+    inc ecx
+    jmp .sh
+.sh_found:
+    mov eax, [r8 + BIOME.shade + rcx * 4]
+    jmp .have_plant
+.decide:
+    mov ecx, [rbx + FCTX.cx]
+    shl ecx, 5
+    add ecx, r13d
+    mov edx, [rbx + FCTX.cz]
+    shl edx, 5
+    add edx, r12d
+    mov r8, [LOCAL(FS_B)]
     movzx eax, byte [rsi + INFO_DENS]
     cvtsi2ss xmm0, eax
     mulss xmm0, [rel c_inv255]
     call decide_plant
+.have_plant:
     test eax, eax
     jz .pnext
     mov [LOCAL(FS_ID)], eax
@@ -1285,7 +2134,7 @@ PROC flora_section, FS_LOCALS, rbx, rsi, rdi, r12, r13
     or edx, r13d
     mov rax, [rbx + FCTX.ids]
     movzx eax, word [rax + rdx * 2]
-    cmp eax, [rel g_b_top]
+    cmp eax, [LOCAL(FS_GROUND)]
     jne .pnext
 .ground_ok:
     mov ecx, r13d
@@ -1323,7 +2172,7 @@ PROC flora_section, FS_LOCALS, rbx, rsi, rdi, r12, r13
     mov eax, [rbx + FCTX.y0]
     cmp [rdx + CAND.ytop], eax
     jl .tree_next
-    add eax, 31
+    add eax, 31 + 8                     ; (giant trunks and roots reach below)
     cmp [rdx + CAND.y], eax
     jg .tree_next
     mov rcx, rbx
@@ -1359,13 +2208,22 @@ section .text
 %define SVF_PX      44
 %define SVF_PZ      48
 %define SVF_HASH    52
+%define SVF_PREV    56                  ; biome of the previous sample in the row
 %define SVF_COUNTS  64                  ; u32[MAX_BIOMES]
-%define SVF_S       (64 + MAX_BIOMES * 4)
+%define SVF_ND      (64 + MAX_BIOMES * 4)       ; nearest sample per biome: d^2
+%define SVF_NX      (SVF_ND + MAX_BIOMES * 4)
+%define SVF_NZ      (SVF_NX + MAX_BIOMES * 4)
+%define SVF_S       (SVF_NZ + MAX_BIOMES * 4)
 %define SVF_LOCALS  (SVF_S + TSAMPLE_size)
 %define SVF_GRID    64                  ; samples per side, every 64 blocks
 PROC flora_survey, SVF_LOCALS, rbx, rsi, rdi, r12, r13
     lea rdi, [LOCAL(SVF_COUNTS)]
     xor eax, eax
+    mov ecx, MAX_BIOMES
+    rep stosd
+    mov dword [LOCAL(SVF_PREV)], -1
+    lea rdi, [LOCAL(SVF_ND)]
+    mov eax, 0x7FFFFFFF
     mov ecx, MAX_BIOMES
     rep stosd
     mov dword [LOCAL(SVF_LAND)], 0
@@ -1384,13 +2242,33 @@ PROC flora_survey, SVF_LOCALS, rbx, rsi, rdi, r12, r13
     mov [LOCAL(SVF_Z)], eax
     call sample_biome
     cmp edx, [rel g_sea_level]
-    jle .gnext
+    jg .land
+    mov dword [LOCAL(SVF_PREV)], -1
+    jmp .gnext
+.land:
     inc dword [LOCAL(SVF_LAND)]
     inc dword [LOCAL(SVF_COUNTS) + rax * 4]
+    ; nearest place well inside the biome: the sample to the west matches too
+    cmp eax, [LOCAL(SVF_PREV)]
+    mov [LOCAL(SVF_PREV)], eax
+    jne .gnext
+    mov ecx, [LOCAL(SVF_X)]
+    imul ecx, ecx
+    mov edx, [LOCAL(SVF_Z)]
+    imul edx, edx
+    add ecx, edx
+    cmp ecx, [LOCAL(SVF_ND) + rax * 4]
+    jae .gnext
+    mov [LOCAL(SVF_ND) + rax * 4], ecx
+    mov ecx, [LOCAL(SVF_X)]
+    mov [LOCAL(SVF_NX) + rax * 4], ecx
+    mov ecx, [LOCAL(SVF_Z)]
+    mov [LOCAL(SVF_NZ) + rax * 4], ecx
 .gnext:
     inc r13d
     cmp r13d, SVF_GRID
     jb .gx
+    mov dword [LOCAL(SVF_PREV)], -1
     inc r12d
     cmp r12d, SVF_GRID
     jb .gz
@@ -1538,6 +2416,13 @@ PROC flora_survey, SVF_LOCALS, rbx, rsi, rdi, r12, r13
     mov ecx, eax
     call log_append_dec
     call log_end
+    cmp dword [LOCAL(SVF_ND) + rbx * 4], 0x7FFFFFFF
+    je .rep_next
+    lea rcx, [rel s_sv_near]
+    mov edx, [LOCAL(SVF_NX) + rbx * 4]
+    mov r8d, [LOCAL(SVF_NZ) + rbx * 4]
+    call log_xz
+.rep_next:
     inc ebx
     jmp .rep
 .rep_none:
@@ -1572,18 +2457,13 @@ sample_biome:
     sub rsp, 40
     cvtsi2sd xmm0, dword [LOCAL(SVF_X) + 48]
     cvtsi2sd xmm1, dword [LOCAL(SVF_Z) + 48]
-    call biome_climate
-    movss [LOCAL(SVF_T) + 48], xmm0
-    movss [LOCAL(SVF_H) + 48], xmm1
-    cvtsi2sd xmm0, dword [LOCAL(SVF_X) + 48]
-    cvtsi2sd xmm1, dword [LOCAL(SVF_Z) + 48]
     lea rcx, [LOCAL(SVF_S) + 48]
     call terrain_sample
     cvttss2si ecx, [LOCAL(SVF_S) + 48 + TSAMPLE.height]
     mov [LOCAL(SVF_GX) + 48], ecx
-    movss xmm0, [LOCAL(SVF_T) + 48]
-    movss xmm1, [LOCAL(SVF_H) + 48]
-    call biome_pick
+    cvtsi2sd xmm0, dword [LOCAL(SVF_X) + 48]
+    cvtsi2sd xmm1, dword [LOCAL(SVF_Z) + 48]
+    call biome_point
     mov edx, [LOCAL(SVF_GX) + 48]
     add rsp, 40
     ret
@@ -1592,5 +2472,6 @@ ENDPROC
 section .rdata
 s_sv_biome:     db "survey: biome ", 0
 s_sv_sp:        db " ", 0
+s_sv_near:      db "survey:   nearest place well inside at", 0
 s_sv_meadow:    db "survey: nearest flower meadow centre at", 0
 s_sv_pond:      db "survey: nearest pond centre at", 0

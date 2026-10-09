@@ -1436,6 +1436,70 @@ def flower(name, petal, centre, style):
     return img
 
 
+def mushroom_sprite(name, cap, spots, stem_c="e8dcc4", style="red"):
+    r = rng(name)
+    img = np.zeros((N, N, 4))
+    cp = ramp(cap, 4, spread=0.22)
+    st = ramp(stem_c, 3, spread=0.15)
+
+    def px(x, y, c):
+        if 0 <= x < N and 0 <= y < N:
+            img[y, x, :3] = c
+            img[y, x, 3] = 1.0
+    for y in range(N - 5, N):           # stem
+        px(7, y, st[1]); px(8, y, st[2])
+    if style == "red":                  # round dome with white spots
+        for y in range(N - 10, N - 5):
+            w = [2, 4, 5, 5, 5][y - (N - 10)]
+            for x in range(8 - w, 8 + w):
+                px(x, y, cp[2 if y < N - 7 else 1])
+        for (x, y) in ((5, N - 8), (9, N - 9), (10, N - 7), (7, N - 9), (4, N - 7)):
+            px(x, y, hexrgb(spots))
+    else:                               # flat brown cap
+        for y in range(N - 8, N - 5):
+            w = [3, 5, 6][y - (N - 8)]
+            for x in range(8 - w, 8 + w):
+                px(x, y, cp[2 if y == N - 8 else 1])
+        px(6, N - 8, cp[3]); px(9, N - 8, cp[3])
+    return img
+
+
+def make_forest(out):
+    gp = ramp("56ca42", 6, spread=0.22)
+    # fern: arching fronds with leaflets (grass-tinted like the grass)
+    img = np.zeros((N, N, 4))
+    r = rng("fern")
+    for k, (bx, lean) in enumerate(((3, -1), (6, 0), (9, 0), (12, 1), (8, 1), (5, -1))):
+        h = int(r.integers(9, 15))
+        for i in range(h):
+            y = N - 1 - i
+            x = bx + (lean * (i * i) // 40)
+            if 0 <= x < N:
+                img[y, x, :3] = gp[1 + (i * 3) // h]
+                img[y, x, 3] = 1.0
+                if i > 2 and i % 2 == 0:
+                    for dx in (-1, 1):
+                        xx = x + dx
+                        if 0 <= xx < N:
+                            img[y, xx, :3] = gp[2 + (i * 3) // h]
+                            img[y, xx, 3] = 1.0
+    out["fern"] = img
+    out["red_mushroom"] = mushroom_sprite("red_mushroom", "e02a24", "fff6f0", style="red")
+    out["brown_mushroom"] = mushroom_sprite("brown_mushroom", "a87650", "", style="brown")
+    # moss block: soft, deep green, fine texture
+    r = rng("moss_block")
+    mp = ramp("8aa832", 6, spread=0.2, hue_shift=0.01)
+    v = 0.6 * noise(r, 4, 3) + 0.4 * r.random((N, N))
+    m = shade(stretch(v) * 0.999, mp)
+    tips = r.random((N, N)) < 0.08
+    m[tips] = hexrgb("8fd85a")
+    out["moss_block"] = rgba(m)
+    # mossy oak log: the oak bark with moss creeping up from the bottom
+    base = out["oak_log"]
+    base = base[0] if isinstance(base, list) else base
+    out["mossy_oak_log"] = mossy(base[::-1], rng("mossy_oak_log"), amount=0.55)[::-1]
+
+
 def make_plants(out):
     gp = ramp("56ca42", 6, spread=0.22)
     out["short_grass"] = blades(rng("short_grass"), 18, 4, 12, gp, taper=False)
@@ -1473,6 +1537,7 @@ def build_all():
     make_water(out)
     make_underground(out)
     make_plants(out)
+    make_forest(out)
     return out
 
 

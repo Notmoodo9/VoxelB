@@ -111,11 +111,13 @@ s_pane:         db "pane", 0
 s_spike:        db "spike", 0
 s_plant:        db "plant", 0
 s_tall_plant:   db "tall_plant", 0
+s_axis:         db "axis", 0
 align 8
 shape_names:    dq s_cube, s_slab, s_stairs, s_fence, s_gate, s_door, s_trapdoor
                 dq s_ladder, s_sign, s_wall_sign, s_plate, s_wall, s_pillar, s_pane, s_spike
-                dq s_plant, s_tall_plant
-shape_states:   db 1, 2, 8, 1, 8, 32, 16, 4, 4, 4, 2, 1, 1, 1, 2, 1, 2
+                dq s_plant, s_tall_plant, s_axis
+shape_states:   db 1, 2, 8, 1, 8, 32, 16, 4, 4, 4, 2, 1, 1, 1, 2, 1, 2, 3
+%define SHAPE_AXIS_NAME SHAPE_COUNT     ; "axis": cube-shaped log states (BLOCKF_AXIS)
 str_shape_late:     db "shape must be the first setting of a new block: ", 0
 k_templates:    db "templates", 0
 k_members:      db "members", 0
@@ -565,6 +567,23 @@ PROC sync_states, 0, rbx, rsi, rdi
     mov [r9], rax
     mov eax, [r10 + 8]
     mov [r9 + 8], eax
+    ; log axis: the end texture (+Y) moves to the X (state 1) or Z (2) faces
+    lea rax, [rel g_block_flags]
+    test byte [rax + rbx], BLOCKF_AXIS
+    jz .next_tex
+    movzx eax, word [r10 + 6]           ; end (+Y)
+    movzx ecx, word [r10 + 0]           ; side (-X)
+    mov [r9 + 4], cx                    ; -Y
+    mov [r9 + 6], cx                    ; +Y
+    cmp edi, 1
+    jne .axis_z
+    mov [r9 + 0], ax
+    mov [r9 + 2], ax
+    jmp .next_tex
+.axis_z:
+    mov [r9 + 8], ax
+    mov [r9 + 10], ax
+.next_tex:
     inc edi
     jmp .state
 .done:
@@ -595,8 +614,8 @@ PROC set_shape, 0, rbx, rsi, rdi, r12
     mov rsi, rdx
     xor edi, edi
 .find:
-    cmp edi, SHAPE_COUNT
-    jae .bad
+    cmp edi, SHAPE_AXIS_NAME
+    ja .bad
     lea rax, [rel shape_names]
     INVOKE str_ieq, [rax + rdi * 8], rsi
     test eax, eax
@@ -606,9 +625,17 @@ PROC set_shape, 0, rbx, rsi, rdi, r12
 .found:
     lea rax, [rel shape_states]
     movzx r12d, byte [rax + rdi]        ; states
+    cmp edi, SHAPE_AXIS_NAME
+    jne .not_axis
+    lea rax, [rel g_block_flags]
+    test byte [rax + rbx], BLOCKF_AXIS
+    jnz .ok                             ; already has its axis states
+    jmp .grow
+.not_axis:
     lea rax, [rel g_block_shape]
     cmp [rax + rbx], dil
     je .ok                              ; same shape again: nothing to do
+.grow:
     ; only a block that was just created (last id, one state) can grow
     mov eax, [rel g_block_count]
     dec eax
@@ -624,6 +651,12 @@ PROC set_shape, 0, rbx, rsi, rdi, r12
     ja .full
     lea rax, [rel g_block_nstates]
     mov [rax + rbx * 2], r12w
+    cmp edi, SHAPE_AXIS_NAME
+    jne .shape_byte
+    lea rax, [rel g_block_flags]
+    or byte [rax + rbx], BLOCKF_AXIS
+    xor edi, edi                        ; (the states are cubes)
+.shape_byte:
     xor ecx, ecx                        ; state
 .state:
     cmp ecx, r12d

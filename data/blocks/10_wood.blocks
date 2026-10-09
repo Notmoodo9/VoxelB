@@ -3,12 +3,15 @@
 # The family below creates every (wood, template) block; fantasy woods get
 # their extra settings (light, render) further down.
 
+# logs lie along any axis (state 0 upright, 1 east-west, 2 north-south)
 [template log]
 name     = {}_log
+shape    = axis
 textures = side: {}_log, end: {}_log_top
 
 [template stripped_log]
 name     = stripped_{}_log
+shape    = axis
 textures = side: stripped_{}_log, end: stripped_{}_log_top
 
 [template bark]

@@ -20,3 +20,10 @@ scale       = 900
 octaves     = 2
 persistence = 0.5
 salt        = 302
+
+# rare pockets (old-growth hearts): biomes with a `weirdness` range
+[noise weirdness]
+scale       = 500
+octaves     = 2
+persistence = 0.5
+salt        = 303

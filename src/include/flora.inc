@@ -6,7 +6,7 @@
 
 %define MAX_PONDS       8
 %define MAX_CANDS       320
-%define TREE_REACH      8               ; blocks a tree may spread from its trunk
+%define TREE_REACH      20              ; blocks a tree may spread from its trunk
 
 struc POND                              ; a pond touching the chunk (local)
     .x          resd 1                  ; centre (chunk-local blocks)
@@ -40,6 +40,7 @@ struc FCTX
     .ncand      resd 1
     .ponds      resb MAX_PONDS * POND_size
     .cand       resb MAX_CANDS * CAND_size
+    .litter     resw 1024               ; litter block per interior column (0 = none)
 endstruc
 
 %ifndef FLORA_IMPL

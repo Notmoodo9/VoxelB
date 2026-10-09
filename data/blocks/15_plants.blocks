@@ -27,3 +27,15 @@ tint           = grass
 [family flowers]
 templates = plant
 members   = poppy, dandelion, cornflower, oxeye_daisy, allium, red_tulip, orange_tulip, white_tulip, pink_tulip
+
+# forest floor (design/biomes/forest.md)
+[block fern]
+shape    = plant
+textures = fern
+render   = cutout
+sway     = 1
+tint     = grass
+
+[family mushrooms_small]
+templates = plant
+members   = red_mushroom, brown_mushroom

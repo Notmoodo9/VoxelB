@@ -40,3 +40,62 @@ leaves    = flowering_oak_leaves
 height    = 1, 1
 radius    = 1.4, 2.1
 leaf_gaps = 0.3
+
+# --- forest (design/biomes/forest.md) -----------------------------------------
+# tall, slim birches with a light crown
+[tree birch]
+kind      = round
+log       = birch_log
+leaves    = birch_leaves
+height    = 7, 10
+radius    = 1.6, 2.2
+leaf_gaps = 0.3
+
+# medium maples with wide round crowns, green or in autumn colours
+[tree maple]
+kind      = round
+log       = maple_log
+leaves    = maple_leaves
+height    = 4, 6
+radius    = 2.8, 3.4
+leaf_gaps = 0.25
+
+[tree autumn_maple]
+kind      = round
+log       = maple_log
+leaves    = maple_autumn_leaves
+height    = 4, 6
+radius    = 2.8, 3.4
+leaf_gaps = 0.25
+
+# a log lying on the forest floor (length range in `height`)
+[tree fallen_oak]
+kind      = fallen
+log       = oak_log
+height    = 3, 6
+
+[tree mossy_stump]
+kind      = stump
+log       = mossy_oak_log
+height    = 1, 2
+
+# --- old-growth forest (design/biomes/old_growth_forest.md) --------------------
+#   giant: trunk discs taper from base_radius (flared at the ground) to 3 x 3
+#   at the crown base (55% up), with `roots` arching roots and `branches`
+#   heavy branches each ending in a leaf cluster of `radius`
+[tree giant_oak]
+kind        = giant
+log         = oak_log
+leaves      = oak_leaves
+height      = 30, 65
+radius      = 4.5, 6.5
+branches    = 6, 10
+base_radius = 3.5, 5.0
+roots       = 4, 7
+leaf_gaps   = 0.3
+
+# a huge mossy fallen giant
+[tree fallen_giant]
+kind      = fallen
+log       = mossy_oak_log
+height    = 7, 12
