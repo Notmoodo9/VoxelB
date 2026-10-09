@@ -1,0 +1,13 @@
+# Glass and ice. Translucent blocks are blended and hide the faces between
+# two equal blocks (no inner walls in a glass pane).
+
+[block glass]
+render = translucent
+
+[block tinted_glass]
+render = translucent
+
+[block ice]
+render = translucent
+
+[block packed_ice]

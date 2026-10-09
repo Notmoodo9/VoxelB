@@ -32,7 +32,8 @@ global gen_column_job, atomic_max, world_hash_selftest
 global g_world_gen_count, g_world_gen_total_us, g_world_gen_max_us
 
 extern str_ieq, str_parse_float, str_parse_u64
-extern blocks_init, block_register, block_find
+extern blocks_load, block_find
+extern g_block_count
 extern timer_elapsed_us
 
 %define MAX_LAYERS          16
@@ -49,15 +50,29 @@ extern timer_elapsed_us
 section .rdata
 str_cfg_path:   db "data/world/flat_test.cfg", 0
 str_cfg_label:  db "flat_test.cfg", 0
-k_block:        db "block", 0
 k_layer:        db "layer", 0
 k_structures:   db "test_structures", 0
 k_struct_blk:   db "structure_blocks", 0
 k_pillar:       db "pillar_block", 0
+k_gallery:      db "gallery", 0
+k_gal_origin:   db "gallery_origin", 0
+k_gal_columns:  db "gallery_columns", 0
+k_gal_size:     db "gallery_size", 0
+k_gal_gap:      db "gallery_gap", 0
 str_unknown:    db "unknown setting: ", 0
 str_bad_block:  db "unknown block: ", 0
 str_bad_value:  db "bad value for: ", 0
 name_columns:   db "columns", 0
+
+section .data
+align 4
+g_gal_enabled:      dd 0
+g_gal_ox:           dd -40              ; first block's x
+g_gal_oy:           dd 100              ; bottom y
+g_gal_oz:           dd 240              ; first row's z (rows go towards -Z)
+g_gal_columns:      dd 16
+g_gal_size:         dd 3
+g_gal_gap:          dd 2
 
 section .bss
 alignb 8
@@ -68,6 +83,9 @@ g_struct_enabled:   resd 1
 g_struct_ids:       resd MAX_STRUCT_BLOCKS
 g_struct_count:     resd 1
 g_pillar_id:        resd 1
+g_gal_x1:           resd 1              ; inclusive bounds
+g_gal_z0:           resd 1
+g_gal_y1:           resd 1
 alignb 8
 g_hash:             resq 1              ; HASH_SIZE x {key, COLUMN*}
 g_cfg_mark:         resq 1
@@ -172,10 +190,6 @@ ENDPROC
 PROC world_pair, 0, rbx, rsi, rdi, r12
     mov rbx, rcx
     mov rsi, rdx
-    lea rdx, [rel k_block]
-    INVOKE str_ieq, rbx, rdx
-    test eax, eax
-    jnz .block
     lea rdx, [rel k_layer]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
@@ -192,24 +206,32 @@ PROC world_pair, 0, rbx, rsi, rdi, r12
     INVOKE str_ieq, rbx, rdx
     test eax, eax
     jnz .pillar
+    lea rdx, [rel k_gallery]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jnz .gallery
+    lea rdx, [rel k_gal_origin]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jnz .gal_origin
+    lea rdi, [rel g_gal_columns]
+    lea rdx, [rel k_gal_columns]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jnz .gal_number
+    lea rdi, [rel g_gal_size]
+    lea rdx, [rel k_gal_size]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jnz .gal_number
+    lea rdi, [rel g_gal_gap]
+    lea rdx, [rel k_gal_gap]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jnz .gal_number
     lea rcx, [rel str_cfg_label]
     lea rdx, [rel str_unknown]
     INVOKE cfg_warn, rcx, rdx, rbx
-    RETURN
-
-.block:                                 ; block = name, RRGGBB
-    mov rcx, rsi
-    call cfg_next_token
-    mov rdi, rax                        ; name
-    test rdx, rdx
-    jz .bad
-    mov rcx, rdx
-    call cfg_next_token
-    mov rcx, rax
-    call parse_hex
-    test edx, edx
-    jz .bad
-    INVOKE block_register, rdi, rax
     RETURN
 
 .layer:                                 ; layer = block, top_y
@@ -261,6 +283,47 @@ PROC world_pair, 0, rbx, rsi, rdi, r12
     mov [rdx + rcx * 4], eax
     inc dword [rel g_struct_count]
     jmp .sb_next
+
+.gallery:
+    mov rcx, rsi
+    call str_parse_u64
+    mov [rel g_gal_enabled], eax
+    RETURN
+
+.gal_number:                            ; rdi = destination, 1..64
+    mov rcx, rsi
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    cmp rax, 64
+    ja .bad
+    test eax, eax
+    jnz .gal_store
+    lea rcx, [rel g_gal_gap]
+    cmp rdi, rcx
+    jne .bad                            ; only the gap may be 0
+.gal_store:
+    mov [rdi], eax
+    RETURN
+
+.gal_origin:                            ; gallery_origin = x, y, z
+    lea rdi, [rel g_gal_ox]
+    xor r12d, r12d
+.go_next:
+    test rsi, rsi
+    jz .bad
+    mov rcx, rsi
+    call cfg_next_token
+    mov rsi, rdx
+    mov rcx, rax
+    call parse_int
+    test edx, edx
+    jz .bad
+    mov [rdi + r12 * 4], eax
+    inc r12d
+    cmp r12d, 3
+    jb .go_next
+    RETURN
 
 .pillar:
     mov rcx, rsi
@@ -707,11 +770,94 @@ PROC apply_structures, 48, rbx, rsi, rdi, r12, r13, r14, r15
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; apply_gallery — stamp the block gallery into a section's id array: every
+; registered block as a size^3 cube on a grid (debug layout for looking at
+; the block set, not game content).
+;   in:  rcx = ids u16[32768], edx = cx, r8d = cz, r9d = y0 (section base)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC apply_gallery, 16, rbx, rsi, rdi, r12, r13, r14, r15
+    mov rbx, rcx                        ; ids
+    mov r14d, edx
+    shl r14d, 5                         ; column x0
+    mov r15d, r8d
+    shl r15d, 5                         ; column z0
+    mov [LOCAL(0)], r9d                 ; section y0
+    mov eax, [rel g_gal_size]
+    add eax, [rel g_gal_gap]
+    mov [LOCAL(4)], eax                 ; cell
+    ; y range inside this section: [max(oy, y0), min(oy + size, y0 + 32))
+    mov eax, [rel g_gal_oy]
+    cmp eax, r9d
+    cmovl eax, r9d
+    sub eax, r9d
+    mov [LOCAL(8)], eax                 ; local y start
+    mov eax, [rel g_gal_oy]
+    add eax, [rel g_gal_size]
+    lea ecx, [r9d + 32]
+    cmp eax, ecx
+    cmovg eax, ecx
+    sub eax, r9d
+    mov [LOCAL(12)], eax                ; local y end (exclusive)
+    xor r12d, r12d                      ; z
+.z_loop:
+    lea eax, [r15d + r12d]
+    mov ecx, [rel g_gal_oz]
+    sub ecx, eax                        ; dz = oz - wz
+    js .z_next
+    mov eax, ecx
+    xor edx, edx
+    div dword [LOCAL(4)]
+    cmp edx, [rel g_gal_size]
+    jae .z_next
+    mov esi, eax                        ; row
+    xor r13d, r13d                      ; x
+.x_loop:
+    lea eax, [r14d + r13d]
+    sub eax, [rel g_gal_ox]             ; dx
+    js .x_next
+    xor edx, edx
+    div dword [LOCAL(4)]
+    cmp edx, [rel g_gal_size]
+    jae .x_next
+    cmp eax, [rel g_gal_columns]
+    jae .x_next
+    mov edi, esi
+    imul edi, [rel g_gal_columns]
+    add edi, eax
+    inc edi                             ; block id
+    cmp edi, [rel g_block_count]
+    jae .x_next
+    mov ecx, [LOCAL(8)]
+.y_loop:
+    cmp ecx, [LOCAL(12)]
+    jge .x_next
+    mov eax, ecx
+    shl eax, 10
+    mov edx, r12d
+    shl edx, 5
+    or eax, edx
+    or eax, r13d
+    mov [rbx + rax * 2], di
+    inc ecx
+    jmp .y_loop
+.x_next:
+    inc r13d
+    cmp r13d, 32
+    jb .x_loop
+.z_next:
+    inc r12d
+    cmp r12d, 32
+    jb .z_loop
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 ; gen_column_job — job: generate all 40 sections of one column.
 ;   in:  rcx = COLUMN*, rdx = WORKER*
 ;   Publishes COL_GENERATED after every section pointer is stored.
 ; -----------------------------------------------------------------------------
-PROC gen_column_job, 16, rbx, rsi, rdi, r12, r13, r14, r15
+PROC gen_column_job, 32, rbx, rsi, rdi, r12, r13, r14, r15
     mov rbx, rcx                        ; COLUMN*
     lea r15, [rdx + WORKER.scratch]
     call timer_elapsed_us
@@ -737,6 +883,26 @@ PROC gen_column_job, 16, rbx, rsi, rdi, r12, r13, r14, r15
     jle .no_struct
     mov r14d, 1
 .no_struct:
+    ; does it touch the block gallery?
+    mov dword [LOCAL(16)], 0
+    cmp dword [rel g_gal_enabled], 0
+    je .no_gallery
+    mov eax, [rbx + COLUMN.cx]
+    shl eax, 5
+    cmp eax, [rel g_gal_x1]
+    jg .no_gallery
+    add eax, 31
+    cmp eax, [rel g_gal_ox]
+    jl .no_gallery
+    mov eax, [rbx + COLUMN.cz]
+    shl eax, 5
+    cmp eax, [rel g_gal_oz]
+    jg .no_gallery
+    add eax, 31
+    cmp eax, [rel g_gal_z0]
+    jl .no_gallery
+    mov dword [LOCAL(16)], 1
+.no_gallery:
     xor esi, esi                        ; sy
 .section:
     mov edi, esi
@@ -753,6 +919,15 @@ PROC gen_column_job, 16, rbx, rsi, rdi, r12, r13, r14, r15
     jle .layers
     mov r13d, 1
 .layers:
+    cmp dword [LOCAL(16)], 0
+    je .layers_plain
+    cmp edi, [rel g_gal_y1]
+    jg .layers_plain
+    lea eax, [edi + 31]
+    cmp eax, [rel g_gal_oy]
+    jl .layers_plain
+    or r13d, 2
+.layers_plain:
     mov ecx, edi
     call layer_index
     mov [LOCAL(8)], eax
@@ -798,9 +973,13 @@ PROC gen_column_job, 16, rbx, rsi, rdi, r12, r13, r14, r15
     inc ecx
     cmp ecx, 32
     jb .fill_y
-    test r13d, r13d
-    jz .build
+    test r13d, 1
+    jz .no_structures
     INVOKE apply_structures, r12, [rbx + COLUMN.cx], [rbx + COLUMN.cz], rdi
+.no_structures:
+    test r13d, 2
+    jz .build
+    INVOKE apply_gallery, r12, [rbx + COLUMN.cx], [rbx + COLUMN.cz], rdi
 .build:
     mov edx, [rbx + COLUMN.cx]
     mov r8d, esi
@@ -948,7 +1127,9 @@ ENDPROC
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC world_init, 0, rbx, rdi
-    call blocks_init
+    call blocks_load
+    test eax, eax
+    jz .fail_quiet
     lea rcx, [rel g_arena_scratch]
     call arena_mark
     mov [rel g_cfg_mark], rax
@@ -975,6 +1156,29 @@ PROC world_init, 0, rbx, rdi
     xor eax, eax
     RETURN
 .layers_ok:
+    ; gallery bounds (inclusive)
+    mov eax, [rel g_gal_size]
+    add eax, [rel g_gal_gap]
+    mov ecx, eax                        ; cell
+    imul eax, [rel g_gal_columns]
+    add eax, [rel g_gal_ox]
+    dec eax
+    mov [rel g_gal_x1], eax
+    mov eax, [rel g_block_count]
+    dec eax                             ; blocks to show
+    add eax, [rel g_gal_columns]
+    dec eax
+    xor edx, edx
+    div dword [rel g_gal_columns]       ; rows
+    imul eax, ecx
+    mov edx, [rel g_gal_oz]
+    sub edx, eax
+    inc edx
+    mov [rel g_gal_z0], edx
+    mov eax, [rel g_gal_oy]
+    add eax, [rel g_gal_size]
+    dec eax
+    mov [rel g_gal_y1], eax
     call sections_init
     test eax, eax
     jz .fail
@@ -998,6 +1202,7 @@ PROC world_init, 0, rbx, rdi
     RETURN
 .fail:
     LOG_ERROR "world_init failed (out of memory?)"
+.fail_quiet:
     xor eax, eax
     RETURN
 ENDPROC

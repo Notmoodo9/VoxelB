@@ -349,6 +349,9 @@ PROC section_build, 0, rbx, rsi, rdi, r12, r13
     mov [rbx + SECT.quad_first], eax
     mov [rbx + SECT.quad_count], eax
     mov [rbx + SECT.mesh_us], eax
+    mov [rbx + SECT.quad_opaque], eax
+    mov [rbx + SECT.quad_cutout], eax
+    mov [rbx + SECT.cpu_first], eax
     mov [rbx + SECT.palette], rax
     mov [rbx + SECT.data], rax
     INVOKE build_storage, rbx, rsi
@@ -413,6 +416,9 @@ PROC section_make_uniform, 0, rbx, rsi, rdi, r12, r13
     mov [rbx + SECT.quad_first], eax
     mov [rbx + SECT.quad_count], eax
     mov [rbx + SECT.mesh_us], eax
+    mov [rbx + SECT.quad_opaque], eax
+    mov [rbx + SECT.quad_cutout], eax
+    mov [rbx + SECT.cpu_first], eax
     lock inc qword [rel g_sections_live]
     lock add qword [rel g_section_bytes], SECT_size
     mov rax, rbx

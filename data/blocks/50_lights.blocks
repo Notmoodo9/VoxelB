@@ -1,0 +1,27 @@
+# Light & crafted blocks.
+
+[block bricks]
+
+[block lamp]
+light = 15, 14, 12
+
+[block glowstone]
+light = 15, 13, 7
+
+[template crystal]
+name = {}_crystal
+
+[family crystals]
+templates = crystal
+members   = blue, purple, green, pink, amber
+
+[block blue_crystal]
+light = 4, 7, 12
+[block purple_crystal]
+light = 9, 4, 12
+[block green_crystal]
+light = 4, 12, 7
+[block pink_crystal]
+light = 12, 5, 10
+[block amber_crystal]
+light = 12, 9, 3

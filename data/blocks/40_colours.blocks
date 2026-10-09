@@ -1,0 +1,53 @@
+# The 16 colours in terracotta, stained glass and wool, plus a lamp in each
+# colour (design/blocks/block_set.md).
+
+[template terracotta]
+name = {}_terracotta
+
+[template stained_glass]
+name   = {}_stained_glass
+render = translucent
+
+[template wool]
+name = {}_wool
+
+[template coloured_lamp]
+name  = {}_lamp
+
+[family colours]
+templates = terracotta, stained_glass, wool, coloured_lamp
+members   = white, light_gray, gray, black, brown, red, orange, yellow, lime, green, cyan, light_blue, blue, purple, magenta, pink
+
+# lamp light colours (r, g, b 0..15; used from milestone 13)
+[block white_lamp]
+light = 14, 14, 14
+[block light_gray_lamp]
+light = 11, 11, 12
+[block gray_lamp]
+light = 7, 7, 8
+[block black_lamp]
+light = 4, 3, 6
+[block brown_lamp]
+light = 12, 8, 4
+[block red_lamp]
+light = 14, 3, 3
+[block orange_lamp]
+light = 14, 8, 2
+[block yellow_lamp]
+light = 14, 13, 3
+[block lime_lamp]
+light = 9, 14, 3
+[block green_lamp]
+light = 4, 13, 3
+[block cyan_lamp]
+light = 3, 12, 13
+[block light_blue_lamp]
+light = 6, 11, 14
+[block blue_lamp]
+light = 3, 5, 14
+[block purple_lamp]
+light = 9, 3, 14
+[block magenta_lamp]
+light = 13, 4, 12
+[block pink_lamp]
+light = 14, 8, 11

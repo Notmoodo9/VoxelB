@@ -37,9 +37,10 @@ c_us_to_s:      dd 0.000001
 c_max_dt:       dd 0.1
 c_one:          dd 1.0
 c_zero:         dd 0.0
-; start position: south of the test structures, looking north, slightly down
+; start position: south of the block gallery and the test structures,
+; looking north, slightly down
 align 8
-c_start_pos:    dq 0.5, 138.0, 190.0       ; doubles
+c_start_pos:    dq 0.5, 118.0, 262.0       ; doubles
 c_start_pitch:  dd -0.35
 
 section .bss

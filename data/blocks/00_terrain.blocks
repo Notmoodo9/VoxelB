@@ -1,0 +1,32 @@
+# Soils, surface and the stone family (design/blocks/block_set.md).
+# Format: DATA_FORMAT.md, "Block files". A block with no `textures` uses
+# the texture with its own name on every face.
+
+# --- soils & surface --------------------------------------------------------
+[block dirt]
+
+[block grass_block]
+textures = side: grass_block_side, top: grass_block_top, bottom: dirt
+
+[block coarse_dirt]
+[block sand]
+[block red_sand]
+[block gravel]
+[block clay]
+[block mud]
+[block snow]
+
+[block forest_floor]
+textures = side: forest_floor_side, top: forest_floor_top, bottom: dirt
+
+# --- stone family -------------------------------------------------------------
+[block stone]
+[block cobblestone]
+[block mossy_cobblestone]
+[block smooth_stone]
+[block stone_bricks]
+[block deep_stone]
+[block bedrock]
+
+[block sandstone]
+textures = side: sandstone, top: sandstone_top, bottom: sandstone_bottom

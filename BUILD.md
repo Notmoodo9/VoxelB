@@ -45,6 +45,8 @@ build\debug\voxelb.exe --novsync          start with vsync off
 build\debug\voxelb.exe --workers 2        use 2 job worker threads (default: CPU threads - 1)
 build\debug\voxelb.exe --selftest         run the memory/job self test (always on in debug builds)
 build\debug\voxelb.exe --flytest          fly straight ahead at 60 blocks/s (streaming stress test)
+build\debug\voxelb.exe --pos 10 105 190    start the camera at x y z (blocks)
+build\debug\voxelb.exe --look -30 -20      start view: yaw (0 north, 90 east), pitch (degrees, + up)
 ```
 
 Default controls (rebind in `data/config/controls.cfg`, format in `DATA_FORMAT.md`):
@@ -88,6 +90,25 @@ failure (debug builds), `4` self test failed (see log).
 * **New Win32 import:** add the function name to the matching
   `tools/implib/<dll>.def`, then `IMPORT` it in the module. For a new DLL, add a
   new `.def` file; it is linked automatically.
+
+## Textures and blocks
+
+Blocks are defined in `data/blocks/*.blocks` and textured from
+`assets/textures/blocks/*.png` (format: `DATA_FORMAT.md`). Edit a PNG while
+the game runs and it reloads within a second.
+
+The built-in textures were drawn by a generator script, and the PNGs are
+committed, so building never needs Python. To regenerate them (Python 3 with
+Pillow and NumPy):
+
+```
+python3 tools/texgen/texgen.py              # all textures (overwrites!)
+python3 tools/texgen/texgen.py oak_planks   # only the named ones
+python3 tools/texgen/texgen.py --list       # list every texture name
+```
+
+`tools/make_png_tests.py` regenerates the PNG decoder's self-test images
+(`src/include/png_tests.inc`).
 
 ## Continuous integration
 

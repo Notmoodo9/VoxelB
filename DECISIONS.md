@@ -368,3 +368,71 @@ render threads compete with the workers there. With llvmpipe forced
 single-threaded, the worst case fell to under 1.5 ms. Per-operation timing
 showed every step (upload, submit, unload) at 1 ms or less. The average
 update stays at 70–170 µs.
+
+## D36 — Block registry: data files with templates and families (M7)
+Blocks are defined in `data/blocks/*.blocks` with `[block]`, `[template]`,
+`[family]` and `[texture]` records (DATA_FORMAT.md). The owner's block set
+is about 262 blocks, mostly "same logic, different texture" (16 woods × 8
+variants), so templates with a `{}` member placeholder keep the data short:
+one family line creates 128 wood blocks. Files are read in file-name order,
+so ids are deterministic (saves will store names → ids anyway, M17). The
+registry keeps flat tables indexed by id (names, per-face texture, render
+layer, light, flags) plus three 64 KB byte tables (opaque, layer,
+cull-self) that the mesher reads with no bounds checks for any u16 id.
+The parser is the shared `cfg.asm` with `[header]` lines added behind a
+flag, so older files are unaffected.
+
+## D37 — Textures: PNG files, our own decoder, one texture array (M7)
+* The owner wants to repaint textures in any editor, so textures are
+  ordinary PNG files. `src/core/png.asm` implements inflate (RFC 1951,
+  canonical Huffman as in zlib's "puff") and every non-interlaced PNG
+  variant. A self test decodes 5 reference images (all colour types, all
+  5 filters, stored/fixed/dynamic blocks, split IDAT, tRNS) and checks
+  their hashes.
+* All block textures go into one `GL_TEXTURE_2D_ARRAY` (RGBA8, 16×16, 5
+  mip levels). 317 textures with their animation frames are 479 layers
+  (2 MB with mips); GL guarantees at least 2048 layers. Greedy quads tile
+  their texture with `GL_REPEAT` (uv = block coordinates), so merged quads
+  need no atlas padding and mipmaps have no seams.
+* Sampling uses `NEAREST` magnification for crisp pixels and
+  `NEAREST_MIPMAP_LINEAR` minification against distant shimmer. Cut-out
+  alpha is boosted by the mip level (a coverage-preserving test), so
+  distant leaves don't thin out.
+* Animations are vertical strips; the frame is chosen in the vertex
+  shader from a time uniform and a per-texture table (SSBO), with optional
+  blending between frames. Glow layers are separate textures drawn at full
+  brightness, which makes fantasy blocks glow before lighting exists (M13
+  adds real light from the `light` values).
+* Hot reload checks 32 file times per frame (all ~320 files every 10
+  frames) and re-uploads changed PNGs in place.
+
+## D38 — Render layers: opaque, cutout, translucent (M7)
+The mesher orders each section's quads by layer (opaque, cutout,
+translucent), and the section records the counts, so each layer of a
+section is one contiguous range and one draw. Face culling: an opaque
+neighbour hides a face; two equal "cull self" blocks (translucent) hide
+the face between them; leaves don't cull each other (see-through leaves
+show inner leaves). Draw order: opaque, then cutout (alpha test), then
+translucent with blending and no depth writes, sections sorted back to
+front. Quads inside one translucent section are not sorted (rare
+artefacts between different glass colours in one section; per-quad
+sorting can come with water in M15). `opaque_leaves = 1` (graphics.cfg)
+turns cut-out blocks into opaque ones at load, for weak GPUs.
+
+## D39 — Enclosed-section skip covers all-opaque palettes (M7)
+The mesher already skipped uniform opaque sections enclosed by opaque
+neighbours. With bedrock and deep stone layers, many buried sections are
+mixed (bedrock + deep stone), and meshing them produced zero quads at full
+cost (mesh time per column rose from about 1.7 ms to 6 ms). A section,
+or a neighbour, now counts as all-opaque when every palette entry is
+opaque. Mesh time per column is now about 1.3 ms.
+
+## D40 — Texture generator (M7)
+The owner chose "Claude draws them, you tweak". `tools/texgen/texgen.py`
+draws all 317 textures procedurally with pixel-art conventions:
+quantised shade ramps with hue shifting (cool, saturated shadows; warm
+highlights), per-texture deterministic noise, and patterns per material
+(bark styles, rings, boards, carvings, moss, books, leaf clusters,
+Voronoi cobbles, bricks, glass frames, weave). The output PNGs are
+committed and are the source of truth from now on; the script is a
+starting point, not a build step.

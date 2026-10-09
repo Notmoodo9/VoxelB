@@ -1,0 +1,22 @@
+# Mushroom "woods": red, brown and glowing blue, 8 blocks each.
+
+[template mushroom_stem]
+name     = {}_stem
+textures = side: {}_stem, end: {}_stem_top
+
+[template stripped_mushroom_stem]
+name     = stripped_{}_stem
+textures = side: stripped_{}_stem, end: stripped_{}_stem_top
+
+[template mushroom_cap]
+name     = {}_cap
+
+[template mushroom_gills]
+name     = {}_gills
+
+[family mushrooms]
+templates = mushroom_stem, stripped_mushroom_stem, mushroom_cap, mushroom_gills, planks, carved_planks, mossy_planks, bookshelf
+members   = red_mushroom, brown_mushroom, glowing_mushroom
+
+[block glowing_mushroom_cap]
+light = 2, 4, 9

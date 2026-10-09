@@ -6,3 +6,4 @@
 *.sh text eol=lf
 *.vxf binary
 *.png binary
+*.png binary

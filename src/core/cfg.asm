@@ -8,6 +8,9 @@
 ;       "name = value" line: callback(rcx = name, rdx = value, r8 = user).
 ;       Both strings are trimmed and zero-terminated. '#' starts a comment.
 ;       Lines without '=' are logged as warnings (prefixed with `label`).
+;   cfg_parse_ex(text, callback, user, label, flags)
+;       flags bit 0 (CFG_SECTIONS): a line "[header]" calls
+;       callback(rcx = header text, rdx = 0, r8 = user) instead of warning.
 ;   cfg_next_token(cursor) -> rax = token, rdx = next cursor (0 = last)
 ;       splits a value list on ','; tokens are trimmed and terminated.
 ;   cfg_warn(label, message, detail)   log "<label>: <message><detail>"
@@ -15,7 +18,7 @@
 %include "macros.inc"
 %include "log.inc"
 
-global cfg_parse, cfg_next_token, cfg_warn, cfg_trim
+global cfg_parse, cfg_parse_ex, cfg_next_token, cfg_warn, cfg_trim
 
 section .rdata
 str_colon_sp:   db ": ", 0
@@ -47,6 +50,20 @@ cfg_trim:
 .term:
     mov byte [rdx], 0
     mov rax, rcx
+    ret
+
+; -----------------------------------------------------------------------------
+; str_len_local — length of a zero-terminated string.
+;   in:  rcx = string   out: rax = length   clobbers: rax
+; -----------------------------------------------------------------------------
+str_len_local:
+    xor eax, eax
+.l:
+    cmp byte [rcx + rax], 0
+    je .d
+    inc rax
+    jmp .l
+.d:
     ret
 
 ; -----------------------------------------------------------------------------
@@ -109,7 +126,19 @@ cfg_next_token:
 ;        r8 = user value passed to the callback, r9 = label for warnings
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC cfg_parse, 16, rbx, rsi, rdi, r12, r13, r14, r15
+PROC cfg_parse, 0
+    INVOKE cfg_parse_ex, rcx, rdx, r8, r9, 0
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; cfg_parse_ex — cfg_parse with flags (bit 0: report "[header]" lines).
+;   in:  rcx = text, rdx = callback, r8 = user, r9 = label, ARG(5) = flags
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC cfg_parse_ex, 16, rbx, rsi, rdi, r12, r13, r14, r15
+    mov rax, [ARG(5)]
+    mov [LOCAL(8)], rax                 ; flags
     mov rsi, rcx                        ; line start
     mov r13, rdx                        ; callback
     mov r14, r8                         ; user
@@ -156,6 +185,27 @@ PROC cfg_parse, 16, rbx, rsi, rdi, r12, r13, r14, r15
     INVOKE cfg_trim, rsi, rdi
     cmp byte [rax], 0
     je .next
+    test qword [LOCAL(8)], 1
+    jz .warn_line
+    cmp byte [rax], '['
+    jne .warn_line
+    ; "[header]": strip the brackets
+    mov rcx, rax
+    call str_len_local
+    lea rdx, [rcx + rax]                ; end
+    cmp byte [rdx - 1], ']'
+    jne .warn_line_rcx
+    inc rcx
+    dec rdx
+    call cfg_trim
+    mov rcx, rax
+    xor edx, edx
+    mov r8, r14
+    call r13
+    jmp .next
+.warn_line_rcx:
+    mov rax, rcx
+.warn_line:
     lea rdx, [rel str_no_eq]
     INVOKE cfg_warn, r15, rdx, rax
     jmp .next

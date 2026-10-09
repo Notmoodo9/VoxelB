@@ -9,6 +9,9 @@ EXPORTS
     CreateSemaphoreA
     CreateThread
     ExitProcess
+    FindClose
+    FindFirstFileA
+    FindNextFileA
     GetActiveProcessorCount
     GetCommandLineA
     GetFileAttributesA

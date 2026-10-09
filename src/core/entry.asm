@@ -7,6 +7,9 @@
 ;   --novsync          start with vsync off (toggle_vsync action at runtime)
 ;   --workers <n>      number of job worker threads (default: CPUs - 1)
 ;   --flytest          fly north automatically at 60 blocks/s (streaming test)
+;   --pos <x> <y> <z>  start the camera at this position (blocks)
+;   --look <yaw> <pitch>  start view direction in degrees (yaw 0 = north,
+;                      90 = east; pitch > 0 looks up)
 ;   --selftest         run the arena/pool/job self test at start (always on
 ;                      in debug builds); a failure exits with code 4
 ;
@@ -32,14 +35,15 @@
 
 global main_entry
 
-extern str_find, str_parse_u64, str_copy, str_append_dec
+extern str_find, str_parse_u64, str_copy, str_append_dec, str_parse_float
 extern renderer_init, renderer_frame, renderer_shutdown
 extern camera_init, camera_update
 extern overlay_draw, overlay_toggle
 extern cpu_detect, selftest_run
 extern world_init, world_render_init, world_render_shutdown
-extern stream_init, stream_update, stream_shutdown
-extern g_cam_autofly, g_fly_speed
+extern stream_init, stream_update, stream_shutdown, settings_load
+extern block_textures_poll
+extern g_cam_autofly, g_fly_speed, g_cam_pos, g_cam_yaw, g_cam_pitch
 extern timer_init, timer_frame, timer_reset, timer_elapsed_us
 extern g_total_frames, g_stat_fps_x10, g_stat_avg_us, g_stat_min_us, g_stat_max_us
 
@@ -59,6 +63,10 @@ opt_workers:        db "--workers", 0
 opt_workers_len     equ $ - opt_workers - 1
 opt_selftest:       db "--selftest", 0
 opt_flytest:        db "--flytest", 0
+opt_pos:            db "--pos ", 0
+opt_look:           db "--look ", 0
+align 4
+c_deg_to_rad:       dd 0.0174532925
 align 4
 c_flytest_speed:    dd 60.0
 str_cpu_fail:       db "This CPU lacks SSE4.2, which VoxelB requires.", 0
@@ -236,6 +244,7 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     lea rcx, [rel str_controls_fail]
     call log_fatal
 .controls_ok:
+    call settings_load
 
     ; ---- window + OpenGL ---------------------------------------------------------
     lea r8, [rel window_title]
@@ -277,6 +286,44 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     call log_fatal
 .world_ok:
     call camera_init
+    ; --pos x y z
+    lea rdx, [rel opt_pos]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .no_pos
+    lea rcx, [rax + 6]
+    xor esi, esi
+.pos_coord:
+    call str_parse_float
+    test eax, eax
+    jz .no_pos
+    cvtss2sd xmm0, xmm0
+    lea rax, [rel g_cam_pos]
+    movsd [rax + rsi * 8], xmm0
+    mov rcx, rdx
+    inc esi
+    cmp esi, 3
+    jb .pos_coord
+    LOG_INFO "camera: start position from --pos"
+.no_pos:
+    ; --look yaw pitch (degrees)
+    lea rdx, [rel opt_look]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .no_look
+    lea rcx, [rax + 7]
+    call str_parse_float
+    test eax, eax
+    jz .no_look
+    mulss xmm0, [rel c_deg_to_rad]
+    movss [rel g_cam_yaw], xmm0
+    mov rcx, rdx
+    call str_parse_float
+    test eax, eax
+    jz .no_look
+    mulss xmm0, [rel c_deg_to_rad]
+    movss [rel g_cam_pitch], xmm0
+.no_look:
     lea rdx, [rel opt_flytest]
     INVOKE str_find, rbx, rdx
     test rax, rax
@@ -352,6 +399,7 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     call shader_reload_all
 .no_reload:
     call shader_poll
+    call block_textures_poll
 
     ; minimised (zero-sized client area): don't render, don't spin
     mov ecx, [rel g_client_w]

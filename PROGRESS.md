@@ -1,15 +1,130 @@
 # Progress
 
 ## Current state
-**Milestone 6: Infinite streaming: load/unload around the player on worker
-threads, no stutter: DONE** (Windows CI green: run #11)
+**Milestone 7: Data-driven block registry + parser + texture array: DONE**
+(Windows CI: see below)
 
-The owner reports that the game runs well on a mid-range PC with integrated
-graphics. This is the first report from real GPU hardware.
+Next: **Milestone 7b: Shaped blocks** (slabs, stairs, fences, doors,
+trapdoors). The owner added it during the M7 interview, to come right after
+M7. It starts with a short design interview: which shapes go with which
+materials, and how doors and trapdoors behave.
 
-Next: **Milestone 7: Data-driven block registry + parser + texture array.**
-The registry and parser are engine work. The actual block set and its
-textures are creative content and need a Design Interview first.
+---
+
+## Milestone 7 — done (2026-10-09)
+
+### Design interview
+Four rounds plus approval, recorded in `design/blocks/block_set.md`:
+* 16×16 textures in a vibrant, shaded pixel-art style. Claude draws them;
+  the owner can repaint any PNG.
+* A very broad set of 262 cube blocks:
+  * 16 woods × 9 blocks (classic six, six real-world woods, four fantasy
+    woods), each with one seasonal leaf variant;
+  * 3 mushroom woods × 8 blocks;
+  * soils, the stone family, glass and ice;
+  * 16 colours × terracotta, stained glass and wool;
+  * a lamp, 16 coloured lamps, 5 crystals and glowstone.
+* Animated: emberwood, crystalwood and crystals, glowwood and the glowing
+  mushroom, swaying leaves. Fantasy blocks give off coloured light (from
+  M13).
+* See-through leaves, with an `opaque_leaves` option.
+* Shaped blocks moved to M7b.
+
+### What was built
+* **Block registry** (`src/world/block.asm`): reads every
+  `data/blocks/*.blocks` file in name order. Records are `[block]`,
+  `[template]` (with a `{}` member placeholder), `[family]` and
+  `[texture]` (D36). Per-face textures, render layer, light, sway. Adding
+  blocks needs no asm.
+* **Section headers** in the shared cfg parser (`cfg_parse_ex`).
+* **PNG decoder** in asm (`src/core/png.asm`): inflate plus every
+  non-interlaced colour type, depth and filter (D37). Self test with 5
+  reference images.
+* **Texture array** (`src/render/block_textures.asm`): 317 PNGs make 479
+  layers with mipmaps. Animated strips, glow layers, a magenta checker for
+  missing files. Texture info and block faces go to the GPU as SSBOs.
+* **Hot reload** of PNGs: about one second.
+* **Render layers** (D38): the mesher orders quads into opaque / cutout /
+  translucent ranges. Glass hides faces between equal blocks. The draw
+  runs three passes, with the translucent sections sorted back to front.
+* **Shaders**: per-face UVs that tile across greedy quads (`GL_REPEAT`),
+  animation frames with blending, glow layers, leaf sway, and an alpha
+  test that keeps its coverage at distance.
+* **Settings module** (`src/core/settings.asm`) reads graphics.cfg before
+  the world loads (`render_distance`, `opaque_leaves`).
+* **Faster mesher skip** for buried all-opaque sections (D39).
+* **Flat test world**:
+  * real blocks: bedrock, deep stone, stone, dirt, grass;
+  * a **block gallery** (every block as a 3×3×3 cube in id order) in front
+    of the start position;
+  * terracotta hills and wool pillars.
+* **Texture generator** `tools/texgen/texgen.py` (D40). The PNGs are
+  committed.
+* **`--pos x y z` and `--look yaw pitch`** command-line options.
+* **Smoke tests** check the block registry and that no texture is missing.
+
+### How to see it
+Start the game: the gallery is right in front of you. Rows run north in
+id order:
+* terrain;
+* the 16 woods (oak first; fantasy woods in rows 7–9);
+* seasonal leaves;
+* mushrooms;
+* glass and ice;
+* the colours;
+* the lights.
+
+Closer views:
+* `voxelb.exe --pos 14 105 193 --look -10 -22` — glass, ice and the lamps;
+* `voxelb.exe --pos -12 105 214 --look 0 -25` — the woods up close.
+
+### Bugs found and fixed while testing
+* The PNG self test hashed from the width value instead of the pixel
+  pointer (an infinite loop under Wine). Fixed in the test.
+* Polling 4 texture files per frame was too slow at low frame rates (a
+  full pass took 8 s at 10 FPS). Raised to 32 per frame.
+* Buried mixed sections made meshing 3.5× slower (D39).
+* Upload rollback bug from M6: after a full GPU buffer, a retry would have
+  read GPU offsets as CPU offsets. Sections now keep `cpu_first`
+  separately.
+
+### Verified (Wine 9 + Xvfb + Mesa llvmpipe, 4-core Xeon)
+* Debug and release headless tests pass:
+  * every self test passes, including the PNG decoder;
+  * 262 blocks and 317 textures load, with none missing;
+  * no warnings except the GL 4.5 fallback;
+  * clean exit.
+* Screenshots: the textured gallery; see-through glass, tinted glass and
+  ice with no inner faces; glowing lamps; bookshelves; carved and mossy
+  planks; terracotta hills.
+* Hot reload: a repainted `stone.png` was re-uploaded within about 0.4 s.
+  Restoring it reloaded again.
+* `opaque_leaves = 1` loads and runs cleanly.
+
+### Performance (release, llvmpipe software rendering, render distance 16)
+| | |
+|---|---|
+| Full view (797 columns) | 1.5 s after start |
+| FPS flying (`--flytest`) | 76–81 (12.3–13 ms) |
+| Column generation | avg 0.6 ms |
+| Column meshing | avg 1.3 ms (was 1.7 ms in M6) |
+| `stream_update` | avg 170–210 µs |
+| Block + texture loading | 262 blocks in 2 ms; 317 PNGs decoded and uploaded in 0.5 s (debug, llvmpipe) |
+| Texture array | 479 layers, about 2 MB with mipmaps |
+
+### Known issues
+* Quads inside one translucent section are not sorted (D38). Overlapping
+  glass of different colours within one 32³ section can blend in the wrong
+  order.
+* Leaves sway as whole greedy quads (the vertices are at the quad
+  corners). It is subtle at this amplitude.
+* Grass and leaves are not biome-tinted yet (M10).
+
+### Deferred
+* Shaped blocks: M7b.
+* Block light from the `light` values: M13. Biome tinting: M10.
+* Block properties for gameplay (hardness, tool, sounds, drops): with
+  items, M18. Sounds: M24.
 
 ---
 

@@ -12,7 +12,14 @@
 %define WORLD_MIN_Y         -256
 %define SECTIONS_PER_COLUMN 40
 %define BLOCK_AIR           0
-%define MAX_BLOCK_TYPES     256         ; debug block table (M7: registry)
+%define MAX_BLOCK_TYPES     4096        ; block registry capacity (ids are u16)
+%define MAX_TEXTURES        2048        ; named block textures
+
+; render layers (g_block_layer): drawn in this order
+%define LAYER_OPAQUE        0
+%define LAYER_CUTOUT        1           ; alpha-tested (leaves)
+%define LAYER_TRANSLUCENT   2           ; blended, back to front (glass, ice)
+%define BLOCKF_SWAY         1           ; g_block_flags: vertex sway (leaves)
 
 ; Neighbour sentinel for the mesher: a solid boundary (below the world).
 %define NEIGHBOR_SOLID      -1
@@ -29,9 +36,11 @@ struc SECT                              ; one section; 64 bytes, from a pool
     .palette    resq 1                  ; u16[256] (bits 1..8), else 0
     .data       resq 1                  ; packed indices / raw u16 ids
     .quad_first resd 1                  ; first quad in the GPU quad buffer
-    .quad_count resd 1
+    .quad_count resd 1                  ; all layers: opaque, cutout, translucent
     .mesh_us    resd 1
-    .pad1       resd 1
+    .quad_opaque resd 1                 ; quads of LAYER_OPAQUE (stored first)
+    .quad_cutout resd 1                 ; then LAYER_CUTOUT, then the rest
+    .cpu_first  resd 1                  ; first quad in the column's CPU mesh
 endstruc
 
 ; column states (COLUMN.state); written by the owner of the transition:

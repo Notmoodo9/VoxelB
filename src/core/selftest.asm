@@ -27,7 +27,7 @@ global selftest_run
 extern timer_elapsed_us, str_append_dec
 extern mesh_section, g_block_opaque
 extern gpu_alloc_init, gpu_alloc, gpu_free, g_gpu_units_used
-extern world_hash_selftest
+extern world_hash_selftest, png_decode
 
 %define COMPUTE_JOBS        4096
 %define COMPUTE_ITERS       8000
@@ -841,6 +841,71 @@ PROC test_gpu_alloc, 16, rbx, rsi, rdi, r12, r13, r14
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; test_png — decode the reference PNGs of png_tests.inc (every colour type
+; and filter, stored/fixed/dynamic deflate, split IDAT, tRNS) and compare the
+; RGBA8 result with the FNV-1a hashes computed by tools/make_png_tests.py.
+;   out: eax = 1 pass / 0 fail
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%include "png_tests.inc"
+section .text
+PROC test_png, 32, rbx, rsi, rdi, r12
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [LOCAL(0)], rax
+    xor ebx, ebx                        ; test index
+.test:
+    cmp ebx, PNG_TEST_COUNT
+    jae .pass
+    imul rsi, rbx, 32
+    lea rax, [rel png_tests]
+    add rsi, rax                        ; entry
+    lea r8, [LOCAL(8)]
+    lea r9, [rel g_arena_scratch]
+    INVOKE png_decode, [rsi], [rsi + 8], r8, r9
+    test rax, rax
+    jz .fail
+    mov r12, rax                        ; pixels
+    mov eax, [LOCAL(8)]
+    cmp eax, [rsi + 16]
+    jne .fail
+    mov ecx, [LOCAL(12)]
+    cmp ecx, [rsi + 20]
+    jne .fail
+    ; FNV-1a over w * h * 4 bytes
+    imul ecx, eax
+    shl ecx, 2
+    mov rdi, r12
+    mov edx, 0x811C9DC5
+.hash:
+    test ecx, ecx
+    jz .hashed
+    movzx eax, byte [rdi]
+    xor edx, eax
+    imul edx, edx, 0x01000193
+    inc rdi
+    dec ecx
+    jmp .hash
+.hashed:
+    cmp edx, [rsi + 24]
+    jne .fail
+    inc ebx
+    jmp .test
+.pass:
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(0)]
+    LOG_INFO "selftest: png decoder ok (5 images: all colour types, filters, deflate modes)"
+    mov eax, 1
+    RETURN
+.fail:
+    LOG_VAL LOG_LEVEL_ERROR, "selftest: png decoder failed on test", rbx
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(0)]
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 ; selftest_run — run all checks (needs mem_init, jobs_init, timer_init).
 ;   out: eax = 1 if everything passed, 0 otherwise (failures logged)
 ;   clobbers: volatile registers
@@ -858,6 +923,8 @@ PROC selftest_run, 0, rbx
     call test_mesher
     and ebx, eax
     call test_gpu_alloc
+    and ebx, eax
+    call test_png
     and ebx, eax
     call world_hash_selftest
     test eax, eax

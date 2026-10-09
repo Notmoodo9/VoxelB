@@ -1,0 +1,72 @@
+# Woods: 16 trees x 9 blocks (design/blocks/block_set.md).
+# Each template describes one variant; "{}" is replaced by the wood name.
+# The family below creates every (wood, template) block; fantasy woods get
+# their extra settings (light, render) further down.
+
+[template log]
+name     = {}_log
+textures = side: {}_log, end: {}_log_top
+
+[template stripped_log]
+name     = stripped_{}_log
+textures = side: stripped_{}_log, end: stripped_{}_log_top
+
+[template bark]
+name     = {}_bark
+textures = all: {}_log
+
+[template planks]
+name     = {}_planks
+
+[template carved_planks]
+name     = carved_{}_planks
+
+[template mossy_planks]
+name     = mossy_{}_planks
+
+[template bookshelf]
+name     = {}_bookshelf
+textures = side: {}_bookshelf, end: {}_planks
+
+[template leaves]
+name     = {}_leaves
+render   = cutout
+sway     = 1
+
+[family woods]
+templates = log, stripped_log, bark, planks, carved_planks, mossy_planks, bookshelf, leaves
+members   = oak, birch, spruce, jungle, acacia, dark_oak, cherry, redwood, palm, mangrove, willow, maple, glowwood, crystalwood, frostwood, emberwood
+
+# --- seasonal leaves (one per tree) -------------------------------------------
+[template seasonal_leaves]
+name     = {}
+render   = cutout
+sway     = 1
+
+[family seasonal_leaves]
+templates = seasonal_leaves
+members   = oak_autumn_leaves, birch_autumn_leaves, spruce_snowy_leaves, jungle_flowering_leaves, acacia_flowering_leaves, dark_oak_autumn_leaves, cherry_fruiting_leaves, redwood_snowy_leaves, palm_fruiting_leaves, mangrove_flowering_leaves, willow_autumn_leaves, maple_autumn_leaves, glowwood_blooming_leaves, crystalwood_prismatic_leaves, frostwood_frozen_leaves, emberwood_smouldering_leaves
+
+# --- fantasy woods: light (r, g, b 0..15; used from milestone 13) -----------
+[block glowwood_log]
+light = 2, 7, 6
+[block glowwood_bark]
+light = 2, 7, 6
+[block glowwood_leaves]
+light = 3, 8, 7
+[block glowwood_blooming_leaves]
+light = 4, 8, 7
+
+[block crystalwood_leaves]
+render = translucent
+light  = 5, 3, 7
+[block crystalwood_prismatic_leaves]
+render = translucent
+light  = 6, 5, 7
+
+[block emberwood_log]
+light = 9, 4, 1
+[block emberwood_bark]
+light = 9, 4, 1
+[block emberwood_smouldering_leaves]
+light = 6, 3, 1

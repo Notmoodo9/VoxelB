@@ -292,6 +292,7 @@ design/      (design docs from our interviews + BACKLOG.md)
 5. Chunk/section data structures (palette compression), flat test world, mesher, render.
 6. Infinite streaming: load/unload around player on worker threads, no stutter.
 7. Data-driven block registry + parser + texture array.
+7b. Shaped blocks (slabs, stairs, fences, doors, trapdoors) — added by the owner during the M7 interview.
 8. 🎨 DESIGN — Terrain: heightmap noise + splines, tiered mountains and rare giant ranges.
 9. 🎨 DESIGN — Caves, ravines, aquifers, lava, ores.
 10. 🎨 DESIGN — Biomes + blending + vegetation/trees.

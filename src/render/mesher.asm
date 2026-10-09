@@ -9,6 +9,10 @@
 ; faces (block id, 0 = none) is built; equal ids are merged greedily into
 ; rectangles. Merging only compares block ids for now (light/AO equality
 ; joins in M13).
+; A face is hidden when the neighbour block is opaque, or when both blocks
+; are the same "cull self" block (translucent: glass next to glass).
+; The output is ordered by render layer: opaque quads, then cutout, then
+; translucent (g_block_layer), so a section draws each layer as one range.
 ;
 ; Quad format (u64, consumed by shaders/chunk.vert):
 ;   bits  0-5  x   6-11 y   12-17 z    block position in the section
@@ -18,7 +22,8 @@
 ; Face axes: X faces u=z v=y; Y faces u=x v=z; Z faces u=x v=y.
 ;
 ; Public API:
-;   mesh_section(sect, neighbors[6], out u64[], scratch ARENA*) -> rax quads
+;   mesh_section(sect, neighbors[6], out u64[], scratch ARENA*)
+;       -> rax quads, rdx = opaque count | cutout count << 32
 ;   MESH_MAX_QUADS (worst case: 3D checkerboard)
 ; =============================================================================
 %include "macros.inc"
@@ -27,7 +32,11 @@
 
 global mesh_section
 
-extern g_block_opaque
+extern g_block_opaque, g_block_layer
+
+; g_block_opaque, g_block_layer and g_block_cullself are consecutive 64 KB
+; tables (src/world/block.asm)
+%define CULLSELF_OFS    (2 * 65536)
 
 %define PAD             34
 %define PAD2            (PAD * PAD)
@@ -57,22 +66,53 @@ dir_table:
 section .text
 
 ; -----------------------------------------------------------------------------
+; all_opaque — is every block of a section opaque? (uniform: its id; palette
+; sections: every palette entry; raw 16-bit sections: assumed not)
+;   in:  rcx = SECT*      out: eax = 1 if yes
+;   clobbers: rax, rcx, rdx, r8
+; -----------------------------------------------------------------------------
+all_opaque:
+    lea r8, [rel g_block_opaque]
+    movzx eax, byte [rcx + SECT.bits]
+    test eax, eax
+    jnz .palette
+    movzx eax, word [rcx + SECT.uniform_id]
+    movzx eax, byte [r8 + rax]
+    ret
+.palette:
+    cmp eax, 16
+    je .no
+    movzx edx, word [rcx + SECT.pal_count]
+    mov rcx, [rcx + SECT.palette]
+    test rcx, rcx
+    jz .no
+.entry:
+    test edx, edx
+    jz .yes
+    dec edx
+    movzx eax, word [rcx + rdx * 2]
+    cmp byte [r8 + rax], 0
+    je .no
+    jmp .entry
+.yes:
+    mov eax, 1
+    ret
+.no:
+    xor eax, eax
+    ret
+
+; -----------------------------------------------------------------------------
 ; covered — does neighbour n fully cover the adjacent face with opaque blocks?
 ;   in:  rcx = neighbour (0 air, -1 solid, else SECT*)
-;   out: eax = 1 if it is solid or a uniform opaque section
-;   clobbers: rax, rcx
+;   out: eax = 1 if it is the solid boundary or an all-opaque section
+;   clobbers: rax, rcx, rdx, r8
 ; -----------------------------------------------------------------------------
 covered:
     cmp rcx, NEIGHBOR_SOLID
     je .yes
     test rcx, rcx
     jz .no
-    cmp byte [rcx + SECT.bits], 0
-    jne .no
-    movzx eax, word [rcx + SECT.uniform_id]
-    lea rcx, [rel g_block_opaque]
-    movzx eax, byte [rcx + rax]
-    ret
+    jmp all_opaque
 .yes:
     mov eax, 1
     ret
@@ -109,15 +149,12 @@ PROC mesh_section, L_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [LOCAL(L_ARENA)], r9
     mov qword [LOCAL(L_COUNT)], 0
 
-    ; ---- fully enclosed uniform opaque section: nothing to draw -----------------
+    ; ---- fully enclosed all-opaque section: nothing to draw ------------------------
     mov rbx, rcx
-    cmp byte [rbx + SECT.bits], 0
-    jne .full_mesh
-    movzx eax, word [rbx + SECT.uniform_id]
-    lea rcx, [rel g_block_opaque]
-    cmp byte [rcx + rax], 0
-    je .full_mesh
-    mov rsi, rdx
+    call all_opaque
+    test eax, eax
+    jz .full_mesh
+    mov rsi, [LOCAL(L_NB)]
     xor edi, edi
 .cover_check:
     mov rcx, [rsi + rdi * 8]
@@ -128,6 +165,7 @@ PROC mesh_section, L_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     cmp edi, 6
     jb .cover_check
     xor eax, eax
+    xor edx, edx
     RETURN
 
 .full_mesh:
@@ -248,7 +286,12 @@ PROC mesh_section, L_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     add rdx, [r15 + 24]
     movzx edx, word [r12 + rdx * 2]     ; neighbour block
     cmp byte [r14 + rdx], 0
+    jne .mask_hidden
+    cmp edx, eax
+    jne .mask_store
+    cmp byte [r14 + rax + CULLSELF_OFS], 0
     je .mask_store
+.mask_hidden:
     xor eax, eax                        ; hidden face
 .mask_store:
     mov [r13], ax
@@ -388,9 +431,82 @@ PROC mesh_section, L_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     cmp qword [LOCAL(L_FACE)], 6
     jb .dir
 
+    ; ---- order by render layer: opaque, cutout, translucent ----------------------
+    mov rsi, [LOCAL(L_OUT)]
+    mov rcx, [LOCAL(L_COUNT)]
+    lea rdi, [rel g_block_layer]
+    xor r8d, r8d                        ; opaque
+    xor r9d, r9d                        ; cutout
+    xor r10d, r10d
+.count:
+    cmp r10, rcx
+    jae .counted
+    movzx eax, word [rsi + r10 * 8 + 4]
+    movzx eax, byte [rdi + rax]
+    cmp eax, 1
+    ja .count_next
+    je .count_cut
+    inc r8
+    jmp .count_next
+.count_cut:
+    inc r9
+.count_next:
+    inc r10
+    jmp .count
+.counted:
+    mov [LOCAL(L_W)], r8
+    mov [LOCAL(L_H)], r9
+    cmp r8, rcx
+    je .ordered                         ; all opaque (the common case)
+    lea rdx, [rcx * 8]
+    INVOKE arena_alloc, [LOCAL(L_ARENA)], rdx, 8
+    test rax, rax
+    jz .fail
+    mov rdi, rax                        ; copy of the quads
+    mov rsi, [LOCAL(L_OUT)]
+    mov rcx, [LOCAL(L_COUNT)]
+    rep movsq
+    mov rsi, rax                        ; source
+    mov r8, [LOCAL(L_OUT)]              ; opaque cursor
+    mov r9, [LOCAL(L_W)]
+    lea r9, [r8 + r9 * 8]               ; cutout cursor
+    mov r10, [LOCAL(L_H)]
+    lea r10, [r9 + r10 * 8]             ; translucent cursor
+    lea rdi, [rel g_block_layer]
+    mov rcx, [LOCAL(L_COUNT)]
+.scatter:
+    test rcx, rcx
+    jz .ordered
+    mov rax, [rsi]
+    add rsi, 8
+    mov rdx, rax
+    shr rdx, 32
+    movzx edx, dx
+    movzx edx, byte [rdi + rdx]
+    cmp edx, 1
+    ja .to_trans
+    je .to_cut
+    mov [r8], rax
+    add r8, 8
+    jmp .scatter_next
+.to_cut:
+    mov [r9], rax
+    add r9, 8
+    jmp .scatter_next
+.to_trans:
+    mov [r10], rax
+    add r10, 8
+.scatter_next:
+    dec rcx
+    jmp .scatter
+.ordered:
     mov rax, [LOCAL(L_COUNT)]
+    mov rdx, [LOCAL(L_H)]
+    shl rdx, 32
+    or rdx, [LOCAL(L_W)]
     RETURN
 .fail:
     xor eax, eax
+    xor edx, edx
     RETURN
 ENDPROC

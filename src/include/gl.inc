@@ -50,6 +50,14 @@
 %define GL_TEXTURE_WRAP_T               0x2803
 %define GL_NEAREST                      0x2600
 %define GL_CLAMP_TO_EDGE                0x812F
+%define GL_REPEAT                       0x2901
+%define GL_NEAREST_MIPMAP_LINEAR        0x2702
+%define GL_LINEAR_MIPMAP_LINEAR         0x2703
+%define GL_TEXTURE_2D_ARRAY             0x8C1A
+%define GL_TEXTURE_MAX_ANISOTROPY       0x84FE
+%define GL_MAX_ARRAY_TEXTURE_LAYERS     0x88FF
+%define GL_RGBA                         0x1908
+%define GL_RGBA8                        0x8058
 %define GL_RED                          0x1903
 %define GL_R8                           0x8229
 %define GL_UNSIGNED_BYTE                0x1401

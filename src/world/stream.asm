@@ -15,11 +15,11 @@
 ; pointers at submit time, and the busy counters keep those columns alive.
 ;
 ; Public API:
-;   stream_init() -> eax 1/0       (reads data/config/graphics.cfg)
+;   stream_init() -> eax 1/0       (settings_load must have run)
 ;   stream_update()                once per frame, after camera_update
 ;   stream_shutdown()              waits for in-flight jobs, frees everything
 ;   g_loaded / g_loaded_count      columns (for drawing: state COL_READY)
-;   g_render_distance and g_stream_* statistics
+;   g_stream_* statistics (render distance: settings.asm)
 ; =============================================================================
 %include "macros.inc"
 %include "log.inc"
@@ -32,13 +32,13 @@
 %include "world_api.inc"
 
 global stream_init, stream_update, stream_shutdown
-global g_loaded, g_loaded_count, g_render_distance
+global g_loaded, g_loaded_count
 global g_stream_ready, g_stream_gen_inflight, g_stream_mesh_inflight
 global g_stream_update_us, g_stream_update_max_us, g_stream_upload_frame
 global g_stream_quads, g_stream_mesh_count, g_stream_mesh_total_us
 global g_stream_mesh_max_us, g_stream_cpu_mesh_bytes, g_stream_view_ms
 
-extern str_ieq, str_parse_u64, timer_elapsed_us
+extern timer_elapsed_us, g_render_distance
 extern mesh_section
 extern gpu_alloc_init, gpu_alloc, gpu_free, gpu_alloc_units_needed
 extern g_quad_buffer, g_cam_pos
@@ -48,8 +48,6 @@ IMPORT VirtualAlloc, VirtualFree
 %define MAX_LOADED          16384
 %define MESH_MAX_QUADS      98304
 %define UPLOAD_BUDGET       (2 * 1024 * 1024)   ; bytes per frame
-%define MIN_DISTANCE        2
-%define MAX_DISTANCE        48
 %define STAT_LOG_US         2000000
 %define MEM_COMMIT          0x1000
 %define MEM_RESERVE         0x2000
@@ -57,11 +55,6 @@ IMPORT VirtualAlloc, VirtualFree
 %define PAGE_READWRITE      0x04
 
 section .rdata
-str_cfg_path:   db "data/config/graphics.cfg", 0
-str_cfg_label:  db "graphics.cfg", 0
-k_distance:     db "render_distance", 0
-str_unknown:    db "unknown setting: ", 0
-str_bad:        db "bad value for: ", 0
 str_view:       db "stream: view complete, columns ", 0
 str_after:      db " after ms ", 0
 str_stat:       db "stream: loaded ", 0
@@ -74,10 +67,6 @@ str_mesh_avg:   db " mesh avg us ", 0
 str_upd_avg:    db " update avg us ", 0
 str_upl:        db " upload total us ", 0
 str_upl_max:    db " upload max us ", 0
-
-section .data
-align 4
-g_render_distance:  dd 16
 
 section .bss
 alignb 8
@@ -100,7 +89,6 @@ g_upd_frames:           resq 1
 g_upl_total_us:         resq 1          ; time inside upload_column
 g_upl_max_us:           resq 1
 g_last_stat_us:         resq 1
-g_cfg_mark:             resq 1
 g_gpu_full_warned:      resd 1
 g_view_logged:          resd 1
 alignb 64
@@ -108,43 +96,8 @@ g_stream_mesh_count:    resq 1
 g_stream_mesh_total_us: resq 1
 g_stream_mesh_max_us:   resq 1
 g_stream_cpu_mesh_bytes: resq 1
-g_cfg_path:             resb PATH_CAP
 
 section .text
-
-; -----------------------------------------------------------------------------
-; graphics_pair — cfg_parse callback for graphics.cfg.
-;   in:  rcx = name, rdx = value
-;   clobbers: volatile registers
-; -----------------------------------------------------------------------------
-PROC graphics_pair, 0, rbx, rsi
-    mov rbx, rcx
-    mov rsi, rdx
-    lea rdx, [rel k_distance]
-    INVOKE str_ieq, rbx, rdx
-    test eax, eax
-    jz .unknown
-    mov rcx, rsi
-    call str_parse_u64
-    test r8, r8
-    jz .bad
-    cmp eax, MIN_DISTANCE
-    jb .bad
-    cmp eax, MAX_DISTANCE
-    ja .bad
-    mov [rel g_render_distance], eax
-    RETURN
-.bad:
-    lea rcx, [rel str_cfg_label]
-    lea rdx, [rel str_bad]
-    INVOKE cfg_warn, rcx, rdx, rbx
-    RETURN
-.unknown:
-    lea rcx, [rel str_cfg_label]
-    lea rdx, [rel str_unknown]
-    INVOKE cfg_warn, rcx, rdx, rbx
-    RETURN
-ENDPROC
 
 ; -----------------------------------------------------------------------------
 ; build_spiral — chunk offsets within render distance + 1, sorted by squared
@@ -256,34 +209,11 @@ PROC build_spiral, 16, rbx, rsi, rdi, r12, r13, r14, r15
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; stream_init — read graphics.cfg, set up the GPU allocator and lists.
+; stream_init — set up the GPU allocator, the loaded list and the spiral.
 ;   out: eax = 1 on success, 0 on failure (logged)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC stream_init, 0, rbx
-    lea rcx, [rel g_arena_scratch]
-    call arena_mark
-    mov [rel g_cfg_mark], rax
-    lea rcx, [rel g_cfg_path]
-    lea rdx, [rel str_cfg_path]
-    call path_make
-    lea rcx, [rel g_cfg_path]
-    lea rdx, [rel g_arena_scratch]
-    call file_load
-    test rax, rax
-    jz .no_cfg
-    lea rdx, [rel graphics_pair]
-    lea r9, [rel str_cfg_label]
-    INVOKE cfg_parse, rax, rdx, 0, r9
-    jmp .cfg_done
-.no_cfg:
-    LOG_WARN "data/config/graphics.cfg missing; using defaults"
-.cfg_done:
-    lea rcx, [rel g_arena_scratch]
-    INVOKE arena_reset_to, rcx, [rel g_cfg_mark]
-    mov eax, [rel g_render_distance]
-    LOG_VAL LOG_LEVEL_INFO, "stream: render distance (chunks)", rax
-
     call gpu_alloc_init
     test eax, eax
     jz .fail
@@ -375,6 +305,9 @@ PROC mesh_column_job, 96, rbx, rsi, rdi, r12, r13, r14, r15
     lea rdx, [LOCAL(MC_NB)]
     INVOKE mesh_section, r13, rdx, rsi, r15
     mov rdi, rax                        ; count
+    mov [r13 + SECT.quad_opaque], edx
+    shr rdx, 32
+    mov [r13 + SECT.quad_cutout], edx
     INVOKE arena_reset_to, r15, [LOCAL(MC_MARK)]
     mov [r13 + SECT.quad_count], edi
     test rdi, rdi
@@ -382,7 +315,7 @@ PROC mesh_column_job, 96, rbx, rsi, rdi, r12, r13, r14, r15
     lea rdx, [rdi * 8]
     INVOKE arena_alloc, r15, rdx, 8     ; keeps exactly this output
     mov rax, [LOCAL(MC_TOTAL)]
-    mov [r13 + SECT.quad_first], eax    ; offset within the column buffer
+    mov [r13 + SECT.cpu_first], eax     ; offset within the column buffer
     add [LOCAL(MC_TOTAL)], rdi
 .timed:
     call timer_elapsed_us
@@ -486,9 +419,9 @@ PROC upload_column, 0, rbx, rsi, rdi, r12, r13
     call gpu_alloc
     cmp eax, -1
     je .full
-    ; upload: offset = unit * 512 bytes, source = mesh_buf + quad_first * 8
+    ; upload: offset = unit * 512 bytes, source = mesh_buf + cpu_first * 8
     mov r8d, eax                        ; unit
-    mov r9d, [rdi + SECT.quad_first]
+    mov r9d, [rdi + SECT.cpu_first]
     shl r9, 3
     add r9, r13                         ; source
     mov ecx, eax
@@ -516,9 +449,8 @@ PROC upload_column, 0, rbx, rsi, rdi, r12, r13
     mov eax, r12d
     RETURN
 .full:
-    ; roll back this column's ranges; keep it MESHED to retry later. Note
-    ; the quad_first of already uploaded sections now holds GPU offsets, so
-    ; restore them from the GPU unit before freeing.
+    ; roll back this column's ranges; keep it MESHED to retry later (the
+    ; CPU mesh offsets are in cpu_first, so a retry uploads correctly)
     mov rsi, [rbx + COLUMN.geo_mask]    ; (rsi/rdi are free again here)
 .rollback:
     test rsi, rsi

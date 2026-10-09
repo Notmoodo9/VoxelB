@@ -1,0 +1,98 @@
+# Texture settings: animation speed and glow layers.
+# A texture is animated when its PNG is a vertical strip of 16x16 frames.
+#   frame_ms    = milliseconds per frame (default 100)
+#   interpolate = 1 blends smoothly between frames
+#   glow        = texture drawn on top at full brightness (alpha = strength)
+
+[texture glowwood_log]
+frame_ms    = 180
+interpolate = 1
+glow        = glowwood_log_glow
+[texture glowwood_leaves]
+frame_ms    = 200
+interpolate = 1
+glow        = glowwood_leaves_glow
+[texture glowwood_blooming_leaves]
+glow        = glowwood_blooming_leaves_glow
+
+[texture emberwood_log]
+frame_ms    = 140
+interpolate = 1
+glow        = emberwood_log_glow
+[texture emberwood_smouldering_leaves]
+frame_ms    = 160
+interpolate = 1
+glow        = emberwood_smouldering_leaves_glow
+
+[texture crystalwood_log]
+frame_ms    = 250
+interpolate = 1
+[texture crystalwood_leaves]
+frame_ms    = 250
+interpolate = 1
+[texture crystalwood_prismatic_leaves]
+frame_ms    = 220
+interpolate = 1
+
+[texture glowing_mushroom_cap]
+frame_ms    = 200
+interpolate = 1
+glow        = glowing_mushroom_cap_glow
+
+[texture lamp]
+glow = lamp_glow
+[texture glowstone]
+glow = glowstone_glow
+
+[texture blue_crystal]
+frame_ms = 220
+interpolate = 1
+glow = blue_crystal_glow
+[texture purple_crystal]
+frame_ms = 220
+interpolate = 1
+glow = purple_crystal_glow
+[texture green_crystal]
+frame_ms = 220
+interpolate = 1
+glow = green_crystal_glow
+[texture pink_crystal]
+frame_ms = 220
+interpolate = 1
+glow = pink_crystal_glow
+[texture amber_crystal]
+frame_ms = 220
+interpolate = 1
+glow = amber_crystal_glow
+[texture white_lamp]
+glow = white_lamp_glow
+[texture light_gray_lamp]
+glow = light_gray_lamp_glow
+[texture gray_lamp]
+glow = gray_lamp_glow
+[texture black_lamp]
+glow = black_lamp_glow
+[texture brown_lamp]
+glow = brown_lamp_glow
+[texture red_lamp]
+glow = red_lamp_glow
+[texture orange_lamp]
+glow = orange_lamp_glow
+[texture yellow_lamp]
+glow = yellow_lamp_glow
+[texture lime_lamp]
+glow = lime_lamp_glow
+[texture green_lamp]
+glow = green_lamp_glow
+[texture cyan_lamp]
+glow = cyan_lamp_glow
+[texture light_blue_lamp]
+glow = light_blue_lamp_glow
+[texture blue_lamp]
+glow = blue_lamp_glow
+[texture purple_lamp]
+glow = purple_lamp_glow
+[texture magenta_lamp]
+glow = magenta_lamp_glow
+[texture pink_lamp]
+glow = pink_lamp_glow
