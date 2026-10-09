@@ -32,8 +32,8 @@ bush         = oak_bush, 1
 bush         = flowering_bush, 1
 bush_density = 0.00025
 
-# occasional small ponds: chance per 128 x 128 cell (~one per 300 x 300)
-pond_chance = 0.18
+# occasional small ponds: chance per 64 x 64 cell (~one per 300 x 300)
+pond_chance = 0.045
 pond_radius = 2.5, 6
 pond_depth  = 2
 pond_floor  = mud

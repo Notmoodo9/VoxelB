@@ -1366,6 +1366,7 @@ underground:
 %define G_BMAP      (G_FCTX + 8)               ; BMAP*
 %define G_POND      (G_FCTX + 16)              ; i16[HM*HM] pond levels
 %define G_TOPF      (G_FCTX + 24)              ; highest flora block
+%define G_DUNE      (G_FCTX + 28)              ; f32 blended dune height
 %define G_LOCALS    (96 + TSAMPLE_size + 64)
 %define CG          (HM / 4 + 1)               ; coarse grid side (every 4 blocks)
 PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
@@ -1440,16 +1441,37 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     movss xmm1, [LOCAL(G_SAMPLE) + TSAMPLE.height]
     subss xmm1, xmm0
     movss [LOCAL(G_SAMPLE) + TSAMPLE.height], xmm1
-    comiss xmm1, [LOCAL(G_SAMPLE) + TSAMPLE.base]
-    jbe .cg_store                       ; (at or below the base: unchanged)
     mov rcx, [LOCAL(G_BMAP)]
     lea edx, [r13d * 4 - HB]
     lea r8d, [r12d * 4 - HB]
-    call bmap_col                       ; xmm1 = hill factor
+    call bmap_col                       ; xmm1 = hill factor, xmm2 = dune height
+    movss [LOCAL(G_DUNE)], xmm2
     movss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.height]
+    comiss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.base]
+    jbe .cg_dunes                       ; (at or below the base: unchanged)
     subss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.base]
     mulss xmm0, xmm1
     addss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.base]
+    movss [LOCAL(G_SAMPLE) + TSAMPLE.height], xmm0
+.cg_dunes:
+    ; dunes: + dune shape x blended dune height (on land above the beach)
+    xorps xmm0, xmm0
+    comiss xmm0, [LOCAL(G_DUNE)]
+    jae .cg_store
+    cvtsi2ss xmm0, dword [rel g_beach_high]
+    comiss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.height]
+    jae .cg_store
+    mov eax, [LOCAL(G_CX)]
+    shl eax, 5
+    lea eax, [eax + r13d * 4 - HB]
+    cvtsi2sd xmm0, eax
+    mov eax, [LOCAL(G_CZ)]
+    shl eax, 5
+    lea eax, [eax + r12d * 4 - HB]
+    cvtsi2sd xmm1, eax
+    call biome_dunes
+    mulss xmm0, [LOCAL(G_DUNE)]
+    addss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.height]
     movss [LOCAL(G_SAMPLE) + TSAMPLE.height], xmm0
 .cg_store:
     imul ecx, r12d, CG
@@ -1756,7 +1778,16 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov edx, eax
     jmp .sf_store
 .stone_top:
+    ; the biome's steep-slope block (sandstone in deserts), else stone
+    movzx r10d, byte [rcx + INFO_BIOME]
+    imul r10, r10, BIOME_size
+    lea rax, [rel g_biomes]
+    add r10, rax
+    mov eax, [r10 + BIOME.steep]
+    test eax, eax
+    jnz .steep_have
     mov eax, [rel g_b_stone]
+.steep_have:
     mov edx, eax
     jmp .sf_store
 .seabed:

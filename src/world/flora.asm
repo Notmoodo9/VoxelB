@@ -8,6 +8,7 @@
 ; border:
 ;   ponds   one candidate per 128 x 128 cell (biome pond_chance); an ellipse
 ;           dug below the lowest ground on its rim and filled with water;
+;           (cells of 64 x 64 blocks)
 ;           radius at most 6 so its rim stays inside the heightmap border
 ;   trees   one candidate per 4 x 4 cell (biome tree_density, bush_density,
 ;           weighted lists); grown only on flat inland ground outside ponds
@@ -34,7 +35,9 @@ global flora_ponds, flora_prepare, flora_section, flora_survey
 extern g_world_seed, g_sea_level, g_beach_high, g_b_top
 extern terrain_sample, log_xz
 
-%define POND_CELL       128
+%define POND_CELL       64
+%define POND_SPAN       (POND_CELL * 3 / 4)   ; centre range inside a cell
+%define POND_OFS        (POND_CELL / 8)
 %define POND_MAX_R      6.0
 %define MEADOW_SHIFT    9               ; 512-block meadow cells
 %define TREE_CELL_SHIFT 2               ; 4-block tree cells
@@ -43,6 +46,7 @@ extern terrain_sample, log_xz
 %define PUT_LEAVES      0
 %define PUT_LOG         1
 %define PUT_PLANT       2
+%define PUT_SOLID       3               ; replace anything (rocks, fossils, arch legs)
 
 section .rdata
 align 16
@@ -61,6 +65,22 @@ c_aspect_span:  dd 0.4
 c_keep_out:     dd 2.6                  ; trees: e (rim radii) to keep away
 c_edge:         dd 0.55
 c_ring_w:       dd 0.55                 ; ring thickness (half)
+c_rock_top:     dd 0.45                 ; rock: top radius share
+c_arch_flat:    dd 0.85                 ; arch: height / radius
+c_arch_step:    dd 0.06                 ; arch: angle step (radians)
+c_pi:           dd 3.14159265
+c_arch_t:       dd 1.1                  ; arch thickness (disc radius)
+c_palm_lean:    dd 0.18                 ; palm: lean per block (grows with height)
+c_rock_rough:   dd 0.08                 ; rock: share of edge blocks left out
+c_half_pi:      dd 1.5707963
+c_inv6:         dd 0.16666667
+c_inv12:        dd 0.083333333
+c_inv20:        dd 0.05
+c_inv30:        dd 0.033333333
+c_inv42:        dd 0.023809524
+c_inv56:        dd 0.017857143
+align 16
+c_sign:         dd 0x80000000, 0, 0, 0
 c_g_crown:      dd 0.55                 ; giant: crown base at this share of the height
 c_g_top_r:      dd 1.5                  ; trunk radius at the crown base (3 x 3)
 c_g_end_r:      dd 0.8                  ; and at the top
@@ -97,6 +117,10 @@ dirs16:         dd 1.00000, 0.00000, 0.92388, 0.38268, 0.70711, 0.70711, 0.38268
 ; 8 directions (cos, sin) for pond axes and branches
 dirs:           dd 1.0, 0.0,  0.7071, 0.7071,  0.0, 1.0,  -0.7071, 0.7071
                 dd -1.0, 0.0,  -0.7071, -0.7071,  0.0, -1.0,  0.7071, -0.7071
+
+align 8
+special_gen:    dq gen_giant, gen_fallen, gen_stump, gen_cactus, gen_rock
+                dq gen_arch, gen_fossil, gen_palm
 
 section .text
 
@@ -186,6 +210,8 @@ put_block:
     movzx r11d, word [rax + rdx * 2]
     test r11d, r11d
     jz .put
+    cmp r10d, PUT_SOLID
+    je .put
     cmp r10d, PUT_PLANT
     je .no
     lea rcx, [rel g_block_shape]
@@ -306,9 +332,9 @@ PROC flora_ponds, FP_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov eax, [LOCAL(FP_H)]
     shr eax, 16
     and eax, 0xFF
-    imul eax, eax, 96
+    imul eax, eax, POND_SPAN
     shr eax, 8
-    add eax, 16
+    add eax, POND_OFS
     mov ecx, [LOCAL(FP_CX)]
     imul ecx, ecx, POND_CELL
     add eax, ecx
@@ -318,9 +344,9 @@ PROC flora_ponds, FP_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [LOCAL(FP_X)], eax
     mov eax, [LOCAL(FP_H)]
     shr eax, 24
-    imul eax, eax, 96
+    imul eax, eax, POND_SPAN
     shr eax, 8
-    add eax, 16
+    add eax, POND_OFS
     mov ecx, [LOCAL(FP_CZ)]
     imul ecx, ecx, POND_CELL
     add eax, ecx
@@ -352,15 +378,15 @@ PROC flora_ponds, FP_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     FRAC16 word [LOCAL(FP_H)]
     comiss xmm0, xmm1
     jae .next_cell
-    ; on land, above the beach
+    ; on land, above the sea
     mov ecx, [LOCAL(FP_X)]
     mov edx, [LOCAL(FP_Z)]
     HM_INDEX ecx, edx
     mov rcx, [rbx + FCTX.heights]
     mov eax, [rcx + rax * 4]
     dec eax
-    cmp eax, [rel g_beach_high]
-    jle .next_cell
+    cmp eax, [rel g_sea_level]
+    jle .next_cell                      ; (its water must not be below the sea)
     ; shape: radius, aspect, axis direction
     lea r12, [LOCAL(FP_POND)]
     mov eax, [LOCAL(FP_X)]
@@ -447,12 +473,13 @@ PROC flora_ponds, FP_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     ; too steep for a pond?
     mov eax, [LOCAL(FP_MAX)]
     sub eax, [LOCAL(FP_MIN)]
-    cmp eax, 3
+    mov rcx, [LOCAL(FP_B)]
+    cmp eax, [rcx + BIOME.pond_slope]
     jg .next_cell
     mov eax, [LOCAL(FP_MIN)]
     dec eax                             ; water level: the lowest rim top
     cmp eax, [rel g_sea_level]
-    jle .next_cell
+    jl .next_cell                       ; (at sea level next to the sea is fine)
     mov [LOCAL(FP_W)], eax
     ; pass 2: dig and set the water level inside the ellipse
     mov r13d, -8
@@ -1385,11 +1412,7 @@ PROC gen_tree, GT_LOCALS, rbx, rsi, rdi, r12
     add rsi, rax
     mov eax, [rsi + TREE.kind]
     cmp eax, TREE_GIANT
-    je .special
-    cmp eax, TREE_FALLEN
-    je .special
-    cmp eax, TREE_STUMP
-    je .special
+    jae .special
     ; trunk height, crown radius
     mov ecx, [rsi + TREE.height]
     mov edx, [rsi + TREE.height + 4]
@@ -1520,23 +1543,16 @@ PROC gen_tree, GT_LOCALS, rbx, rsi, rdi, r12
     call blob
     RETURN
 .special:
-    ; giants, fallen logs and stumps: their own generators
+    ; giants, fallen logs, stumps, cacti, rocks, arches, fossils, palms:
+    ; their own generators
     mov ecx, [LOCAL(GT_X)]
     mov edx, [LOCAL(GT_Y)]
     mov r8d, [LOCAL(GT_Z)]
     mov r9, rsi
     mov eax, [rsi + TREE.kind]
-    cmp eax, TREE_GIANT
-    jne .not_giant
-    call gen_giant
-    RETURN
-.not_giant:
-    cmp eax, TREE_FALLEN
-    jne .stump
-    call gen_fallen
-    RETURN
-.stump:
-    call gen_stump
+    sub eax, TREE_GIANT
+    lea r10, [rel special_gen]
+    call [r10 + rax * 8]
     RETURN
 ENDPROC
 
@@ -2066,6 +2082,8 @@ PROC flora_section, FS_LOCALS, rbx, rsi, rdi, r12, r13
     mov [LOCAL(FS_GROUND)], ecx
     cmp ecx, [rel g_b_top]
     je .ground_kind
+    cmp ecx, [r8 + BIOME.top]
+    je .ground_kind
     cmp ecx, [r8 + BIOME.patch]
     jne .pnext
     test ecx, ecx
@@ -2372,18 +2390,18 @@ PROC flora_survey, SVF_LOCALS, rbx, rsi, rdi, r12, r13
     mov [LOCAL(SVF_HASH)], eax
     shr eax, 16
     and eax, 0xFF
-    imul eax, eax, 96
+    imul eax, eax, POND_SPAN
     shr eax, 8
-    add eax, 16
+    add eax, POND_OFS
     mov ecx, r13d
     imul ecx, ecx, POND_CELL
     add eax, ecx
     mov [LOCAL(SVF_X)], eax
     mov eax, [LOCAL(SVF_HASH)]
     shr eax, 24
-    imul eax, eax, 96
+    imul eax, eax, POND_SPAN
     shr eax, 8
-    add eax, 16
+    add eax, POND_OFS
     mov ecx, r12d
     imul ecx, ecx, POND_CELL
     add eax, ecx
@@ -2502,3 +2520,587 @@ s_sv_sp:        db " ", 0
 s_sv_near:      db "survey:   nearest place well inside at", 0
 s_sv_meadow:    db "survey: nearest flower meadow centre at", 0
 s_sv_pond:      db "survey: nearest pond centre at", 0
+
+section .text
+; -----------------------------------------------------------------------------
+; gen_cactus — a cactus column with optional arms and a flower on top
+; (TREE.log = cactus, TREE.leaves = flower, TREE.branches = arm count range,
+; TREE.chance = flower chance).   (rbx = FCTX*, edi = rng state)
+;   in:  ecx = x, edx = y (first air), r8d = z, r9 = TREE*
+; -----------------------------------------------------------------------------
+%define GC_X        0
+%define GC_Y        4
+%define GC_Z        8
+%define GC_H        12
+%define GC_N        16
+%define GC_AX       20                  ; arm offset
+%define GC_AZ       24
+%define GC_AY       28
+%define GC_LOCALS   32
+PROC gen_cactus, GC_LOCALS, rsi, r12
+    mov rsi, r9
+    mov [LOCAL(GC_X)], ecx
+    mov [LOCAL(GC_Y)], edx
+    mov [LOCAL(GC_Z)], r8d
+    mov ecx, [rsi + TREE.height]
+    mov edx, [rsi + TREE.height + 4]
+    call rand_int
+    mov [LOCAL(GC_H)], eax
+    xor r12d, r12d
+.col:
+    cmp r12d, [LOCAL(GC_H)]
+    jge .flower
+    mov ecx, [LOCAL(GC_X)]
+    mov edx, [LOCAL(GC_Y)]
+    add edx, r12d
+    mov r8d, [LOCAL(GC_Z)]
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_LOG
+    call put_block
+    inc r12d
+    jmp .col
+.flower:
+    call rng
+    comiss xmm0, [rsi + TREE.chance]
+    jae .arms
+    mov ecx, [LOCAL(GC_X)]
+    mov edx, [LOCAL(GC_Y)]
+    add edx, [LOCAL(GC_H)]
+    mov r8d, [LOCAL(GC_Z)]
+    mov r9d, [rsi + TREE.leaves]
+    mov r10d, PUT_PLANT
+    call put_block
+.arms:
+    ; arms only on cacti at least 3 tall
+    cmp dword [LOCAL(GC_H)], 3
+    jl .done
+    mov ecx, [rsi + TREE.branches]
+    mov edx, [rsi + TREE.branches + 4]
+    call rand_int
+    mov [LOCAL(GC_N)], eax
+.arm:
+    cmp dword [LOCAL(GC_N)], 0
+    jle .done
+    dec dword [LOCAL(GC_N)]
+    ; side: one of 4, start 1 .. H-2 up
+    mov ecx, 0
+    mov edx, 3
+    call rand_int
+    xor ecx, ecx
+    xor edx, edx
+    cmp eax, 0
+    jne .s1
+    mov ecx, 1
+.s1:
+    cmp eax, 1
+    jne .s2
+    mov ecx, -1
+.s2:
+    cmp eax, 2
+    jne .s3
+    mov edx, 1
+.s3:
+    cmp eax, 3
+    jne .s4
+    mov edx, -1
+.s4:
+    mov [LOCAL(GC_AX)], ecx
+    mov [LOCAL(GC_AZ)], edx
+    mov ecx, 1
+    mov edx, [LOCAL(GC_H)]
+    sub edx, 2
+    call rand_int
+    add eax, [LOCAL(GC_Y)]
+    mov [LOCAL(GC_AY)], eax
+    ; the elbow, then up 1 .. 3
+    mov ecx, 1
+    mov edx, 3
+    call rand_int
+    mov r12d, eax
+    inc r12d
+.up:
+    dec r12d
+    js .arm
+    mov ecx, [LOCAL(GC_X)]
+    add ecx, [LOCAL(GC_AX)]
+    mov edx, [LOCAL(GC_AY)]
+    add edx, r12d
+    mov r8d, [LOCAL(GC_Z)]
+    add r8d, [LOCAL(GC_AZ)]
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_LOG
+    call put_block
+    jmp .up
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; gen_rock — stacked discs shrinking upward, sunk 2 blocks into the ground:
+; a boulder (low) or a spire (tall). TREE.log = block, TREE.radius = base
+; radius range, TREE.height = height range.   (rbx = FCTX*, edi = rng)
+;   in:  ecx = x, edx = y (first air), r8d = z, r9 = TREE*
+; -----------------------------------------------------------------------------
+%define GR_X        0
+%define GR_Y        4
+%define GR_Z        8
+%define GR_H        12
+%define GR_R0       16
+%define GR_R        20
+%define GR_RI       24
+%define GR_YI       28
+%define GR_LOCALS   32
+PROC gen_rock, GR_LOCALS, rsi, r12, r13
+    mov rsi, r9
+    mov [LOCAL(GR_X)], ecx
+    mov [LOCAL(GR_Y)], edx
+    mov [LOCAL(GR_Z)], r8d
+    mov ecx, [rsi + TREE.height]
+    mov edx, [rsi + TREE.height + 4]
+    call rand_int
+    mov [LOCAL(GR_H)], eax
+    call rng
+    movss xmm1, [rsi + TREE.radius + 4]
+    subss xmm1, [rsi + TREE.radius]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.radius]
+    movss [LOCAL(GR_R0)], xmm1
+    mov dword [LOCAL(GR_YI)], -2
+.disc:
+    mov eax, [LOCAL(GR_YI)]
+    cmp eax, [LOCAL(GR_H)]
+    jge .done
+    ; r = R0 * (1 - (1 - top) * t^1.5), t = y / H
+    xor ecx, ecx
+    test eax, eax
+    cmovs eax, ecx
+    cvtsi2ss xmm0, eax
+    cvtsi2ss xmm1, dword [LOCAL(GR_H)]
+    divss xmm0, xmm1
+    sqrtss xmm1, xmm0
+    mulss xmm0, xmm1                    ; t^1.5
+    movss xmm1, [rel c_one]
+    subss xmm1, [rel c_rock_top]
+    mulss xmm0, xmm1
+    movss xmm1, [rel c_one]
+    subss xmm1, xmm0
+    mulss xmm1, [LOCAL(GR_R0)]
+    movss [LOCAL(GR_R)], xmm1
+    addss xmm1, [rel c_half]
+    cvttss2si eax, xmm1
+    mov [LOCAL(GR_RI)], eax
+    mov r12d, eax
+    neg r12d
+.dz:
+    mov r13d, [LOCAL(GR_RI)]
+    neg r13d
+.dx:
+    mov eax, r13d
+    imul eax, eax
+    mov ecx, r12d
+    imul ecx, ecx
+    add eax, ecx
+    cvtsi2ss xmm0, eax
+    movss xmm1, [LOCAL(GR_R)]
+    mulss xmm1, xmm1
+    addss xmm1, [rel c_g_disc]
+    comiss xmm0, xmm1
+    ja .dx_next
+    ; rough edges
+    call rng
+    comiss xmm0, [rel c_rock_rough]
+    jb .dx_next
+    mov ecx, [LOCAL(GR_X)]
+    add ecx, r13d
+    mov edx, [LOCAL(GR_Y)]
+    add edx, [LOCAL(GR_YI)]
+    mov r8d, [LOCAL(GR_Z)]
+    add r8d, r12d
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_SOLID
+    call put_block
+.dx_next:
+    inc r13d
+    cmp r13d, [LOCAL(GR_RI)]
+    jle .dx
+    inc r12d
+    cmp r12d, [LOCAL(GR_RI)]
+    jle .dz
+    inc dword [LOCAL(GR_YI)]
+    jmp .disc
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; gen_arch — a natural arch: a half-ring of radius R (TREE.radius) along X or
+; Z, 0.85 R high, made of discs (thickness 1.1), with its legs carried 3
+; blocks down into the ground.   (rbx = FCTX*, edi = rng)
+;   in:  ecx = x, edx = y (first air), r8d = z, r9 = TREE*
+; -----------------------------------------------------------------------------
+%define GA_X        0
+%define GA_Y        4
+%define GA_Z        8
+%define GA_R        12
+%define GA_A        16                  ; angle
+%define GA_ALONGX   20
+%define GA_PX       24                  ; f32 centre of this disc
+%define GA_PY       28
+%define GA_DY       32
+%define GA_DH       36                  ; ints: offsets
+%define GA_DV       40
+%define GA_LEG      44
+%define GA_LOCALS   48
+PROC gen_arch, GA_LOCALS, rsi, r12, r13
+    mov rsi, r9
+    mov [LOCAL(GA_X)], ecx
+    mov [LOCAL(GA_Y)], edx
+    mov [LOCAL(GA_Z)], r8d
+    call rng
+    movss xmm1, [rsi + TREE.radius + 4]
+    subss xmm1, [rsi + TREE.radius]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.radius]
+    movss [LOCAL(GA_R)], xmm1
+    mov eax, edi
+    shr eax, 31
+    mov [LOCAL(GA_ALONGX)], eax
+    xorps xmm0, xmm0
+    movss [LOCAL(GA_A)], xmm0
+.ang:
+    movss xmm0, [LOCAL(GA_A)]
+    comiss xmm0, [rel c_pi]
+    ja .done
+    ; p = (R cos a, 0.85 R sin a) relative to the centre at ground level
+    movss xmm1, xmm0
+    call .cos_sin                       ; xmm0 = cos, xmm1 = sin
+    mulss xmm0, [LOCAL(GA_R)]
+    movss [LOCAL(GA_PX)], xmm0
+    mulss xmm1, [LOCAL(GA_R)]
+    mulss xmm1, [rel c_arch_flat]
+    movss [LOCAL(GA_PY)], xmm1
+    ; a small disc (cross-section) around p; at the two ends extend down
+    mov r12d, -1                        ; dv (vertical)
+.dv:
+    mov r13d, -1                        ; dh (across the arch)
+.dh:
+    mov eax, r12d
+    imul eax, eax
+    mov ecx, r13d
+    imul ecx, ecx
+    add eax, ecx
+    cmp eax, 1
+    jg .dh_next
+    movss xmm0, [LOCAL(GA_PX)]
+    roundss xmm0, xmm0, 9
+    cvttss2si eax, xmm0                 ; along
+    movss xmm0, [LOCAL(GA_PY)]
+    roundss xmm0, xmm0, 9
+    cvttss2si edx, xmm0
+    add edx, r12d
+    add edx, [LOCAL(GA_Y)]
+    cmp dword [LOCAL(GA_ALONGX)], 0
+    je .along_z
+    mov ecx, [LOCAL(GA_X)]
+    add ecx, eax
+    mov r8d, [LOCAL(GA_Z)]
+    add r8d, r13d
+    jmp .put
+.along_z:
+    mov ecx, [LOCAL(GA_X)]
+    add ecx, r13d
+    mov r8d, [LOCAL(GA_Z)]
+    add r8d, eax
+.put:
+    mov [LOCAL(GA_DH)], ecx
+    mov [LOCAL(GA_DV)], r8d
+    mov [LOCAL(GA_DY)], edx
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_SOLID
+    call put_block
+    ; legs: near the ends (sin small), carry down 3 blocks
+    movss xmm0, [LOCAL(GA_PY)]
+    comiss xmm0, [rel c_arch_t]
+    ja .dh_next
+    mov eax, 1
+.leg:
+    cmp eax, 4
+    jge .dh_next
+    mov [LOCAL(GA_LEG)], eax
+    mov ecx, [LOCAL(GA_DH)]
+    mov edx, [LOCAL(GA_DY)]
+    sub edx, eax
+    mov r8d, [LOCAL(GA_DV)]
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_SOLID
+    call put_block
+    mov eax, [LOCAL(GA_LEG)]
+    inc eax
+    jmp .leg
+.dh_next:
+    inc r13d
+    cmp r13d, 1
+    jle .dh
+    inc r12d
+    cmp r12d, 1
+    jle .dv
+    movss xmm0, [LOCAL(GA_A)]
+    addss xmm0, [rel c_arch_step]
+    movss [LOCAL(GA_A)], xmm0
+    jmp .ang
+.done:
+    RETURN
+
+    ; cos and sin of xmm1 (0..pi) by Taylor series around pi/2
+    ;   out: xmm0 = cos, xmm1 = sin      clobbers: xmm2-xmm3
+    ;   (inner helper: no stack use)
+.cos_sin:
+    subss xmm1, [rel c_half_pi]         ; u = a - pi/2: cos a = -sin u, sin a = cos u
+    movss xmm2, xmm1
+    mulss xmm2, xmm2                    ; u^2
+    ; sin u = u (1 - u^2/6 (1 - u^2/20 (1 - u^2/42)))
+    movss xmm3, xmm2
+    mulss xmm3, [rel c_inv42]
+    movss xmm0, [rel c_one]
+    subss xmm0, xmm3
+    mulss xmm0, xmm2
+    mulss xmm0, [rel c_inv20]
+    movss xmm3, [rel c_one]
+    subss xmm3, xmm0
+    mulss xmm3, xmm2
+    mulss xmm3, [rel c_inv6]
+    movss xmm0, [rel c_one]
+    subss xmm0, xmm3
+    mulss xmm0, xmm1                    ; sin u
+    xorps xmm0, [rel c_sign]            ; cos a = -sin u
+    ; cos u = 1 - u^2/2 (1 - u^2/12 (1 - u^2/30 (1 - u^2/56)))
+    movss xmm3, xmm2
+    mulss xmm3, [rel c_inv56]
+    movss xmm1, [rel c_one]
+    subss xmm1, xmm3
+    mulss xmm1, xmm2
+    mulss xmm1, [rel c_inv30]
+    movss xmm3, [rel c_one]
+    subss xmm3, xmm1
+    mulss xmm3, xmm2
+    mulss xmm3, [rel c_inv12]
+    movss xmm1, [rel c_one]
+    subss xmm1, xmm3
+    mulss xmm1, xmm2
+    mulss xmm1, [rel c_half]
+    movss xmm3, [rel c_one]
+    subss xmm3, xmm1
+    movss xmm1, xmm3                    ; sin a = cos u
+    ret
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; gen_fossil — a spine of TREE.log (bone) along X or Z, half-buried (at the
+; ground block), with ribs arching up on both sides every 2 blocks.
+;   (rbx = FCTX*, edi = rng)
+;   in:  ecx = x, edx = y (first air), r8d = z, r9 = TREE*
+; -----------------------------------------------------------------------------
+%define GF2_X       0
+%define GF2_Y       4
+%define GF2_Z       8
+%define GF2_L       12
+%define GF2_AX      16
+%define GF2_I       20
+%define GF2_LOCALS  32
+; FOSSIL_PUT across, up — one bone at (segment i, across, up)
+%macro FOSSIL_PUT 2
+    mov eax, [LOCAL(GF2_I)]
+    mov r11d, %1
+    cmp dword [LOCAL(GF2_AX)], 0
+    je %%along_z
+    mov ecx, [LOCAL(GF2_X)]
+    add ecx, eax
+    mov r8d, [LOCAL(GF2_Z)]
+    add r8d, r11d
+    jmp %%have
+%%along_z:
+    mov ecx, [LOCAL(GF2_X)]
+    add ecx, r11d
+    mov r8d, [LOCAL(GF2_Z)]
+    add r8d, eax
+%%have:
+    mov edx, [LOCAL(GF2_Y)]
+    add edx, %2
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_SOLID
+    call put_block
+%endmacro
+PROC gen_fossil, GF2_LOCALS, rsi
+    mov rsi, r9
+    mov [LOCAL(GF2_X)], ecx
+    dec edx                             ; half-buried: in the ground block
+    mov [LOCAL(GF2_Y)], edx
+    mov [LOCAL(GF2_Z)], r8d
+    mov ecx, [rsi + TREE.height]
+    mov edx, [rsi + TREE.height + 4]
+    call rand_int
+    mov [LOCAL(GF2_L)], eax
+    mov eax, edi
+    shr eax, 31
+    mov [LOCAL(GF2_AX)], eax
+    mov dword [LOCAL(GF2_I)], 0
+.seg:
+    mov eax, [LOCAL(GF2_I)]
+    cmp eax, [LOCAL(GF2_L)]
+    jge .done
+    FOSSIL_PUT 0, 0
+    ; ribs on every second segment, not at the head or the tail
+    mov eax, [LOCAL(GF2_I)]
+    test eax, 1
+    jnz .next
+    test eax, eax
+    jz .next
+    inc eax
+    cmp eax, [LOCAL(GF2_L)]
+    jge .next
+    FOSSIL_PUT 1, 1
+    FOSSIL_PUT -1, 1
+    FOSSIL_PUT 2, 2
+    FOSSIL_PUT -2, 2
+    FOSSIL_PUT 2, 3
+    FOSSIL_PUT -2, 3
+.next:
+    inc dword [LOCAL(GF2_I)]
+    jmp .seg
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; gen_palm — a palm: a trunk that curves away from upright (top offset about
+; 0.4 x height in one of 8 directions), a tuft of leaves on top and 8 fronds
+; of TREE.radius length that droop towards their tips.
+;   (rbx = FCTX*, edi = rng)
+;   in:  ecx = x, edx = y (first air), r8d = z, r9 = TREE*
+; -----------------------------------------------------------------------------
+%define GP_X        0
+%define GP_Y        4
+%define GP_Z        8
+%define GP_H        12
+%define GP_DX       16                  ; f32 lean direction
+%define GP_DZ       20
+%define GP_I        24
+%define GP_TX       28                  ; top of the trunk
+%define GP_TY       32
+%define GP_TZ       36
+%define GP_L        40                  ; frond length
+%define GP_D        44                  ; frond direction
+%define GP_K        48
+%define GP_LOCALS   64
+PROC gen_palm, GP_LOCALS, rsi
+    mov rsi, r9
+    mov [LOCAL(GP_X)], ecx
+    mov [LOCAL(GP_Y)], edx
+    mov [LOCAL(GP_Z)], r8d
+    mov ecx, [rsi + TREE.height]
+    mov edx, [rsi + TREE.height + 4]
+    call rand_int
+    mov [LOCAL(GP_H)], eax
+    mov ecx, 0
+    mov edx, 7
+    call rand_int
+    lea rcx, [rel dirs]
+    movss xmm0, [rcx + rax * 8]
+    movss [LOCAL(GP_DX)], xmm0
+    movss xmm0, [rcx + rax * 8 + 4]
+    movss [LOCAL(GP_DZ)], xmm0
+    mov dword [LOCAL(GP_I)], 0
+.trunk:
+    mov eax, [LOCAL(GP_I)]
+    cmp eax, [LOCAL(GP_H)]
+    jge .crown
+    ; offset = 0.4 * i^2 / H
+    imul eax, eax
+    cvtsi2ss xmm2, eax
+    cvtsi2ss xmm1, dword [LOCAL(GP_H)]
+    divss xmm2, xmm1
+    mulss xmm2, [rel c_palm_off]
+    movss xmm0, [LOCAL(GP_DX)]
+    mulss xmm0, xmm2
+    roundss xmm0, xmm0, 9
+    cvttss2si ecx, xmm0
+    add ecx, [LOCAL(GP_X)]
+    movss xmm0, [LOCAL(GP_DZ)]
+    mulss xmm0, xmm2
+    roundss xmm0, xmm0, 9
+    cvttss2si r8d, xmm0
+    add r8d, [LOCAL(GP_Z)]
+    mov edx, [LOCAL(GP_Y)]
+    add edx, [LOCAL(GP_I)]
+    mov [LOCAL(GP_TX)], ecx
+    mov [LOCAL(GP_TY)], edx
+    mov [LOCAL(GP_TZ)], r8d
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_LOG
+    call put_block
+    inc dword [LOCAL(GP_I)]
+    jmp .trunk
+.crown:
+    ; tuft: the block above the trunk and its 4 neighbours
+    mov ecx, [LOCAL(GP_TX)]
+    mov edx, [LOCAL(GP_TY)]
+    inc edx
+    mov r8d, [LOCAL(GP_TZ)]
+    mov r9d, [rsi + TREE.leaves]
+    mov r10d, PUT_LEAVES
+    call put_block
+    ; fronds
+    mov dword [LOCAL(GP_D)], 0
+.frond:
+    cmp dword [LOCAL(GP_D)], 8
+    jge .done
+    call rng
+    movss xmm1, [rsi + TREE.radius + 4]
+    subss xmm1, [rsi + TREE.radius]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.radius]
+    cvttss2si eax, xmm1
+    mov [LOCAL(GP_L)], eax
+    mov dword [LOCAL(GP_K)], 1
+.leaf:
+    mov eax, [LOCAL(GP_K)]
+    cmp eax, [LOCAL(GP_L)]
+    jg .frond_next
+    mov ecx, [LOCAL(GP_D)]
+    lea r10, [rel dirs]
+    cvtsi2ss xmm2, eax
+    movss xmm0, [r10 + rcx * 8]
+    mulss xmm0, xmm2
+    roundss xmm0, xmm0, 9
+    cvttss2si ecx, xmm0
+    add ecx, [LOCAL(GP_TX)]
+    mov edx, [LOCAL(GP_D)]
+    movss xmm0, [r10 + rdx * 8 + 4]
+    mulss xmm0, xmm2
+    roundss xmm0, xmm0, 9
+    cvttss2si r8d, xmm0
+    add r8d, [LOCAL(GP_TZ)]
+    ; droop: y = top + 1 - k^2 / (2 L)
+    mov eax, [LOCAL(GP_K)]
+    imul eax, eax
+    mov r9d, [LOCAL(GP_L)]
+    add r9d, r9d
+    xor edx, edx
+    div r9d
+    mov edx, [LOCAL(GP_TY)]
+    inc edx
+    sub edx, eax
+    mov r9d, [rsi + TREE.leaves]
+    mov r10d, PUT_LEAVES
+    call put_block
+    inc dword [LOCAL(GP_K)]
+    jmp .leaf
+.frond_next:
+    inc dword [LOCAL(GP_D)]
+    jmp .frond
+.done:
+    RETURN
+ENDPROC
+
+section .rdata
+c_palm_off:     dd 0.4

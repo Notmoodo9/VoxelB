@@ -44,3 +44,16 @@ members   = red_mushroom, brown_mushroom
 [family spring_flowers]
 templates = plant
 members   = lily_of_the_valley, bluebell, wood_anemone
+
+# desert (design/biomes/desert.md)
+[block dead_bush]
+shape    = plant
+textures = dead_bush
+render   = cutout
+sway     = 1
+
+# sits on top of a cactus
+[block cactus_flower]
+shape    = plant
+textures = cactus_flower
+render   = cutout

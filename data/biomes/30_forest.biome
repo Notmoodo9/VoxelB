@@ -40,7 +40,7 @@ clearing_chance        = 0.9
 clearing_radius        = 8, 16
 clearing_flower_chance = 0.12
 
-pond_chance = 0.05
+pond_chance = 0.0125
 pond_radius = 2.5, 5
 pond_depth  = 2
 pond_floor  = mud

@@ -17,6 +17,11 @@
 %define TREE_GIANT      3               ; tapering trunk, roots, heavy branches
 %define TREE_FALLEN     4               ; a log lying on the ground
 %define TREE_STUMP      5               ; a short upright log
+%define TREE_CACTUS     6               ; column with arms and a flower on top
+%define TREE_ROCK       7               ; stacked discs shrinking upward (boulder, spire)
+%define TREE_ARCH       8               ; a half-ring with legs into the ground
+%define TREE_FOSSIL     9               ; a half-buried spine with ribs
+%define TREE_PALM       10              ; leaning curved trunk, drooping fronds
 
 ; per-chunk blend map: biome samples every 16 blocks from -64 to +96 around
 ; the chunk, blurred (tent filter, radius 32) into points from -32 to +64
@@ -78,6 +83,9 @@ struc BIOME
     .meadow_cell    resd 1              ; meadow candidate cell size (power of 2)
     .nmflowers      resd 1              ; meadow flowers (0 = use `flowers`)
     .mflower        resd BIOME_FLOWERS
+    .dune_h         resd 1              ; float: dune height (blended)
+    .steep          resd 1              ; block on steep slopes (0 = stone)
+    .pond_slope     resd 1              ; int: ground height range a pond may cut into
 endstruc
 
 struc TREE
@@ -91,6 +99,7 @@ struc TREE
     .gaps           resd 1              ; float: chance to drop an edge leaf
     .base_r         resd 2              ; float trunk base radius range (giant)
     .roots          resd 2              ; int root count range (giant)
+    .chance         resd 1              ; float: kind-specific chance (cactus flower, arms)
 endstruc
 
 struc BMAP
@@ -102,7 +111,7 @@ endstruc
 
 %ifndef BIOME_IMPL
 extern biomes_load, biome_climate, biome_pick, bmap_build, bmap_col, bmap_tint
-extern biome_at, biome_point
+extern biome_at, biome_point, biome_dunes
 extern g_biomes, g_biome_count, g_trees, g_tree_count
 %endif
 %endif

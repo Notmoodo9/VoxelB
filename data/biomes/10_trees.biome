@@ -105,3 +105,48 @@ height    = 7, 12
 kind      = fallen
 log       = birch_log
 height    = 3, 5
+
+# --- desert (design/biomes/desert.md) --------------------------------------
+#   cactus: column of `height`, arms from `branches`, flower (`leaves`) on top
+#   with `chance`
+[tree cactus]
+kind     = cactus
+log      = cactus
+leaves   = cactus_flower
+height   = 2, 5
+branches = 0, 2
+chance   = 0.7
+
+#   rock: discs shrinking upward from a base of `radius`, `height` tall
+[tree sandstone_boulder]
+kind   = rock
+log    = sandstone
+radius = 1.5, 3.0
+height = 2, 4
+
+[tree sandstone_spire]
+kind   = rock
+log    = sandstone
+radius = 1.5, 2.5
+height = 6, 12
+
+#   arch: a half-ring of `radius`, legs into the ground
+[tree sandstone_arch]
+kind   = arch
+log    = sandstone
+radius = 6, 10
+height = 1, 1
+
+#   fossil: a half-buried spine `height` long with ribs
+[tree fossil]
+kind   = fossil
+log    = bone_block
+height = 6, 10
+
+#   palm: curved trunk of `height`, fronds of `radius` length
+[tree palm]
+kind   = palm
+log    = palm_log
+leaves = palm_leaves
+height = 6, 10
+radius = 3, 4.5

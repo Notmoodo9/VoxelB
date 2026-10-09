@@ -1550,6 +1550,84 @@ def make_plants(out):
     out["flowering_oak_leaves"] = img
 
 
+def make_desert(out):
+    # cactus: green ribs with darker grooves and pale spines
+    r = rng("cactus")
+    cp = ramp("4fa83a", 6, spread=0.2)
+    img = np.zeros((N, N, 3))
+    for x in range(N):
+        rib = (x % 4)
+        v = [1, 3, 4, 2][rib]
+        for y in range(N):
+            img[y, x] = cp[v] if r.random() > 0.12 else cp[max(0, v - 1)]
+    for _ in range(14):
+        x, y = r.integers(0, N, 2)
+        if x % 4 == 2:
+            img[y, x] = hexrgb("f4ecc8")
+    out["cactus"] = rgba(img)
+    top = np.zeros((N, N, 3))
+    yy, xx = np.mgrid[0:N, 0:N]
+    d = np.sqrt((xx - 7.5) ** 2 + (yy - 7.5) ** 2)
+    top[:] = cp[3]
+    top[d < 5] = cp[4]
+    top[d < 2] = cp[5]
+    for a in range(8):
+        ang = a * np.pi / 4
+        for k in range(2, 8):
+            x = int(round(7.5 + np.cos(ang) * k))
+            y = int(round(7.5 + np.sin(ang) * k))
+            if 0 <= x < N and 0 <= y < N:
+                top[y, x] = cp[1]
+    out["cactus_top"] = rgba(top)
+    # cactus flower: a small pink bloom (plant sprite, sits on the cactus)
+    img = np.zeros((N, N, 4))
+    fp = ramp("ff5fa8", 4, spread=0.22)
+    for (dx, dy, c) in ((0, 0, 3), (-1, 0, 2), (1, 0, 2), (0, -1, 2), (-2, 1, 1), (2, 1, 1), (-1, 1, 2), (1, 1, 2),
+                        (0, 1, 3), (-1, -1, 1), (1, -1, 1), (0, -2, 1)):
+        x, y = 8 + dx, N - 3 + dy
+        img[y, x, :3] = fp[c]
+        img[y, x, 3] = 1.0
+    img[N - 3, 8, :3] = hexrgb("ffe060")
+    for y in range(N - 1, N):
+        for x in range(6, 11):
+            img[y, x, :3] = cp[2]
+            img[y, x, 3] = 1.0
+    out["cactus_flower"] = img
+    # dead bush: twiggy brown branches
+    img = np.zeros((N, N, 4))
+    r = rng("dead_bush")
+    bp = ramp("8a6236", 4, spread=0.2)
+
+    def branch(x, y, dx, n, depth):
+        for i in range(n):
+            if 0 <= x < N and 0 <= y < N:
+                img[y, x, :3] = bp[1 + (i % 2)]
+                img[y, x, 3] = 1.0
+            y -= 1
+            if i % 2 == 1:
+                x += dx
+            if depth < 2 and i == n // 2:
+                branch(x, y, -dx if r.random() < 0.5 else dx, n - 2, depth + 1)
+    branch(7, N - 1, -1, 9, 0)
+    branch(8, N - 1, 1, 10, 0)
+    branch(8, N - 2, 0, 6, 1)
+    out["dead_bush"] = img
+    # bone block: off-white with fine grain, ring ends
+    r = rng("bone_block")
+    bp = ramp("e8e0c8", 5, spread=0.12)
+    v = 0.6 * noise(r, 2, 2) + 0.4 * r.random((N, N))
+    side = shade(stretch(v) * 0.999, bp)
+    for y in range(0, N, 5):
+        side[y] = side[y] * 0.9
+    out["bone_block"] = rgba(side)
+    top = np.zeros((N, N, 3))
+    top[:] = bp[3]
+    top[(d > 5.5) & (d < 7)] = bp[1]
+    top[d < 3] = bp[2]
+    top[d < 1.5] = hexrgb("b8ae94")
+    out["bone_block_top"] = rgba(top)
+
+
 def build_all():
     out = {}
     make_terrain(out)
@@ -1562,6 +1640,7 @@ def build_all():
     make_underground(out)
     make_plants(out)
     make_forest(out)
+    make_desert(out)
     return out
 
 

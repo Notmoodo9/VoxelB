@@ -262,7 +262,7 @@ biomes that use them. Records:
 colour of the grass / oak leaf textures (a biome colour equal to these leaves
 the texture unchanged); `contrast` (climate noise spread, default 1).
 
-`[noise temperature]`, `[noise humidity]`, `[noise weirdness]` — the climate fields (`scale`,
+`[noise temperature]`, `[noise humidity]`, `[noise weirdness]`, `[noise dunes]` — the climate fields and the dune shape (`ridged = 1` allowed) (`scale`,
 `octaves`, `persistence`, `salt`); larger scale = larger biomes.
 Temperature and humidity are 0..1.
 
@@ -270,7 +270,7 @@ Temperature and humidity are 0..1.
 
 | Key | Meaning |
 |---|---|
-| `kind` | `round` (trunk + round crown), `branching` (trunk, diagonal branches with leaf clusters, crown), `bush` (log stub + low leaf clump), `giant` (tapering flared trunk, arching roots, heavy branches with leaf clusters, crown), `fallen` (a log lying on level ground, length = `height`), `stump` (a short upright log) |
+| `kind` | `round` (trunk + round crown), `branching` (trunk, diagonal branches with leaf clusters, crown), `bush` (log stub + low leaf clump), `giant` (tapering flared trunk, arching roots, heavy branches with leaf clusters, crown), `fallen` (a log lying on level ground, length = `height`), `stump` (a short upright log), `cactus` (column of `height`, `branches` arms, `leaves` = flower on top with `chance`), `rock` (discs shrinking upward from `radius`, `height` tall), `arch` (a half-ring of `radius` with legs in the ground), `fossil` (a half-buried spine `height` long with ribs, of `log`), `palm` (curved trunk of `height`, 8 drooping fronds of `radius`) |
 | `log`, `leaves` | blocks |
 | `height` | trunk height range `a, b` |
 | `radius` | crown radius range |
@@ -278,6 +278,7 @@ Temperature and humidity are 0..1.
 | `leaf_gaps` | chance that an edge leaf is left out (irregular crowns) |
 | `base_radius` | giant: trunk radius range at the ground (it tapers to 3×3 at 55% of the height) |
 | `roots` | giant: root count range |
+| `chance` | cactus: flower chance |
 
 `[biome <name>]`:
 
@@ -293,13 +294,15 @@ Temperature and humidity are 0..1.
 | `meadow_chance`, `meadow_radius`, `meadow_density`, `meadow_mixed` | chance per 512×512 cell of a flower meadow; radius range; flower share inside; share of mixed (rainbow) meadows, the others are one colour |
 | `tree`, `tree_density` | `tree name, weight` (repeat); trees per block² |
 | `bush`, `bush_density` | the same for bushes |
-| `pond_chance`, `pond_radius`, `pond_depth`, `pond_floor` | chance per 128×128 cell; radius range (max 6); deepest water; floor block |
+| `pond_chance`, `pond_radius`, `pond_depth`, `pond_floor` | chance per 64×64 cell; radius range (max 6); deepest water; floor block; `pond_slope`: how uneven the ground may be (default 3) |
 | `weirdness`, `priority` | rare pockets: a weirdness range; where several boxes match, the highest priority wins (old-growth inside forest) |
 | `litter_block`, `litter_radius`, `litter_chance` | ground block near tree trunks (leaf litter), radius, share |
 | `shade_plant` | `block, chance` on litter (ferns, mushrooms) |
 | `clearing_chance`, `clearing_radius`, `clearing_flower_chance` | treeless clearings: chance per 160×160 cell, radius range, flower share |
 | `ring_chance`, `ring_radius`, `ring_plants` | mushroom rings: chance per 128×128 cell, radius range, blocks |
 | `top_patch` | `block, level`: replaces the top block where the detail noise is above `level` (moss) |
+| `dune_height` | dunes: the `dunes` noise × this is added to the height (blended across borders) |
+| `steep_block` | top block on steep slopes (default stone) |
 | `meadow_cell`, `meadow_flowers` | meadow candidate cell size (power of two, default 512); flowers used in meadows instead of `flowers` (bluebell carpets) |
 
 The `bush` list holds the second layer of a biome: bushes, the understorey,

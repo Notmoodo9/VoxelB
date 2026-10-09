@@ -1,11 +1,74 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 3): 🎨 DESIGN — Birch grove: DONE** (Windows CI green: run #24)
+**Milestone 10 (part 4): 🎨 DESIGN — Desert + oasis: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 4: the next biome**. Candidates are dark
-forest, meadow, river, or the first hot/dry or cold biome
+Next: **Milestone 10, part 5: the next biome**. Candidates are savanna or
+badlands (hot), taiga (cold), dark forest, meadow or river
 (`design/BACKLOG.md`). It starts with its design interview.
+
+---
+
+## Milestone 10, part 4 — done (2026-10-09)
+
+### Design interview
+Two rounds plus approval: `design/biomes/desert.md`.
+* Large golden-sand deserts with rolling dunes and flat basins, sandstone
+  below.
+* Flowering cacti with some arms, and dead bushes.
+* Sandstone boulders, spires and rare arches; half-buried fossils.
+* Very rare, lush oases.
+
+### What was built
+* **Desert biome** (`data/biomes/40_desert.biome`):
+  * ridged dunes up to 20 high (D61);
+  * sand over sandstone, with sandstone on steep slopes;
+  * cacti, dead bushes, boulders, spires, arches and fossils.
+* **Oasis** (`41_oasis.biome`): rare pockets inside deserts with grass,
+  pools, palms, bushes and flowers.
+* **New generator kinds** in `flora.asm`:
+  * `cactus`: arms, plus a flower on top;
+  * `rock`: boulders and spires;
+  * `arch`: a sandstone half-ring;
+  * `fossil`: a bone spine and ribs;
+  * `palm`: a curved trunk with drooping fronds.
+* **New blocks**: `cactus`, `cactus_flower`, `dead_bush`, `bone_block`.
+* **Biome settings**: `dune_height`, `steep_block`, `pond_slope`; noise
+  `dunes` (ridged). Tree setting `chance`.
+* Pond cells are now 64 blocks. Plains and forest chances were rescaled.
+
+### How to see it (seed 20261009)
+* Desert with dunes, cacti and a spire:
+  `voxelb.exe --pos -448 170 130 --look 0 -20`.
+* Flowering cacti with arms, dead bushes:
+  `voxelb.exe --pos -458 130 120 --look 330 -25`.
+* Oasis (palms, pools, grass) near a coast:
+  `voxelb.exe --pos -1250 150 -1880 --look 300 -35`,
+  or from above `--pos -1230 210 -1900 --look 0 -89`.
+* Arches and fossils are rare (about one per 400×400 and 300×300 blocks).
+  The survey does not list them yet.
+
+### Bugs found and fixed while testing
+* Oasis pools were missing:
+  * the pond rim had to be nearly flat (oases sit on slopes);
+  * ponds were refused at beach height.
+  * Fixed with `pond_slope`, 64-block pond cells, and a sea-level check
+    instead of a beach check.
+* The first desert climate box gave deserts on only 4.7% of land near the
+  origin; widened to 7.6%.
+
+### Verified
+* Debug and release headless tests pass.
+* Screenshots:
+  * dunes with cacti and dead bushes;
+  * a flowering cactus with arms;
+  * a sandstone spire;
+  * fossils and an arch (with their density raised for the test);
+  * an oasis with palms and pools.
+
+### Performance
+Unchanged: generation ~11–13 ms per column, meshing ~10–11 ms; 3–4 FPS
+on software GL.
 
 ---
 

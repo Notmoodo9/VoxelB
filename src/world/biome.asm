@@ -28,7 +28,7 @@
 ;   bmap_build(BMAP*, cx, cz)           blend map of a chunk
 ;   bmap_col(BMAP*, lx, lz)             at chunk-local block (-32..63):
 ;       out: eax biome, xmm0 density 0..1 (fades towards borders),
-;            xmm1 hill factor
+;            xmm1 hill factor, xmm2 dune height
 ;   bmap_tint(BMAP*, lx, lz)            out: eax grass, edx foliage RGBA8
 ;                                       factors (128 = 1.0)
 ;   biome_at(x, z) -> rax name          (debug overlay; caches its chunk)
@@ -46,7 +46,7 @@
 %include "biome.inc"
 
 global biomes_load, biome_climate, biome_pick, bmap_build, bmap_col, bmap_tint
-global biome_at, biome_point
+global biome_at, biome_point, biome_dunes
 global g_biomes, g_biome_count, g_trees, g_tree_count
 
 extern str_ieq, str_len, str_copy, str_dup, str_parse_float
@@ -90,6 +90,8 @@ k_noise:        db "noise", 0
 n_temp:         db "temperature", 0
 n_humid:        db "humidity", 0
 n_weird:        db "weirdness", 0
+n_dunes:        db "dunes", 0
+k_ridged:       db "ridged", 0
 k_scale:        db "scale", 0
 k_octaves:      db "octaves", 0
 k_persistence:  db "persistence", 0
@@ -136,6 +138,15 @@ k_b_ring:       db "ring_plants", 0
 k_b_patch:      db "top_patch", 0
 k_b_mcell:      db "meadow_cell", 0
 k_b_mflowers:   db "meadow_flowers", 0
+k_b_dune:       db "dune_height", 0
+k_b_steep:      db "steep_block", 0
+k_b_pslope:     db "pond_slope", 0
+k_t_chance:     db "chance", 0
+v_cactus:       db "cactus", 0
+v_rock:         db "rock", 0
+v_arch:         db "arch", 0
+v_fossil:       db "fossil", 0
+v_palm:         db "palm", 0
 k_t_base_r:     db "base_radius", 0
 k_t_roots:      db "roots", 0
 v_giant:        db "giant", 0
@@ -202,6 +213,9 @@ biome_settings:
     dq k_b_patch,     T_PATCH,    BIOME.patch
     dq k_b_mcell,     T_INT,      BIOME.meadow_cell
     dq k_b_mflowers,  T_BLOCKLIST, BIOME.nmflowers
+    dq k_b_dune,      T_FLOAT,    BIOME.dune_h
+    dq k_b_steep,     T_BLOCK,    BIOME.steep
+    dq k_b_pslope,    T_INT,      BIOME.pond_slope
     dq 0
 tree_settings:
     dq k_t_kind,      T_KIND,     TREE.kind
@@ -213,6 +227,7 @@ tree_settings:
     dq k_t_gaps,      T_FLOAT,    TREE.gaps
     dq k_t_base_r,    T_RANGE_F,  TREE.base_r
     dq k_t_roots,     T_RANGE_I,  TREE.roots
+    dq k_t_chance,    T_FLOAT,    TREE.chance
     dq 0
 climate_settings:
     dq k_grass_ref,   T_COLOR,    g_grass_ref
@@ -220,7 +235,8 @@ climate_settings:
     dq k_contrast,    T_FLOAT,    g_contrast
     dq 0
 kind_names:     dq v_round, v_branching, v_bush, v_giant, v_fallen, v_stump
-%define KIND_COUNT 6
+                dq v_cactus, v_rock, v_arch, v_fossil, v_palm
+%define KIND_COUNT 11
 
 align 4
 c_one:          dd 1.0
@@ -247,7 +263,7 @@ section .bss
 alignb 16
 g_biomes:       resb MAX_BIOMES * BIOME_size
 g_trees:        resb MAX_TREES * TREE_size
-g_clim_noise:   resb 3 * NOISE_size     ; temperature, humidity, weirdness
+g_clim_noise:   resb 4 * NOISE_size     ; temperature, humidity, weirdness, dunes
 alignb 4
 g_biome_count:  resd 1
 g_tree_count:   resd 1
@@ -350,7 +366,7 @@ PROC biomes_load, 0, rbx, rsi
     mov dword [rbx + NOISE.ridged], 0
     add rbx, NOISE_size
     inc esi
-    cmp esi, 3
+    cmp esi, 4
     jb .nd
     ; biome 0: none
     lea rcx, [rel g_biomes]
@@ -483,6 +499,7 @@ biome_defaults:
     mov dword [rdx + BIOME.ring_r], 0x40400000        ; 3
     mov dword [rdx + BIOME.ring_r + 4], 0x40A00000    ; 5
     mov dword [rdx + BIOME.meadow_cell], 512
+    mov dword [rdx + BIOME.pond_slope], 3
     ret
 
 ; -----------------------------------------------------------------------------
@@ -680,6 +697,11 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     lea rdx, [rel n_weird]
     INVOKE str_ieq, rdi, rdx
     test eax, eax
+    jnz .noise_rec
+    mov r12d, 3
+    lea rdx, [rel n_dunes]
+    INVOKE str_ieq, rdi, rdx
+    test eax, eax
     jz .bad_rec
 .noise_rec:
     mov [rel g_rec], r12d
@@ -714,6 +736,7 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     mov dword [r12 + TREE.base_r + 4], 0x40900000   ; 4.5
     mov dword [r12 + TREE.roots], 4
     mov dword [r12 + TREE.roots + 4], 7
+    mov dword [r12 + TREE.chance], 0x3F000000       ; 0.5
     inc dword [rel g_tree_count]
     mov dword [rel g_kind], K_TREE
     RETURN
@@ -1038,6 +1061,13 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     movss [rdi + NOISE.persistence], xmm0
     RETURN
 .n_salt:
+    lea rdx, [rel k_ridged]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .n_salt2
+    mov [rdi + NOISE.ridged], r12d
+    RETURN
+.n_salt2:
     lea rdx, [rel k_salt]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
@@ -1322,6 +1352,7 @@ PROC bmap_col, MAX_BIOMES * 4
     xor eax, eax                        ; argmax
     xorps xmm2, xmm2                    ; max weight
     xorps xmm1, xmm1                    ; hill
+    xorps xmm4, xmm4                    ; dune height
     xor ecx, ecx
     lea r8, [rel g_biomes]
 .b:
@@ -1329,6 +1360,9 @@ PROC bmap_col, MAX_BIOMES * 4
     movss xmm3, xmm0
     mulss xmm3, [r8 + BIOME.hill]
     addss xmm1, xmm3
+    movss xmm3, xmm0
+    mulss xmm3, [r8 + BIOME.dune_h]
+    addss xmm4, xmm3
     comiss xmm0, xmm2
     jbe .next
     movss xmm2, xmm0
@@ -1344,6 +1378,28 @@ PROC bmap_col, MAX_BIOMES * 4
     mulss xmm0, [rel c_dens_inv]
     maxss xmm0, [rel c_zero]
     minss xmm0, [rel c_one]
+    movss xmm2, xmm4
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; biome_dunes — dune shape 0..1 at a world point (the ridged "dunes" field:
+; crests near 1, flat basins at 0).
+;   in:  xmm0 = x, xmm1 = z (doubles)     out: xmm0
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC biome_dunes, 0
+    movsd xmm2, xmm1
+    movsd xmm1, xmm0
+    lea rcx, [rel g_clim_noise + 3 * NOISE_size]
+    mov edx, [rel g_world_seed]
+    call fbm2
+    ; ridged sums are about -1 .. 1: map to 0 .. 1 and sharpen
+    addss xmm0, [rel c_one]
+    mulss xmm0, [rel c_half]
+    maxss xmm0, [rel c_zero]
+    minss xmm0, [rel c_one]
+    mulss xmm0, xmm0
     RETURN
 ENDPROC
 

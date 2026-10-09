@@ -27,3 +27,11 @@ scale       = 500
 octaves     = 2
 persistence = 0.5
 salt        = 303
+
+# dune crests (desert `dune_height`): ridged, crests ~90 blocks apart
+[noise dunes]
+scale       = 90
+octaves     = 2
+persistence = 0.45
+ridged      = 1
+salt        = 304

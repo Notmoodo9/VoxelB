@@ -18,7 +18,8 @@ yet; each item gets its own doc in `design/` when we interview it.
 | done | Birch grove (small pockets in forests) | M10 | `design/biomes/birch_grove.md` |
 | todo | Temperate biomes: dark forest, meadow, river | M10 | one biome at a time |
 | todo | Transition biomes (forest edge, desert scrubland, …) | M10 | from the biome system interview |
-| todo | Hot/dry biomes: desert, savanna, badlands/mesa, jungle, swamp | M10 | |
+| done | Desert + oasis | M10 | `design/biomes/desert.md` |
+| todo | Hot/dry biomes: savanna, badlands/mesa, jungle, swamp | M10 | |
 | todo | Cold biomes: taiga, snowy tundra, ice spikes, glaciers, frozen ocean | M10 | |
 | todo | Fantasy biomes: mushroom fields, crystal caves, floating islands, glowing forests | M10 | |
 | todo | Trees and vegetation per biome | M10 | |

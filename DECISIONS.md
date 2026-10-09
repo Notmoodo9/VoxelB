@@ -672,3 +672,17 @@ The bluebell carpets of birch groves reuse the meadow feature with two new
 biome settings: `meadow_cell` (candidate cell size, power of two, default
 512 as before) and `meadow_flowers` (a separate flower list). Birch groves
 use 128-block cells with only bluebells, so small groves still get carpets.
+
+## D61 — Desert: dunes, new generator kinds, ponds (M10 part 4)
+* Dunes: a ridged `dunes` noise field (scale 90) times the biome's blended
+  `dune_height` is added to the coarse height grid, so dunes blend out at
+  desert borders like hills.
+* Five new generator kinds share the tree machinery (candidates per 4×4
+  cell, hashed, consistent across chunks): `cactus`, `rock`, `arch`,
+  `fossil`, `palm`. Rocks, arches and fossils use a new placement mode that
+  replaces terrain blocks (`PUT_SOLID`), so they sink into the sand.
+* Pond cells shrank from 128 to 64 blocks (chances in plains and forest
+  scaled by 1/4 to keep their frequency) so small oasis pockets can hold
+  pools. A per-biome `pond_slope` lets oasis pools cut into uneven ground,
+  and ponds may now sit at beach height, as long as the water stays at or
+  above sea level.

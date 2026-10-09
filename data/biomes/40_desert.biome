@@ -1,0 +1,27 @@
+# Desert (design/biomes/desert.md): large hot deserts of golden sand with
+# rolling dunes and flat basins, sandstone below; flowering cacti, dead
+# bushes, sandstone boulders, spires and rare arches, half-buried fossils.
+
+[biome desert]
+temperature   = 0.62, 1.00
+humidity      = 0.00, 0.42
+height        = 98, 200
+hill_scale    = 0.3
+dune_height   = 20             # dunes up to this high (dunes noise below)
+top_block     = sand
+filler_block  = sandstone
+steep_block   = sandstone
+
+plant = dead_bush, 0.015
+
+# cacti (~1 per 25 x 25 blocks)
+tree         = cactus, 1
+tree_density = 0.0016
+
+# rocks, rare arches and fossils (weights: boulder 1/60^2, spire 1/120^2,
+# arch 1/400^2, fossil 1/300^2)
+bush         = sandstone_boulder, 100
+bush         = sandstone_spire, 25
+bush         = sandstone_arch, 2.25
+bush         = fossil, 4
+bush_density = 0.000365

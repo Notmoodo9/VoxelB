@@ -1,0 +1,30 @@
+# Oasis (design/biomes/desert.md): very rare lush pockets inside deserts
+# (the desert's climate, high weirdness, priority 1): flat grass around
+# pools, palm trees, bushes, grass and flowers.
+
+[biome oasis]
+temperature   = 0.62, 1.00
+humidity      = 0.00, 0.42
+weirdness     = 0.88, 1.00
+priority      = 1
+height        = 98, 200
+hill_scale    = 0.15
+grass_color   = 5DC93A
+foliage_color = 3FAE2A
+
+plant = short_grass, 0.35
+plant = tall_grass, 0.08
+flowers       = poppy, dandelion, orange_tulip, allium
+flower_chance = 0.04
+
+tree         = palm, 1
+tree_density = 0.006
+bush         = oak_bush, 1
+bush         = flowering_bush, 1
+bush_density = 0.004
+
+pond_chance = 1.0
+pond_radius = 5, 6
+pond_depth  = 3
+pond_floor  = sand
+pond_slope  = 12               # pools may cut into sloping ground
