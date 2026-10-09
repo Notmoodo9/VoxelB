@@ -2,7 +2,7 @@
 
 ## Current state
 **Milestone 7: Data-driven block registry + parser + texture array: DONE**
-(Windows CI: see below)
+(Windows CI green: run #13)
 
 Next: **Milestone 7b: Shaped blocks** (slabs, stairs, fences, doors,
 trapdoors). The owner added it during the M7 interview, to come right after
@@ -100,6 +100,18 @@ Closer views:
 * Hot reload: a repainted `stone.png` was re-uploaded within about 0.4 s.
   Restoring it reloaded again.
 * `opaque_leaves = 1` loads and runs cleanly.
+
+### Verified on Windows (GitHub Actions run #13, AMD EPYC 7763 × 4, Mesa llvmpipe GL 4.6)
+* Debug and release smoke tests pass:
+  * every self test, including the PNG decoder;
+  * 262 blocks and 317 textures load (479 layers, none missing);
+  * clean exit.
+* Release:
+  * full view complete after 1.26 s;
+  * the texture array is built in 0.31 s;
+  * meshing averages 2.2 ms per column;
+  * `stream_update` averages 33–215 µs;
+  * about 19 FPS looking at the gallery and hills (109k quads) on software GL.
 
 ### Performance (release, llvmpipe software rendering, render distance 16)
 | | |
