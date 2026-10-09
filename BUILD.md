@@ -47,6 +47,9 @@ build\debug\voxelb.exe --selftest         run the memory/job self test (always o
 build\debug\voxelb.exe --flytest          fly straight ahead at 60 blocks/s (streaming stress test)
 build\debug\voxelb.exe --pos 10 105 190    start the camera at x y z (blocks)
 build\debug\voxelb.exe --look -30 -20      start view: yaw (0 north, 90 east), pitch (degrees, + up)
+build\debug\voxelb.exe --seed 42           world seed (overrides data/world/world.cfg)
+build\debug\voxelb.exe --flat              the flat test world with the block gallery
+build\debug\voxelb.exe --survey            log terrain statistics and places to visit (voxel.log)
 ```
 
 Default controls (rebind in `data/config/controls.cfg`, format in `DATA_FORMAT.md`):

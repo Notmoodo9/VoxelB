@@ -1,10 +1,113 @@
 # Progress
 
 ## Current state
-**Milestone 7b: Shaped blocks: DONE** (Windows CI: see below)
+**Milestone 8: 🎨 DESIGN — Terrain: DONE** (Windows CI: see below)
 
-Next: **Milestone 8: 🎨 DESIGN — Terrain** (heightmap noise and splines,
-tiered mountains, rare giant ranges). It starts with a design interview.
+Next: **Milestone 9: 🎨 DESIGN — Caves, ravines, aquifers, lava, ores.**
+It starts with a design interview, one item at a time: caves first, then
+ores.
+
+---
+
+## Milestone 8 — done (2026-10-09)
+
+### Design interview
+Two rounds plus approval, recorded in `design/terrain/overworld_terrain.md`:
+* rolling, varied lowlands;
+* balanced mountain tiers;
+* giant ranges with jagged alpine spires, overhangs and arches, and long
+  ridgelines;
+* surfaces by height and slope;
+* about a third ocean;
+* simple still water now;
+* rivers carving valleys;
+* mixed coasts.
+
+### What was built
+* **Noise** (`src/core/noise.asm`, D44): seeded 2D/3D gradient noise and
+  fractal sums (plain and ridged), exact far from the origin.
+* **Terrain generator** (`src/world/terrain.asm`, D45):
+  * 11 noise fields and 6 splines from `data/world/terrain.cfg`;
+  * oceans, coasts, lowlands, hills, mountains, high mountains and rare
+    giant ridgelines up to ~1000 with jagged spires;
+  * river valleys and gorges;
+  * 3D overhangs in mountains;
+  * surfaces by height and slope: grass/dirt, sand beaches, gravel shores
+    and scree, stone cliffs, snow above ~300 with full snow caps higher;
+    a sand/gravel/clay sea bed;
+  * stone, deep stone below ~0 (wavy), and a bedrock floor;
+  * water up to sea level.
+* **Speed** (D46): coarse-grid sampling plus per-block detail (4.6 → 2.2
+  ms per column); uniform sections are skipped.
+* **World settings**: `data/world/world.cfg` (`seed`, `generator`).
+  Command-line options:
+  * `--seed <n>`;
+  * `--flat` (the block gallery world);
+  * `--survey` (logs the shares of ocean, hills, mountains and so on, and
+    the coordinates of the highest point, the nearest giant range and the
+    nearest river).
+* **Spawn**: the camera starts above land near the origin.
+* **Debug overlay**: a `terrain` line shows the seed, the surface height
+  and the noise values (continentalness, erosion, peaks, giant, river) at
+  the camera.
+* **Water block** with an animated texture (D47); lighter distance fog.
+* Smoke tests check that the terrain generator loads.
+
+### How to see it (seed 20261009, the default)
+* Start the game: you spawn on a coast near the origin, with rolling
+  hills, a beach and the sea.
+* River valley: `voxelb.exe --pos -64 140 20 --look 0 -25`.
+* Giant range (highest point 993 at x 1408, z 2816):
+  * `voxelb.exe --pos 1300 760 2990 --look 10 -12` — inside a pass between
+    snowy spires;
+  * `voxelb.exe --pos 1408 1180 3350 --look 0 -38` — from above.
+* `voxelb.exe --survey`, then read `voxel.log` for other places. Try other
+  seeds with `--seed <n>`.
+
+### Bugs found and fixed while testing
+* terrain.cfg records read a 32-bit index as a 64-bit one (garbage
+  pointer, a crash) when parsing `[noise]` and `[spline]` records.
+* Splines assumed noise in −1..1, but fractal sums sit mostly in
+  −0.5..0.5, so mountains were almost absent (0.1%). The splines were
+  rescaled, and the survey now confirms the planned shares.
+* Giant spires had no snow because every slope counted as steep. Snow now
+  holds on steeper slopes high up, and everything 200 above the snow line
+  is snow.
+
+### Verified (Wine 9 + Xvfb + Mesa llvmpipe)
+* Debug and release headless tests pass; `--flat` still gives the
+  gallery; clean exits.
+* Screenshots: the spawn coast (beach, grass terraces, sea, distant
+  mountain); a river valley with sandy banks; a giant ridgeline with a deep
+  pass and snowy spires; jagged spires from above.
+
+### Performance (release, llvmpipe, render distance 16)
+| | |
+|---|---|
+| View complete at spawn | 1.29 s |
+| Column generation | avg 2.2 ms (max 13 ms) |
+| Column meshing | avg 1.5 ms |
+| FPS flying over lowland (`--flytest`) | 19–21 (48–53 ms; 367k quads) |
+| Inside a giant range | ~3 FPS on software GL (1.85M quads in range) |
+| `stream_update` | avg 37–45 µs |
+
+Software rendering is the limit here. Mountains have many more faces than
+the flat world. GPU-driven rendering (M11) and LOD (M12) are the planned
+answer.
+
+### Known issues
+* The loaded world ends at 512 blocks: from high peaks you see the edge
+  (M12 adds LOD terrain beyond it, M14 real fog).
+* Without lighting (M13) cliffs are flat grey; snow and stone read mainly
+  through texture.
+* The overlay's `surface` value is the exact height; the generated
+  terrain interpolates the large-scale fields every 4 blocks (differences
+  of a block or two).
+
+### Deferred
+* Biome-specific surfaces, vegetation and trees: M10. Caves, ores, lava:
+  M9.
+* Flowing water and water rendering: M15. Fog and sky: M14.
 
 ---
 

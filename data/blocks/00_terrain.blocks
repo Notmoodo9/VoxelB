@@ -30,3 +30,7 @@ textures = side: forest_floor_side, top: forest_floor_top, bottom: dirt
 
 [block sandstone]
 textures = side: sandstone, top: sandstone_top, bottom: sandstone_bottom
+
+# --- water (still for now; flowing water and reflections arrive in M15) ---
+[block water]
+render = translucent

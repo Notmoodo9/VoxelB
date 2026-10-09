@@ -39,6 +39,8 @@ warnings, as above.
 | `data/config/controls.cfg` | `src/platform/input.asm` | key bindings (actions → up to 2 keys) and mouse/fly settings |
 | `data/config/graphics.cfg` | `src/core/settings.asm` | graphics settings (render distance, opaque leaves) |
 | `data/blocks/*.blocks` | `src/world/block.asm` | the block registry: every block, its textures and render settings |
+| `data/world/world.cfg` | `src/world/world.asm` | world seed and generator (`terrain` or `flat_test`) |
+| `data/world/terrain.cfg` | `src/world/terrain.asm` | the terrain generator: noise fields, splines, heights, surface blocks |
 | `data/world/flat_test.cfg` | `src/world/world.asm` | **debug** test world: layers, block gallery, test structures |
 | `assets/textures/blocks/*.png` | `src/render/block_textures.asm` | block textures (16×16, animated strips, glow layers) |
 
@@ -149,6 +151,49 @@ Edit a PNG while the game runs and it is reloaded within a second (a
 changed frame count needs a restart). `tools/texgen/texgen.py` regenerates
 the built-in textures (see BUILD.md); it overwrites repainted files only if
 you run it.
+
+### `world.cfg`
+
+| Key | Value | Meaning |
+|---|---|---|
+| `seed` | unsigned number | the world seed: same seed, same world (`--seed <n>` overrides) |
+| `generator` | `terrain` (default) / `flat_test` | the real terrain, or the debug gallery world (`--flat` forces it) |
+
+### `terrain.cfg` (Milestone 8)
+
+Top-level settings (all optional, defaults in `src/world/terrain.asm`):
+
+| Key | Meaning |
+|---|---|
+| `sea_level` | water fills air at or below this height |
+| `land_start`, `land_ramp` | continentalness where land begins, and over how much of it mountains fade in |
+| `giant_height`, `jag_height` | height of a full giant ridge, and of the extra spires on it |
+| `detail_height` | small bumps everywhere (blocks) |
+| `river_width`, `river_widen`, `river_bed`, `gorge_max` | river core width (in noise units), valley widening in lowlands, riverbed height, highest terrain a river still cuts |
+| `overhang_amplitude`, `overhang_start` | blocks of 3D overhang in mountains, and the height where it starts |
+| `max_height` | highest possible surface |
+| `snow_line`, `snow_line_variation`, `snow_cap_above` | snow above this height (± noise), and full snow cover this far above it |
+| `beach_low`, `beach_high` | top-block heights that count as shore (sand / gravel) |
+| `steep_slope`, `scree_slope`, `scree_min_y` | height steps to a neighbour that make bare stone, or gravel (on shores, or above `scree_min_y`) |
+| `deep_stone_y` | deep stone below about this height |
+| `top_block`, `filler_block`, `stone_block`, `deep_block`, `bedrock_block`, `beach_block`, `gravel_block`, `snow_block`, `water_block`, `seabed_clay_block` | the blocks used (names from `data/blocks/`) |
+
+`[noise <field>]` records set a noise field: `scale` (blocks per feature),
+`octaves`, `persistence`, `ridged` (0/1), `salt`. Fields: `continentalness`,
+`erosion`, `peaks`, `high`, `giant`, `ridges`, `jag`, `rolling`, `river`,
+`detail`, and `overhang` (3D).
+
+`[spline <name>]` records map a noise value to a number with
+`point = input, output` lines (ascending inputs; piecewise linear; clamped
+at the ends; up to 16 points). Splines: `base_height` (continentalness →
+height), `mountain_factor` (erosion → 0..1), `peaks_height` (peaks →
+blocks), `high_factor` (high → extra multiplier), `giant_mask` (giant →
+0..1), `rolling_height` (rolling → blocks). Noise values are within −1..1
+but mostly within −0.5..0.5.
+
+How they combine is described at the top of `src/world/terrain.asm`. Run
+`voxelb.exe --survey` to log what a change does: the ocean/height shares
+and places worth visiting.
 
 ### `flat_test.cfg` (debug layout, Milestones 5–7)
 

@@ -29,10 +29,12 @@
 global world_init, world_column, world_section_at, world_block_at
 global world_column_alloc, world_column_free, world_column_insert, world_column_remove
 global gen_column_job, atomic_max, world_hash_selftest
+global world_spawn, g_generator, g_seed_override, g_seed_override_set, g_force_flat
 global g_world_gen_count, g_world_gen_total_us, g_world_gen_max_us
 
 extern str_ieq, str_parse_float, str_parse_u64
 extern blocks_load, block_find
+extern terrain_load, terrain_gen_column, terrain_find_spawn, g_world_seed
 extern g_block_count, g_block_shape, g_block_state, g_block_nstates
 extern timer_elapsed_us
 
@@ -46,9 +48,17 @@ extern timer_elapsed_us
 %define PILLAR_SPACING      37
 %define PILLAR_TOP_Y        210
 %define MAX_COLUMNS         65536
+%define GEN_FLAT            0
+%define GEN_TERRAIN         1
 
 section .rdata
 str_cfg_path:   db "data/world/flat_test.cfg", 0
+str_world_cfg:  db "data/world/world.cfg", 0
+str_world_label: db "world.cfg", 0
+k_seed:         db "seed", 0
+k_generator:    db "generator", 0
+v_terrain:      db "terrain", 0
+v_flat:         db "flat_test", 0
 str_cfg_label:  db "flat_test.cfg", 0
 k_layer:        db "layer", 0
 k_structures:   db "test_structures", 0
@@ -67,6 +77,10 @@ door_lower:     db 0, 1, 2, 3, 8, 9, 10, 11, 16   ; door states shown in the gal
 
 section .data
 align 4
+g_generator:        dd GEN_TERRAIN
+g_seed_override:    dd 0
+g_seed_override_set: dd 0
+g_force_flat:       dd 0
 g_gal_enabled:      dd 0
 g_gal_ox:           dd -40              ; first block's x
 g_gal_oy:           dd 100              ; bottom y
@@ -972,6 +986,11 @@ PROC gen_column_job, 32, rbx, rsi, rdi, r12, r13, r14, r15
     lea r15, [rdx + WORKER.scratch]
     call timer_elapsed_us
     mov [LOCAL(0)], rax
+    cmp dword [rel g_generator], GEN_TERRAIN
+    jne .flat
+    INVOKE terrain_gen_column, rbx, r15
+    jmp .generated
+.flat:
     xor r12, r12                        ; ids buffer (allocated on demand)
     ; does this column touch the structure square?
     xor r14d, r14d
@@ -1101,6 +1120,7 @@ PROC gen_column_job, 32, rbx, rsi, rdi, r12, r13, r14, r15
     inc esi
     cmp esi, SECTIONS_PER_COLUMN
     jb .section
+.generated:
     call timer_elapsed_us
     sub rax, [LOCAL(0)]
     lock add [rel g_world_gen_total_us], rax
@@ -1232,6 +1252,70 @@ PROC world_hash_selftest, 16, rbx, rsi, rdi, r12, r13
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; world_cfg_pair — cfg_parse callback for world.cfg (seed, generator).
+;   in:  rcx = name, rdx = value
+; -----------------------------------------------------------------------------
+PROC world_cfg_pair, 0, rbx, rsi
+    mov rbx, rcx
+    mov rsi, rdx
+    lea rdx, [rel k_seed]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_seed
+    mov rcx, rsi
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    mov [rel g_world_seed], eax
+    RETURN
+.not_seed:
+    lea rdx, [rel k_generator]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .unknown
+    lea rdx, [rel v_terrain]
+    INVOKE str_ieq, rsi, rdx
+    test eax, eax
+    jz .not_terrain
+    mov dword [rel g_generator], GEN_TERRAIN
+    RETURN
+.not_terrain:
+    lea rdx, [rel v_flat]
+    INVOKE str_ieq, rsi, rdx
+    test eax, eax
+    jz .bad
+    mov dword [rel g_generator], GEN_FLAT
+    RETURN
+.bad:
+    lea rcx, [rel str_world_label]
+    lea rdx, [rel str_bad_value]
+    INVOKE cfg_warn, rcx, rdx, rbx
+    RETURN
+.unknown:
+    lea rcx, [rel str_world_label]
+    lea rdx, [rel str_unknown]
+    INVOKE cfg_warn, rcx, rdx, rbx
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; world_spawn — start position for the camera.
+;   in:  rcx = out (3 doubles)
+;   out: eax = 1 if set (terrain), 0 = keep the camera's default (flat test)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC world_spawn, 0
+    cmp dword [rel g_generator], GEN_TERRAIN
+    jne .flat
+    call terrain_find_spawn
+    mov eax, 1
+    RETURN
+.flat:
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 ; world_init — load the world description and set up pools and the map.
 ;   out: eax = 1 on success, 0 on failure (logged)
 ;   clobbers: volatile registers
@@ -1240,6 +1324,40 @@ PROC world_init, 0, rbx, rdi
     call blocks_load
     test eax, eax
     jz .fail_quiet
+    ; data/world/world.cfg: seed and generator (command line can override)
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [rel g_cfg_mark], rax
+    lea rcx, [rel g_cfg_path]
+    lea rdx, [rel str_world_cfg]
+    call path_make
+    lea rcx, [rel g_cfg_path]
+    lea rdx, [rel g_arena_scratch]
+    call file_load
+    test rax, rax
+    jz .no_world_cfg
+    lea rdx, [rel world_cfg_pair]
+    lea r9, [rel str_world_label]
+    INVOKE cfg_parse, rax, rdx, 0, r9
+.no_world_cfg:
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [rel g_cfg_mark]
+    cmp dword [rel g_seed_override_set], 0
+    je .seed_done
+    mov eax, [rel g_seed_override]
+    mov [rel g_world_seed], eax
+.seed_done:
+    cmp dword [rel g_force_flat], 0
+    je .gen_chosen
+    mov dword [rel g_generator], GEN_FLAT
+.gen_chosen:
+    cmp dword [rel g_generator], GEN_TERRAIN
+    jne .flat_world
+    call terrain_load
+    test eax, eax
+    jz .fail_quiet
+    jmp .pools
+.flat_world:
     lea rcx, [rel g_arena_scratch]
     call arena_mark
     mov [rel g_cfg_mark], rax
@@ -1311,6 +1429,7 @@ PROC world_init, 0, rbx, rdi
     add eax, [rel g_gal_size]
     dec eax
     mov [rel g_gal_y1], eax
+.pools:
     call sections_init
     test eax, eax
     jz .fail
@@ -1329,7 +1448,13 @@ PROC world_init, 0, rbx, rdi
     xor eax, eax
     mov ecx, HASH_SIZE * 2
     rep stosq
+    cmp dword [rel g_generator], GEN_TERRAIN
+    je .terrain_ready
     LOG_INFO "world: ready (infinite flat test world)"
+    mov eax, 1
+    RETURN
+.terrain_ready:
+    LOG_INFO "world: ready (terrain generator)"
     mov eax, 1
     RETURN
 .fail:

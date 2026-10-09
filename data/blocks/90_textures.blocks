@@ -110,3 +110,8 @@ glow = emberwood_door_bottom_glow
 glow = glowing_mushroom_door_top_glow
 [texture glowing_mushroom_door_bottom]
 glow = glowing_mushroom_door_bottom_glow
+
+# water surface (milestone 8)
+[texture water]
+frame_ms    = 120
+interpolate = 1

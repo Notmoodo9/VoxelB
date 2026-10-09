@@ -40,6 +40,7 @@ grep -q "selftest: PASS" "$LOG"           || { echo "FAIL: self test"; exit 1; }
 grep -q "world: quad buffer created" "$LOG" || { echo "FAIL: world GPU buffer not created"; exit 1; }
 grep -Eq "blocks: [0-9]+ blocks" "$LOG" || { echo "FAIL: block registry not loaded"; exit 1; }
 grep -q "missing or invalid 0" "$LOG" || { echo "FAIL: block textures missing or invalid"; exit 1; }
+grep -q "terrain: generator ready" "$LOG" || { echo "FAIL: terrain generator not loaded"; exit 1; }
 grep -q "stream: view complete" "$LOG" || { echo "FAIL: streamer never finished the view"; exit 1; }
 grep -q "text renderer ready" "$LOG"       || { echo "FAIL: text renderer/shaders did not start"; exit 1; }
 grep -q "perf: " "$LOG"                     || { echo "FAIL: no frame timing (perf) line"; exit 1; }

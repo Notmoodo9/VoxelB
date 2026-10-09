@@ -39,7 +39,7 @@ void main() {
     }
 
     float dist = length(v_rel);
-    float fog = 1.0 - exp(-dist * 0.0028);
+    float fog = 1.0 - exp(-dist * 0.0013);   // light: mountain vistas (M14: real fog)
     float alpha = (u_pass == 2) ? c.a : 1.0;
     o_color = vec4(mix(color, SKY, clamp(fog, 0.0, 1.0)), alpha);
 }

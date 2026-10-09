@@ -6,7 +6,7 @@ yet; each item gets its own doc in `design/` when we interview it.
 
 | Status | Item | Milestone | Notes |
 |---|---|---|---|
-| todo | Terrain shape: hills → mountains → high mountains → giant ranges; cliffs, plateaus, valleys | M8 | |
+| done | Terrain shape | M8 | `design/terrain/overworld_terrain.md` |
 | todo | Caves, ravines, aquifers, lava lakes | M9 | |
 | todo | Ore list, depth ranges, rarity, tool tiers | M9 | |
 | todo | Temperate biomes: plains, forest, birch forest, dark forest, meadow, river | M10 | one biome at a time |

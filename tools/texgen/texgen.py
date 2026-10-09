@@ -1234,6 +1234,25 @@ def make_shapes(out):
         out[f"{mat}_pillar_top"] = top
 
 
+def make_water(out):
+    """Still water (M8): vibrant blue, translucent, 16 looping wave frames."""
+    pal = ramp("2a7ae8", 6, spread=0.14, hue_shift=0.01)
+    yy, xx = np.mgrid[0:N, 0:N]
+    frames = []
+    for f in range(16):
+        t = 2 * np.pi * f / 16
+        v = (0.5 + 0.22 * np.sin(xx * 2 * np.pi / 16 * 2 + t)
+             + 0.18 * np.sin((xx + yy) * 2 * np.pi / 16 + 2 * t)
+             + 0.12 * np.sin(yy * 2 * np.pi / 16 * 3 - t))
+        img = shade(np.clip(v * 0.75, 0, 0.999), pal)
+        crest = v > 0.95
+        img[crest] = hexrgb("bfe6ff")
+        a = np.full((N, N), 0.72)
+        a[crest] = 0.85
+        frames.append(rgba(img, a))
+    out["water"] = frames
+
+
 def build_all():
     out = {}
     make_terrain(out)
@@ -1242,6 +1261,7 @@ def build_all():
     make_mushrooms(out)
     make_colors_lights(out)
     make_shapes(out)
+    make_water(out)
     return out
 
 

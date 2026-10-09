@@ -37,6 +37,7 @@ if ($text -notmatch 'selftest: PASS') { Write-Host 'FAIL: arena/pool/job self te
 if ($text -notmatch 'world: quad buffer created') { Write-Host 'FAIL: world GPU buffer not created'; exit 1 }
 if ($text -notmatch 'blocks: \d+ blocks') { Write-Host 'FAIL: block registry not loaded'; exit 1 }
 if ($text -notmatch 'missing or invalid 0') { Write-Host 'FAIL: block textures missing or invalid'; exit 1 }
+if ($text -notmatch 'terrain: generator ready') { Write-Host 'FAIL: terrain generator not loaded'; exit 1 }
 if ($text -notmatch 'stream: view complete') { Write-Host 'FAIL: streamer never finished loading the view'; exit 1 }
 if ($text -notmatch 'text renderer ready') { Write-Host 'FAIL: text renderer/shaders did not start'; exit 1 }
 if ($text -match 'ERROR') { Write-Host 'FAIL: errors in the log'; exit 1 }

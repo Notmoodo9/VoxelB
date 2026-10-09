@@ -465,3 +465,49 @@ The debug gallery now lists base blocks only, and lays shaped blocks out
 so their states and connections are visible: a 3×3 grid of states, a T of
 fences/walls/panes, a stacked and a lone pillar, and doors with their upper
 halves. It moved to z 440..270 (start position z 462), away from the hills.
+
+## D44 — Noise: seeded gradient noise in asm (M8)
+`src/core/noise.asm`: 2D and 3D gradient noise (Perlin-style lattice,
+quintic fade, 8 / 12 gradient directions) with a 32-bit integer hash of
+cell, world seed and a per-field salt, plus fractal sums (`fbm2/fbm3`,
+optionally ridged). Inputs are doubles split into an exact cell and a float
+fraction, so the terrain stays identical far from the origin.
+OpenSimplex2 would remove the slight grid-aligned bias. The splines and
+heavy smoothing make that invisible for heights, so it was not worth the
+extra code now; noise.asm can swap the kernel later without changing
+callers.
+
+## D45 — Terrain model: fields → splines → height (M8)
+All shapes come from data (`data/world/terrain.cfg`): 11 noise fields
+(continentalness, erosion, peaks, high, giant, ridges, jag, rolling, river,
+detail, 3D overhang) and 6 splines. The combination (src/world/terrain.asm
+header) is engine code:
+* base height from continentalness;
+* hills/mountains = peaks × mountain factor × (1 + high factor), fading
+  out towards the sea;
+* giant ranges = a rare large-scale mask × ridged noise cubed (continuous
+  ridgelines, never lone peaks) plus jagged spires on the ridges;
+* rivers pull the height down to the riverbed near zero crossings of the
+  river noise, with valley width depending on the mountain factor;
+* overhangs: in mountains, a 3D noise term (±amplitude) on a coarse grid
+  (4×8×4 blocks, trilinear), added to the height field's density.
+
+A survey of 25.6 × 25.6 km (`--survey`) for the default seed gives: ocean
+33.0%, lowland 52.2%, hills 7.4%, mountains 5.9%, high mountains 1.0%,
+giant 550+ 0.1%; highest point 993.
+
+## D46 — Generation cost: coarse grid + per-block detail (M8)
+Sampling all fields at every block cost 4.6 ms per column (release). The
+large-scale fields are smooth, so the height and the overhang amplitude
+are sampled every 4 blocks (10×10 per column, including the border) and
+interpolated bilinearly. Only the detail noise is evaluated per block.
+That brought generation to 2.2 ms per column. Uniform sections (all
+stone, all deep stone, all water, all air) are detected from the column's
+height range and never filled voxel by voxel.
+
+## D47 — Still water and lighter fog (M8)
+A `water` block (translucent, cull-self, 16-frame animated texture) fills
+air at or below sea level. That covers oceans, lakes and rivers (river
+beds sit below sea level). Flow and real water rendering are M15. The
+distance fog was thinned (density 0.0028 → 0.0013) so mountains stay
+readable across the 512-block view. Real height/distance fog is M14.

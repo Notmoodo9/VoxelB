@@ -8,6 +8,9 @@
 ;   --workers <n>      number of job worker threads (default: CPUs - 1)
 ;   --flytest          fly north automatically at 60 blocks/s (streaming test)
 ;   --pos <x> <y> <z>  start the camera at this position (blocks)
+;   --seed <n>         world seed (overrides data/world/world.cfg)
+;   --flat             use the flat test world (block gallery)
+;   --survey           log terrain statistics and places to visit
 ;   --look <yaw> <pitch>  start view direction in degrees (yaw 0 = north,
 ;                      90 = east; pitch > 0 looks up)
 ;   --selftest         run the arena/pool/job self test at start (always on
@@ -41,6 +44,8 @@ extern camera_init, camera_update
 extern overlay_draw, overlay_toggle
 extern cpu_detect, selftest_run
 extern world_init, world_render_init, world_render_shutdown
+extern terrain_survey
+extern world_spawn, g_seed_override, g_seed_override_set, g_force_flat
 extern stream_init, stream_update, stream_shutdown, settings_load
 extern block_textures_poll
 extern g_cam_autofly, g_fly_speed, g_cam_pos, g_cam_yaw, g_cam_pitch
@@ -64,6 +69,9 @@ opt_workers_len     equ $ - opt_workers - 1
 opt_selftest:       db "--selftest", 0
 opt_flytest:        db "--flytest", 0
 opt_pos:            db "--pos ", 0
+opt_seed:           db "--seed ", 0
+opt_flat:           db "--flat", 0
+opt_survey:         db "--survey", 0
 opt_look:           db "--look ", 0
 align 4
 c_deg_to_rad:       dd 0.0174532925
@@ -272,6 +280,24 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     lea rcx, [rel str_init_fail]
     call log_fatal
 .init_ok:
+    ; --seed n / --flat (read by world_init)
+    lea rdx, [rel opt_seed]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .no_seed
+    lea rcx, [rax + 7]
+    call str_parse_u64
+    test r8, r8
+    jz .no_seed
+    mov [rel g_seed_override], eax
+    mov dword [rel g_seed_override_set], 1
+.no_seed:
+    lea rdx, [rel opt_flat]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .no_flat
+    mov dword [rel g_force_flat], 1
+.no_flat:
     call world_init
     test eax, eax
     jz .world_fail
@@ -286,6 +312,16 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     call log_fatal
 .world_ok:
     call camera_init
+    lea rcx, [rel g_cam_pos]
+    call world_spawn                    ; terrain: start above land
+    test eax, eax
+    jz .no_survey
+    lea rdx, [rel opt_survey]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .no_survey
+    call terrain_survey
+.no_survey:
     ; --pos x y z
     lea rdx, [rel opt_pos]
     INVOKE str_find, rbx, rdx

@@ -13,6 +13,7 @@
 ;   g_overlay_visible
 ; =============================================================================
 %include "macros.inc"
+%include "terrain.inc"
 %include "gl.inc"
 %include "input.inc"
 %include "shader.inc"
@@ -25,6 +26,7 @@ global overlay_draw, overlay_toggle, g_overlay_visible
 extern str_copy, str_append_dec, str_append_sdec
 extern g_stat_fps_x10, g_stat_avg_us, g_stat_min_us, g_stat_max_us
 extern g_cam_pos, g_cam_yaw, g_cam_pitch
+extern terrain_sample, g_world_seed, g_generator
 extern g_sections_live, g_section_bytes
 extern g_world_visible, g_world_drawn_quads, g_world_gpu_bytes
 extern g_loaded_count, g_render_distance, g_stream_ready
@@ -103,6 +105,13 @@ s_chunk:        db "chunk   ", 0
 s_sp:           db " ", 0
 s_ground:       db "   ground below: ", 0
 s_at_y:         db " at y ", 0
+s_terrain:      db "terrain seed ", 0
+s_t_height:     db "  surface ", 0
+s_t_cont:       db "  cont ", 0
+s_t_eros:       db "  eros ", 0
+s_t_peaks:      db "  peaks ", 0
+s_t_giant:      db "  giant ", 0
+s_t_river:      db "  river ", 0
 s_none:         db "none", 0
 s_controls:     db 10, "controls (data/config/controls.cfg):", 10, 0
 s_indent:       db "  ", 0
@@ -125,6 +134,7 @@ g_overlay_visible:  dd 1
 section .bss
 alignb 8
 g_ov_text:      resq 1                  ; TEXT_CAP bytes from the frame arena
+g_ov_sample:    resb TSAMPLE_size
 
 section .text
 
@@ -426,6 +436,36 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
     PUTSNUM rax, 0
 .ground_done:
     PUT s_nl
+
+    ; terrain at the camera (terrain generator only)
+    cmp dword [rel g_generator], 1
+    jne .no_terrain
+    movsd xmm0, [rel g_cam_pos]
+    movsd xmm1, [rel g_cam_pos + 16]
+    lea rcx, [rel g_ov_sample]
+    call terrain_sample
+    PUT s_terrain
+    mov eax, [rel g_world_seed]
+    PUTNUM rax, 0
+    PUT s_t_height
+    cvttss2si eax, [rel g_ov_sample + TSAMPLE.height]
+    movsxd rax, eax
+    PUTSNUM rax, 0
+%macro PUT_FIELD 2                      ; label, field offset: value x 100
+    PUT %1
+    movss xmm0, [rel g_ov_sample + %2]
+    mulss xmm0, [rel c_100]
+    cvtss2si eax, xmm0
+    movsxd rax, eax
+    PUTSNUM rax, 2
+%endmacro
+    PUT_FIELD s_t_cont, TSAMPLE.fields + 0
+    PUT_FIELD s_t_eros, TSAMPLE.fields + 4
+    PUT_FIELD s_t_peaks, TSAMPLE.fields + 8
+    PUT_FIELD s_t_giant, TSAMPLE.giant
+    PUT_FIELD s_t_river, TSAMPLE.river
+    PUT s_nl
+.no_terrain:
 
     ; bindings
     PUT s_controls
