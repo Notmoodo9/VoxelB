@@ -99,3 +99,9 @@ leaf_gaps   = 0.3
 kind      = fallen
 log       = mossy_oak_log
 height    = 7, 12
+
+# --- birch grove (design/biomes/birch_grove.md) --------------------------------
+[tree fallen_birch]
+kind      = fallen
+log       = birch_log
+height    = 3, 5

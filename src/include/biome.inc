@@ -75,6 +75,9 @@ struc BIOME
     .ring           resd BIOME_FLOWERS
     .patch          resd 1              ; top patch block (0 = none)
     .patch_lvl      resd 1              ; float: detail noise above this
+    .meadow_cell    resd 1              ; meadow candidate cell size (power of 2)
+    .nmflowers      resd 1              ; meadow flowers (0 = use `flowers`)
+    .mflower        resd BIOME_FLOWERS
 endstruc
 
 struc TREE

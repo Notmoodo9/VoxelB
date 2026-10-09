@@ -300,6 +300,7 @@ Temperature and humidity are 0..1.
 | `clearing_chance`, `clearing_radius`, `clearing_flower_chance` | treeless clearings: chance per 160×160 cell, radius range, flower share |
 | `ring_chance`, `ring_radius`, `ring_plants` | mushroom rings: chance per 128×128 cell, radius range, blocks |
 | `top_patch` | `block, level`: replaces the top block where the detail noise is above `level` (moss) |
+| `meadow_cell`, `meadow_flowers` | meadow candidate cell size (power of two, default 512); flowers used in meadows instead of `flowers` (bluebell carpets) |
 
 The `bush` list holds the second layer of a biome: bushes, the understorey,
 fallen logs and stumps. Trees and the second layer can reach 20 blocks into

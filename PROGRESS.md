@@ -1,12 +1,55 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 2): 🎨 DESIGN — Forest + old-growth forest: DONE**
-(Windows CI green: run #22)
+**Milestone 10 (part 3): 🎨 DESIGN — Birch grove: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 3: the next temperate biome**. The candidates
-are birch forest, dark forest, meadow and river (`design/BACKLOG.md`). It
-starts with its design interview.
+Next: **Milestone 10, part 4: the next biome**. Candidates are dark
+forest, meadow, river, or the first hot/dry or cold biome
+(`design/BACKLOG.md`). It starts with its design interview.
+
+---
+
+## Milestone 10, part 3 — done (2026-10-09)
+
+### Design interview
+Two rounds plus approval: `design/biomes/birch_grove.md`.
+* Small, bright and airy birch groves (100–300 blocks) inside about one in
+  every few forests.
+* Tall white birches every 6–9 blocks with light yellow-green leaves.
+* A sunlit flowery floor, rare bluebell carpets, mushrooms and fallen
+  birch logs.
+
+### What was built
+* **Biome** `data/biomes/32_birch_grove.biome`: a rare pocket in the
+  forest's climate (low weirdness, priority 1), on ~0.9% of land near the
+  origin.
+* **Three new flowers** (texgen): `lily_of_the_valley`, `bluebell`,
+  `wood_anemone`.
+* **Bluebell carpets** (D60): meadows got a per-biome cell size and flower
+  list (`meadow_cell`, `meadow_flowers`).
+* **Fallen birch logs** (`fallen_birch` in `10_trees.biome`).
+
+### How to see it (seed 20261009)
+* A birch grove from above: `voxelb.exe --pos 640 175 1130 --look 0 -25`.
+* Its floor (bluebells, white flowers, mushrooms):
+  `voxelb.exe --pos 640 150 1088 --look 20 -30`.
+
+### Verified
+* Debug and release headless tests pass.
+* Screenshots:
+  * the grove from above;
+  * the floor with bluebells, white flowers, a red mushroom and a fallen
+    birch log;
+  * bluebell carpets, checked with the carpet chance and radius raised
+    temporarily.
+
+### Performance
+Same as part 2 (columns ~11–13 ms to generate, ~10–11 ms to mesh; ~3–4
+FPS on software GL in forest views).
+
+### Known issues
+* The survey's "nearest meadow" only knows 512-block meadows, so it does
+  not point at bluebell carpets.
 
 ---
 

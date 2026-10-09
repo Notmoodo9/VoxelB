@@ -942,6 +942,7 @@ ENDPROC
 %define DP_HM       12
 %define DP_HM2      16
 %define DP_T        20
+%define DP_SH       28                  ; meadow cell shift
 %define DP_LOCALS   32
 PROC decide_plant, DP_LOCALS, rbx, rsi
     mov [LOCAL(DP_X)], ecx
@@ -1032,14 +1033,20 @@ PROC decide_plant, DP_LOCALS, rbx, rsi
 .no_clearing:
     cmp dword [rbx + BIOME.nflowers], 0
     je .cover
-    ; ---- meadow (one candidate per 512 x 512 cell) ----
+    ; ---- meadow (one candidate per meadow_cell^2, default 512) ----
     xorps xmm0, xmm0
     comiss xmm0, [rbx + BIOME.meadow_ch]
     jae .clusters
-    mov ecx, [LOCAL(DP_X)]
-    sar ecx, MEADOW_SHIFT
+    bsr eax, dword [rbx + BIOME.meadow_cell]
+    mov [LOCAL(DP_SH)], eax
+    mov eax, [LOCAL(DP_SH)]
     mov edx, [LOCAL(DP_Z)]
-    sar edx, MEADOW_SHIFT
+    mov ecx, eax
+    sar edx, cl
+    mov ecx, [LOCAL(DP_X)]
+    xchg eax, ecx
+    sar eax, cl
+    mov ecx, eax
     mov r8d, 0x4D45                     ; "ME"
     xor r9d, r9d
     call hash4
@@ -1047,31 +1054,45 @@ PROC decide_plant, DP_LOCALS, rbx, rsi
     FRAC16 ax
     comiss xmm0, [rbx + BIOME.meadow_ch]
     jae .clusters
-    mov ecx, [LOCAL(DP_X)]
-    sar ecx, MEADOW_SHIFT
+    mov eax, [LOCAL(DP_SH)]
     mov edx, [LOCAL(DP_Z)]
-    sar edx, MEADOW_SHIFT
+    mov ecx, eax
+    sar edx, cl
+    mov ecx, [LOCAL(DP_X)]
+    xchg eax, ecx
+    sar eax, cl
+    mov ecx, eax
     mov r8d, 0x4D5A                     ; "MZ"
     xor r9d, r9d
     call hash4
     mov [LOCAL(DP_HM2)], eax
-    ; centre 64 .. 448 inside the cell
+    ; centre cell/8 .. 7 cell/8 inside the cell
+    mov r8d, [rbx + BIOME.meadow_cell]
     mov eax, [LOCAL(DP_HM)]
     shr eax, 16
     and eax, 0xFF
-    imul eax, eax, 384
+    lea r9d, [r8d * 3]
+    shr r9d, 2                          ; 3/4 cell
+    imul eax, r9d
     shr eax, 8
-    add eax, 64
+    mov r9d, r8d
+    shr r9d, 3
+    add eax, r9d
+    lea r10d, [r8d - 1]
     mov ecx, [LOCAL(DP_X)]
-    and ecx, (1 << MEADOW_SHIFT) - 1
+    and ecx, r10d
     sub ecx, eax                        ; dx
     mov eax, [LOCAL(DP_HM)]
     shr eax, 24
-    imul eax, eax, 384
+    lea r9d, [r8d * 3]
+    shr r9d, 2
+    imul eax, r9d
     shr eax, 8
-    add eax, 64
+    mov r9d, r8d
+    shr r9d, 3
+    add eax, r9d
     mov edx, [LOCAL(DP_Z)]
-    and edx, (1 << MEADOW_SHIFT) - 1
+    and edx, r10d
     sub edx, eax                        ; dz
     imul ecx, ecx
     imul edx, edx
@@ -1124,8 +1145,14 @@ PROC decide_plant, DP_LOCALS, rbx, rsi
     shr eax, 16
 .flower_idx:
     xor edx, edx
+    cmp dword [rbx + BIOME.nmflowers], 0
+    jne .meadow_list
     div dword [rbx + BIOME.nflowers]
     mov eax, [rbx + BIOME.flower + rdx * 4]
+    RETURN
+.meadow_list:
+    div dword [rbx + BIOME.nmflowers]
+    mov eax, [rbx + BIOME.mflower + rdx * 4]
     RETURN
 
 .clusters:

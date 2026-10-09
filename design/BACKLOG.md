@@ -15,7 +15,8 @@ yet; each item gets its own doc in `design/` when we interview it.
 | done | Plains | M10 | `design/biomes/plains.md` |
 | done | Forest | M10 | `design/biomes/forest.md` |
 | done | Old-growth forest (rare pockets in forests) | M10 | `design/biomes/old_growth_forest.md` |
-| todo | Temperate biomes: birch forest, dark forest, meadow, river | M10 | one biome at a time |
+| done | Birch grove (small pockets in forests) | M10 | `design/biomes/birch_grove.md` |
+| todo | Temperate biomes: dark forest, meadow, river | M10 | one biome at a time |
 | todo | Transition biomes (forest edge, desert scrubland, …) | M10 | from the biome system interview |
 | todo | Hot/dry biomes: desert, savanna, badlands/mesa, jungle, swamp | M10 | |
 | todo | Cold biomes: taiga, snowy tundra, ice spikes, glaciers, frozen ocean | M10 | |

@@ -666,3 +666,9 @@ down, 6–10 heavy branches (two logs thick near the trunk) rise from 45–87%
 of the height and end in leaf clusters, and a crown sits on top. Trees now
 reach 20 blocks beyond their trunk, so the heightmap border (HB) grew to 22
 blocks (it must be ≥ reach + 2 for neighbours to agree).
+
+## D60 — Meadow cells and flower lists per biome (M10 part 3)
+The bluebell carpets of birch groves reuse the meadow feature with two new
+biome settings: `meadow_cell` (candidate cell size, power of two, default
+512 as before) and `meadow_flowers` (a separate flower list). Birch groves
+use 128-block cells with only bluebells, so small groves still get carpets.

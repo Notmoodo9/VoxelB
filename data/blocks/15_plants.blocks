@@ -39,3 +39,8 @@ tint     = grass
 [family mushrooms_small]
 templates = plant
 members   = red_mushroom, brown_mushroom
+
+# birch grove flowers (design/biomes/birch_grove.md)
+[family spring_flowers]
+templates = plant
+members   = lily_of_the_valley, bluebell, wood_anemone

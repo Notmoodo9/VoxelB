@@ -134,6 +134,8 @@ k_b_ring_ch:    db "ring_chance", 0
 k_b_ring_r:     db "ring_radius", 0
 k_b_ring:       db "ring_plants", 0
 k_b_patch:      db "top_patch", 0
+k_b_mcell:      db "meadow_cell", 0
+k_b_mflowers:   db "meadow_flowers", 0
 k_t_base_r:     db "base_radius", 0
 k_t_roots:      db "roots", 0
 v_giant:        db "giant", 0
@@ -198,6 +200,8 @@ biome_settings:
     dq k_b_ring_r,    T_RANGE_F,  BIOME.ring_r
     dq k_b_ring,      T_BLOCKLIST, BIOME.nrings
     dq k_b_patch,     T_PATCH,    BIOME.patch
+    dq k_b_mcell,     T_INT,      BIOME.meadow_cell
+    dq k_b_mflowers,  T_BLOCKLIST, BIOME.nmflowers
     dq 0
 tree_settings:
     dq k_t_kind,      T_KIND,     TREE.kind
@@ -478,6 +482,7 @@ biome_defaults:
     mov dword [rdx + BIOME.clear_r + 4], 0x41800000   ; 16
     mov dword [rdx + BIOME.ring_r], 0x40400000        ; 3
     mov dword [rdx + BIOME.ring_r + 4], 0x40A00000    ; 5
+    mov dword [rdx + BIOME.meadow_cell], 512
     ret
 
 ; -----------------------------------------------------------------------------

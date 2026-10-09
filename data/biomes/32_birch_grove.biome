@@ -1,0 +1,38 @@
+# Birch grove (design/biomes/birch_grove.md): small, bright and airy groves
+# of tall white birches inside forests (the forest's climate box, low
+# weirdness, priority 1), with a sunlit flowery floor, rare bluebell
+# carpets, a few mushrooms and fallen birch logs.
+
+[biome birch_grove]
+temperature   = 0.35, 0.70
+humidity      = 0.55, 1.00
+weirdness     = 0.00, 0.21
+priority      = 1
+height        = 98, 220
+grass_color   = 6CC93A
+foliage_color = 7CC83A
+
+plant = short_grass, 0.30
+plant = tall_grass, 0.04
+plant = brown_mushroom, 0.006
+plant = red_mushroom, 0.004
+
+# small spring flowers in clusters
+flowers       = lily_of_the_valley, bluebell, wood_anemone, oxeye_daisy, dandelion
+flower_chance = 0.05
+
+# rare bluebell carpets: one candidate per 128 x 128 cell
+meadow_cell    = 128
+meadow_chance  = 0.35
+meadow_radius  = 8, 16
+meadow_density = 0.7
+meadow_mixed   = 0
+meadow_flowers = bluebell
+
+# a birch every ~6-9 blocks (about 1 per 60 blocks^2), a few small oaks
+tree         = birch, 9
+tree         = small_oak, 1
+tree_density = 0.0167
+
+bush         = fallen_birch, 1
+bush_density = 0.00067

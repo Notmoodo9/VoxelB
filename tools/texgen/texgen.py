@@ -1346,6 +1346,9 @@ FLOWERS = {
     "orange_tulip": ("ff8a24", "c45a10", "tulip"),
     "white_tulip": ("f2f2f0", "c8d0c8", "tulip"),
     "pink_tulip": ("ff8fc0", "d0508a", "tulip"),
+    "lily_of_the_valley": ("fbfbf4", "d8e0c8", "bells"),
+    "bluebell": ("4a6cf0", "2c3fa8", "bells"),
+    "wood_anemone": ("faf6fa", "f0d040", "star"),
 }
 
 
@@ -1388,6 +1391,23 @@ def flower(name, petal, centre, style):
     img = np.zeros((N, N, 4))
     cx = 8
     top = {"ball": 3, "tulip": 6}.get(style, 5)
+    if style == "bells":          # an arching stem with hanging bells
+        for y in range(6, N):
+            img[y, cx, :3] = sp[2]; img[y, cx, 3] = 1.0
+        for x in range(cx, cx + 4):
+            img[5, x, :3] = sp[3]; img[5, x, 3] = 1.0
+        for (lx, ly) in ((6, N - 3), (9, N - 5)):
+            img[ly, lx, :3] = sp[3]; img[ly, lx, 3] = 1.0
+        for i, bx in enumerate((cx + 1, cx + 3, cx + 5, cx - 1)):
+            by = 6 + (i % 2)
+            for dy in range(3):
+                for dx in (-1, 0) if dy else (0,):
+                    xx, yy = bx + dx, by + dy
+                    if 0 <= xx < N:
+                        img[yy, xx, :3] = pp[2 if dy < 2 else 3]
+                        img[yy, xx, 3] = 1.0
+            img[by + 2, bx, :3] = hexrgb(centre); img[by + 2, bx, 3] = 1.0
+        return img
     stem(img, cx, top + 2, sp)
 
     def px(x, y, c):
@@ -1421,6 +1441,10 @@ def flower(name, petal, centre, style):
         for dx in (-1, 0, 1):
             px(cx + dx, cy, cp)
         px(cx, cy - 1, cp)
+    elif style == "star":         # wood anemone: small five-petal star
+        for (dx, dy) in ((0, -2), (-2, -1), (2, -1), (-1, 1), (1, 1), (0, -1), (-1, 0), (1, 0), (0, 1), (-1, -1), (1, -1)):
+            px(cx + dx, cy + dy, pp[2 if abs(dx) + abs(dy) > 1 else 3])
+        px(cx, cy, cp)
     elif style == "ball":         # allium: purple sphere of florets
         for dx in range(-3, 4):
             for dy in range(-3, 3):
