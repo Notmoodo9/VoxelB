@@ -28,9 +28,9 @@
 ;   bmap_build(BMAP*, cx, cz)           blend map of a chunk
 ;   bmap_col(BMAP*, lx, lz)             at chunk-local block (-32..63):
 ;       out: eax biome, xmm0 density 0..1 (fades towards borders),
-;            xmm1 hill factor, xmm2 dune height
+;            xmm1 hill factor, xmm2 dune height, xmm3 plateau height
 ;   bmap_tint(BMAP*, lx, lz)            out: eax grass, edx foliage RGBA8
-;                                       factors (128 = 1.0)
+;                                       factors (64 = 1.0)
 ;   biome_at(x, z) -> rax name          (debug overlay; caches its chunk)
 ;   g_biomes, g_biome_count, g_trees, g_tree_count
 ; =============================================================================
@@ -46,7 +46,7 @@
 %include "biome.inc"
 
 global biomes_load, biome_climate, biome_pick, bmap_build, bmap_col, bmap_tint
-global biome_at, biome_point, biome_dunes
+global biome_at, biome_point, biome_dunes, biome_plateau
 global g_biomes, g_biome_count, g_trees, g_tree_count
 
 extern str_ieq, str_len, str_copy, str_dup, str_parse_float
@@ -91,6 +91,7 @@ n_temp:         db "temperature", 0
 n_humid:        db "humidity", 0
 n_weird:        db "weirdness", 0
 n_dunes:        db "dunes", 0
+n_plateaus:     db "plateaus", 0
 k_ridged:       db "ridged", 0
 k_scale:        db "scale", 0
 k_octaves:      db "octaves", 0
@@ -141,6 +142,9 @@ k_b_mflowers:   db "meadow_flowers", 0
 k_b_dune:       db "dune_height", 0
 k_b_steep:      db "steep_block", 0
 k_b_pslope:     db "pond_slope", 0
+k_b_plateau:    db "plateau_height", 0
+v_acacia:       db "acacia", 0
+v_baobab:       db "baobab", 0
 k_t_chance:     db "chance", 0
 v_cactus:       db "cactus", 0
 v_rock:         db "rock", 0
@@ -217,6 +221,7 @@ biome_settings:
     dq k_b_dune,      T_FLOAT,    BIOME.dune_h
     dq k_b_steep,     T_BLOCK,    BIOME.steep
     dq k_b_pslope,    T_INT,      BIOME.pond_slope
+    dq k_b_plateau,   T_FLOAT,    BIOME.plateau_h
     dq 0
 tree_settings:
     dq k_t_kind,      T_KIND,     TREE.kind
@@ -237,13 +242,16 @@ climate_settings:
     dq 0
 kind_names:     dq v_round, v_branching, v_bush, v_giant, v_fallen, v_stump
                 dq v_cactus, v_rock, v_arch, v_fossil, v_palm, v_conifer
-%define KIND_COUNT 12
+                dq v_acacia, v_baobab
+%define KIND_COUNT 14
 
 align 4
 c_one:          dd 1.0
+c_plateau_thr:  dd 0.22
+c_plateau_ramp: dd 14.0
 c_half:         dd 0.5
 c_zero:         dd 0.0
-c_128:          dd 128.0
+c_64:           dd 64.0
 c_255:          dd 255.0
 c_inv16:        dd 0.0625
 c_inv81:        dd 0.012345679
@@ -264,7 +272,7 @@ section .bss
 alignb 16
 g_biomes:       resb MAX_BIOMES * BIOME_size
 g_trees:        resb MAX_TREES * TREE_size
-g_clim_noise:   resb 4 * NOISE_size     ; temperature, humidity, weirdness, dunes
+g_clim_noise:   resb 5 * NOISE_size     ; temperature, humidity, weirdness, dunes, plateaus
 alignb 4
 g_biome_count:  resd 1
 g_tree_count:   resd 1
@@ -367,7 +375,7 @@ PROC biomes_load, 0, rbx, rsi
     mov dword [rbx + NOISE.ridged], 0
     add rbx, NOISE_size
     inc esi
-    cmp esi, 4
+    cmp esi, 5
     jb .nd
     ; biome 0: none
     lea rcx, [rel g_biomes]
@@ -428,7 +436,7 @@ PROC biomes_load, 0, rbx, rsi
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; color_factor — RGBA8 factor colour / reference per channel (128 = 1.0).
+; color_factor — RGBA8 factor colour / reference per channel (64 = 1.0).
 ;   in:  ecx = colour 0xRRGGBB, edx = reference    out: eax = RGBA8 (A 255)
 ;   clobbers: rax, rcx, rdx, r8-r10, xmm0-xmm1
 ; -----------------------------------------------------------------------------
@@ -454,7 +462,7 @@ color_factor:
 .ref_ok:
     cvtsi2ss xmm1, edx
     divss xmm0, xmm1
-    mulss xmm0, [rel c_128]
+    mulss xmm0, [rel c_64]
     minss xmm0, [rel c_255]
     cvttss2si edx, xmm0
     imul ecx, r8d, 8                    ; RGBA8 in memory: R lowest byte
@@ -701,6 +709,11 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     jnz .noise_rec
     mov r12d, 3
     lea rdx, [rel n_dunes]
+    INVOKE str_ieq, rdi, rdx
+    test eax, eax
+    jnz .noise_rec
+    mov r12d, 4
+    lea rdx, [rel n_plateaus]
     INVOKE str_ieq, rdi, rdx
     test eax, eax
     jz .bad_rec
@@ -1354,6 +1367,7 @@ PROC bmap_col, MAX_BIOMES * 4
     xorps xmm2, xmm2                    ; max weight
     xorps xmm1, xmm1                    ; hill
     xorps xmm4, xmm4                    ; dune height
+    xorps xmm5, xmm5                    ; plateau height
     xor ecx, ecx
     lea r8, [rel g_biomes]
 .b:
@@ -1364,6 +1378,9 @@ PROC bmap_col, MAX_BIOMES * 4
     movss xmm3, xmm0
     mulss xmm3, [r8 + BIOME.dune_h]
     addss xmm4, xmm3
+    movss xmm3, xmm0
+    mulss xmm3, [r8 + BIOME.plateau_h]
+    addss xmm5, xmm3
     comiss xmm0, xmm2
     jbe .next
     movss xmm2, xmm0
@@ -1380,6 +1397,26 @@ PROC bmap_col, MAX_BIOMES * 4
     maxss xmm0, [rel c_zero]
     minss xmm0, [rel c_one]
     movss xmm2, xmm4
+    movss xmm3, xmm5
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; biome_plateau — plateau shape 0..1 at a world point: 0 below the
+; "plateaus" field's threshold, a steep ramp (cliffs) to 1 above it.
+;   in:  xmm0 = x, xmm1 = z (doubles)     out: xmm0
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC biome_plateau, 0
+    movsd xmm2, xmm1
+    movsd xmm1, xmm0
+    lea rcx, [rel g_clim_noise + 4 * NOISE_size]
+    mov edx, [rel g_world_seed]
+    call fbm2
+    subss xmm0, [rel c_plateau_thr]
+    mulss xmm0, [rel c_plateau_ramp]
+    maxss xmm0, [rel c_zero]
+    minss xmm0, [rel c_one]
     RETURN
 ENDPROC
 

@@ -75,7 +75,7 @@ align 4
 c_half:         dd 16.0                 ; section half size
 c_radius:       dd 27.7128129           ; 16 * sqrt(3)
 c_million:      dd 1000000.0
-c_tint_default: dd 0xFF808080           ; factor 1.0
+c_tint_default: dd 0xFF404040           ; factor 1.0
 align 8
 c_wrap_us:      dq 3600000000           ; animation clock wraps hourly
 
@@ -346,7 +346,7 @@ PROC draw_range, 0, rbx, rsi, rdi, r12
     inc qword [rel g_world_draws]
     GL glProgramUniform3fv, rbx, U_ORIGIN_REL, 1, rsi
     GL glProgramUniform1ui, rbx, U_QUAD_BASE, rdi
-    lea r9, [rsi + 12]
+    lea r9, [rsi + 16]                  ; world xyz (after the rel xyz + pad)
     GL glProgramUniform3fv, rbx, U_ORIGIN_WORLD, 1, r9
     imul r8d, r12d, 6
     GL glDrawArrays, GL_TRIANGLES, 0, r8

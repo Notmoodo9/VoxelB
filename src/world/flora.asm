@@ -121,6 +121,7 @@ dirs:           dd 1.0, 0.0,  0.7071, 0.7071,  0.0, 1.0,  -0.7071, 0.7071
 align 8
 special_gen:    dq gen_giant, gen_fallen, gen_stump, gen_cactus, gen_rock
                 dq gen_arch, gen_fossil, gen_palm, gen_conifer
+                dq gen_acacia, gen_baobab
 
 section .text
 
@@ -800,7 +801,7 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     add rax, rcx
     cvttss2si ecx, [rax + TREE.radius + 4]
     add ecx, [rax + TREE.height + 4]
-    lea ecx, [r12d + ecx + 3]
+    lea ecx, [r12d + ecx + 8]           ; (forks, pads and tufts above the trunk)
     mov [rdi + CAND.ytop], ecx
     cmp ecx, [rbx + FCTX.top]
     jle .counted
@@ -2259,7 +2260,11 @@ section .text
 %define SVF_NX      (SVF_ND + MAX_BIOMES * 4)
 %define SVF_NZ      (SVF_NX + MAX_BIOMES * 4)
 %define SVF_S       (SVF_NZ + MAX_BIOMES * 4)
-%define SVF_LOCALS  (SVF_S + TSAMPLE_size)
+%define SVF_QD      (SVF_S + TSAMPLE_size)  ; nearest plateau: d^2, x, z
+%define SVF_QX      (SVF_QD + 4)
+%define SVF_QZ      (SVF_QD + 8)
+%define SVF_QB      (SVF_QD + 12)           ; biome of the current sample
+%define SVF_LOCALS  (SVF_QD + 16)
 %define SVF_GRID    64                  ; samples per side, every 64 blocks
 PROC flora_survey, SVF_LOCALS, rbx, rsi, rdi, r12, r13
     lea rdi, [LOCAL(SVF_COUNTS)]
@@ -2274,6 +2279,7 @@ PROC flora_survey, SVF_LOCALS, rbx, rsi, rdi, r12, r13
     mov dword [LOCAL(SVF_LAND)], 0
     mov dword [LOCAL(SVF_MD)], 0x7FFFFFFF
     mov dword [LOCAL(SVF_PD)], 0x7FFFFFFF
+    mov dword [LOCAL(SVF_QD)], 0x7FFFFFFF
     ; ---- biome shares ----
     xor r12d, r12d
 .gz:
@@ -2293,6 +2299,33 @@ PROC flora_survey, SVF_LOCALS, rbx, rsi, rdi, r12, r13
 .land:
     inc dword [LOCAL(SVF_LAND)]
     inc dword [LOCAL(SVF_COUNTS) + rax * 4]
+    ; nearest plateau top (a biome with plateau_height, plateau mask ~1)
+    mov [LOCAL(SVF_QB)], eax
+    imul rcx, rax, BIOME_size
+    lea rdx, [rel g_biomes]
+    test dword [rdx + rcx + BIOME.plateau_h], 0x7FFFFFFF
+    jz .no_plat
+    mov ecx, [LOCAL(SVF_X)]
+    imul ecx, ecx
+    mov edx, [LOCAL(SVF_Z)]
+    imul edx, edx
+    add ecx, edx
+    cmp ecx, [LOCAL(SVF_QD)]
+    jae .no_plat
+    mov [LOCAL(SVF_GZ)], ecx
+    cvtsi2sd xmm0, dword [LOCAL(SVF_X)]
+    cvtsi2sd xmm1, dword [LOCAL(SVF_Z)]
+    call biome_plateau
+    comiss xmm0, [rel c_sv_plat]
+    jb .no_plat
+    mov ecx, [LOCAL(SVF_GZ)]
+    mov [LOCAL(SVF_QD)], ecx
+    mov ecx, [LOCAL(SVF_X)]
+    mov [LOCAL(SVF_QX)], ecx
+    mov ecx, [LOCAL(SVF_Z)]
+    mov [LOCAL(SVF_QZ)], ecx
+.no_plat:
+    mov eax, [LOCAL(SVF_QB)]
     ; nearest place well inside the biome: the sample to the west matches too
     cmp eax, [LOCAL(SVF_PREV)]
     mov [LOCAL(SVF_PREV)], eax
@@ -2494,6 +2527,13 @@ PROC flora_survey, SVF_LOCALS, rbx, rsi, rdi, r12, r13
     mov r8d, [LOCAL(SVF_PZ)]
     call log_xz
 .no_pond:
+    cmp dword [LOCAL(SVF_QD)], 0x7FFFFFFF
+    je .no_plateau
+    lea rcx, [rel s_sv_plateau]
+    mov edx, [LOCAL(SVF_QX)]
+    mov r8d, [LOCAL(SVF_QZ)]
+    call log_xz
+.no_plateau:
     RETURN
 
 ; sample_biome — biome (no blending) and height at [SVF_X], [SVF_Z]
@@ -2520,6 +2560,8 @@ s_sv_sp:        db " ", 0
 s_sv_near:      db "survey:   nearest place well inside at", 0
 s_sv_meadow:    db "survey: nearest flower meadow centre at", 0
 s_sv_pond:      db "survey: nearest pond centre at", 0
+s_sv_plateau:   db "survey: nearest plateau top at", 0
+c_sv_plat:      dd 0.95
 
 section .text
 ; -----------------------------------------------------------------------------
@@ -3253,3 +3295,371 @@ ENDPROC
 
 section .rdata
 c_tier:         dd 0.8
+
+section .text
+; -----------------------------------------------------------------------------
+; pad — a flat leaf pad: a disc of radius r at y, and a disc of r - 1.3 one
+; layer above.   (rbx = FCTX*, rsi = TREE*, edi = rng)
+;   in:  ecx = x, edx = y, r8d = z, xmm0 = r
+; -----------------------------------------------------------------------------
+%define PD_X        0
+%define PD_Y        4
+%define PD_Z        8
+%define PD_R        12
+%define PD_RI       16
+%define PD_L        20
+%define PD_LOCALS   32
+PROC pad, PD_LOCALS, r12, r13
+    mov [LOCAL(PD_X)], ecx
+    mov [LOCAL(PD_Y)], edx
+    mov [LOCAL(PD_Z)], r8d
+    movss [LOCAL(PD_R)], xmm0
+    mov dword [LOCAL(PD_L)], 0
+.layer:
+    movss xmm0, [LOCAL(PD_R)]
+    addss xmm0, [rel c_half]
+    cvttss2si eax, xmm0
+    mov [LOCAL(PD_RI)], eax
+    mov r12d, eax
+    neg r12d
+.dz:
+    mov r13d, [LOCAL(PD_RI)]
+    neg r13d
+.dx:
+    mov eax, r13d
+    imul eax, eax
+    mov ecx, r12d
+    imul ecx, ecx
+    add eax, ecx
+    cvtsi2ss xmm0, eax
+    movss xmm1, [LOCAL(PD_R)]
+    mulss xmm1, xmm1
+    addss xmm1, [rel c_g_disc]
+    comiss xmm0, xmm1
+    ja .next
+    ; ragged rim
+    movss xmm1, [LOCAL(PD_R)]
+    subss xmm1, [rel c_one]
+    mulss xmm1, xmm1
+    comiss xmm0, xmm1
+    jbe .put
+    call rng
+    comiss xmm0, [rsi + TREE.gaps]
+    jb .next
+.put:
+    mov ecx, [LOCAL(PD_X)]
+    add ecx, r13d
+    mov edx, [LOCAL(PD_Y)]
+    add edx, [LOCAL(PD_L)]
+    mov r8d, [LOCAL(PD_Z)]
+    add r8d, r12d
+    mov r9d, [rsi + TREE.leaves]
+    mov r10d, PUT_LEAVES
+    call put_block
+.next:
+    inc r13d
+    cmp r13d, [LOCAL(PD_RI)]
+    jle .dx
+    inc r12d
+    cmp r12d, [LOCAL(PD_RI)]
+    jle .dz
+    cmp dword [LOCAL(PD_L)], 0
+    jne .done
+    mov dword [LOCAL(PD_L)], 1
+    movss xmm0, [LOCAL(PD_R)]
+    subss xmm0, [rel c_pad_top]
+    movss [LOCAL(PD_R)], xmm0
+    comiss xmm0, [rel c_half]
+    ja .layer
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; gen_acacia — a trunk of `height` that forks into 2 diagonal limbs (2..4
+; blocks each, opposite-ish directions), each ending in a flat leaf pad of
+; `radius`.   (rbx = FCTX*, edi = rng)
+;   in:  ecx = x, edx = y (first air), r8d = z, r9 = TREE*
+; -----------------------------------------------------------------------------
+%define GK_X        0
+%define GK_Y        4
+%define GK_Z        8
+%define GK_H        12
+%define GK_D0       16                  ; first limb direction (0..7)
+%define GK_I        20
+%define GK_PX       24
+%define GK_PY       28
+%define GK_PZ       32
+%define GK_L        36
+%define GK_K        40
+%define GK_DIR      44
+%define GK_LOCALS   48
+PROC gen_acacia, GK_LOCALS, rsi
+    mov rsi, r9
+    mov [LOCAL(GK_X)], ecx
+    mov [LOCAL(GK_Y)], edx
+    mov [LOCAL(GK_Z)], r8d
+    mov ecx, [rsi + TREE.height]
+    mov edx, [rsi + TREE.height + 4]
+    call rand_int
+    mov [LOCAL(GK_H)], eax
+    xor ecx, ecx
+.trunk:
+    cmp ecx, [LOCAL(GK_H)]
+    jge .forks
+    mov [LOCAL(GK_K)], ecx
+    mov edx, [LOCAL(GK_Y)]
+    add edx, ecx
+    mov ecx, [LOCAL(GK_X)]
+    mov r8d, [LOCAL(GK_Z)]
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_LOG
+    call put_block
+    mov ecx, [LOCAL(GK_K)]
+    inc ecx
+    jmp .trunk
+.forks:
+    mov ecx, 0
+    mov edx, 7
+    call rand_int
+    mov [LOCAL(GK_D0)], eax
+    mov dword [LOCAL(GK_I)], 0
+.fork:
+    cmp dword [LOCAL(GK_I)], 2
+    jge .done
+    ; direction: d0, then d0 + 3..5 (roughly opposite)
+    mov eax, [LOCAL(GK_D0)]
+    cmp dword [LOCAL(GK_I)], 0
+    je .have_dir
+    mov ecx, 3
+    mov edx, 5
+    call rand_int
+    add eax, [LOCAL(GK_D0)]
+.have_dir:
+    and eax, 7
+    mov [LOCAL(GK_DIR)], eax
+    mov eax, [LOCAL(GK_X)]
+    mov [LOCAL(GK_PX)], eax
+    mov eax, [LOCAL(GK_Y)]
+    add eax, [LOCAL(GK_H)]
+    dec eax
+    mov [LOCAL(GK_PY)], eax
+    mov eax, [LOCAL(GK_Z)]
+    mov [LOCAL(GK_PZ)], eax
+    mov ecx, 2
+    mov edx, 4
+    call rand_int
+    mov [LOCAL(GK_L)], eax
+.limb:
+    cmp dword [LOCAL(GK_L)], 0
+    jle .pad
+    dec dword [LOCAL(GK_L)]
+    ; step diagonally out and up
+    mov eax, [LOCAL(GK_DIR)]
+    lea rcx, [rel dir_step]
+    movsx edx, byte [rcx + rax * 2]
+    add [LOCAL(GK_PX)], edx
+    movsx edx, byte [rcx + rax * 2 + 1]
+    add [LOCAL(GK_PZ)], edx
+    inc dword [LOCAL(GK_PY)]
+    mov ecx, [LOCAL(GK_PX)]
+    mov edx, [LOCAL(GK_PY)]
+    mov r8d, [LOCAL(GK_PZ)]
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_LOG
+    call put_block
+    jmp .limb
+.pad:
+    call rng
+    movss xmm1, [rsi + TREE.radius + 4]
+    subss xmm1, [rsi + TREE.radius]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.radius]
+    movss xmm0, xmm1
+    mov ecx, [LOCAL(GK_PX)]
+    mov edx, [LOCAL(GK_PY)]
+    inc edx
+    mov r8d, [LOCAL(GK_PZ)]
+    call pad
+    inc dword [LOCAL(GK_I)]
+    jmp .fork
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; gen_baobab — a fat bottle-shaped trunk: radius from base_radius, bulging
+; to 1.15x at 40% of the height and narrowing to 0.6x at the top; then
+; `branches` stubby branches (2..4 blocks, steeply up) with small leaf
+; tufts of `radius`.   (rbx = FCTX*, edi = rng)
+;   in:  ecx = x, edx = y (first air), r8d = z, r9 = TREE*
+; -----------------------------------------------------------------------------
+%define GB_X        0
+%define GB_Y        4
+%define GB_Z        8
+%define GB_H        12
+%define GB_R0       16
+%define GB_R        20
+%define GB_RI       24
+%define GB_YI       28
+%define GB_N        32
+%define GB_PX       36
+%define GB_PY       40
+%define GB_PZ       44
+%define GB_L        48
+%define GB_DIR      52
+%define GB_LOCALS   64
+PROC gen_baobab, GB_LOCALS, rsi, r12, r13
+    mov rsi, r9
+    mov [LOCAL(GB_X)], ecx
+    mov [LOCAL(GB_Y)], edx
+    mov [LOCAL(GB_Z)], r8d
+    mov ecx, [rsi + TREE.height]
+    mov edx, [rsi + TREE.height + 4]
+    call rand_int
+    mov [LOCAL(GB_H)], eax
+    call rng
+    movss xmm1, [rsi + TREE.base_r + 4]
+    subss xmm1, [rsi + TREE.base_r]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.base_r]
+    movss [LOCAL(GB_R0)], xmm1
+    mov dword [LOCAL(GB_YI)], -1
+.disc:
+    mov eax, [LOCAL(GB_YI)]
+    cmp eax, [LOCAL(GB_H)]
+    jge .branches
+    ; t = y / H; f = 1 + 0.15 * sin-ish bulge: 1 + 0.6 t (1 - t) * ... ->
+    ; f = 1 + 0.6 t - 1.0 t^2 (1.0 at 0, ~1.09 at 0.3, 0.6 at 1)
+    xor ecx, ecx
+    test eax, eax
+    cmovs eax, ecx
+    cvtsi2ss xmm0, eax
+    cvtsi2ss xmm1, dword [LOCAL(GB_H)]
+    divss xmm0, xmm1                    ; t
+    movss xmm1, xmm0
+    mulss xmm1, xmm0                    ; t^2
+    mulss xmm0, [rel c_bb_lin]
+    addss xmm0, [rel c_one]
+    subss xmm0, xmm1
+    mulss xmm0, [LOCAL(GB_R0)]
+    movss [LOCAL(GB_R)], xmm0
+    addss xmm0, [rel c_half]
+    cvttss2si eax, xmm0
+    mov [LOCAL(GB_RI)], eax
+    mov r12d, eax
+    neg r12d
+.dz:
+    mov r13d, [LOCAL(GB_RI)]
+    neg r13d
+.dx:
+    mov eax, r13d
+    imul eax, eax
+    mov ecx, r12d
+    imul ecx, ecx
+    add eax, ecx
+    cvtsi2ss xmm0, eax
+    movss xmm1, [LOCAL(GB_R)]
+    mulss xmm1, xmm1
+    addss xmm1, [rel c_g_disc]
+    comiss xmm0, xmm1
+    ja .dx_next
+    mov ecx, [LOCAL(GB_X)]
+    add ecx, r13d
+    mov edx, [LOCAL(GB_Y)]
+    add edx, [LOCAL(GB_YI)]
+    mov r8d, [LOCAL(GB_Z)]
+    add r8d, r12d
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_LOG
+    call put_block
+.dx_next:
+    inc r13d
+    cmp r13d, [LOCAL(GB_RI)]
+    jle .dx
+    inc r12d
+    cmp r12d, [LOCAL(GB_RI)]
+    jle .dz
+    inc dword [LOCAL(GB_YI)]
+    jmp .disc
+.branches:
+    mov ecx, [rsi + TREE.branches]
+    mov edx, [rsi + TREE.branches + 4]
+    call rand_int
+    mov [LOCAL(GB_N)], eax
+.branch:
+    cmp dword [LOCAL(GB_N)], 0
+    jle .done
+    dec dword [LOCAL(GB_N)]
+    mov ecx, 0
+    mov edx, 7
+    call rand_int
+    mov [LOCAL(GB_DIR)], eax
+    ; start at the top rim
+    movss xmm0, [LOCAL(GB_R0)]
+    mulss xmm0, [rel c_bb_top]
+    cvttss2si r8d, xmm0
+    lea rcx, [rel dir_step]
+    movsx edx, byte [rcx + rax * 2]
+    imul edx, r8d
+    add edx, [LOCAL(GB_X)]
+    mov [LOCAL(GB_PX)], edx
+    movsx edx, byte [rcx + rax * 2 + 1]
+    imul edx, r8d
+    add edx, [LOCAL(GB_Z)]
+    mov [LOCAL(GB_PZ)], edx
+    mov eax, [LOCAL(GB_Y)]
+    add eax, [LOCAL(GB_H)]
+    dec eax
+    mov [LOCAL(GB_PY)], eax
+    mov ecx, 2
+    mov edx, 4
+    call rand_int
+    mov [LOCAL(GB_L)], eax
+.step:
+    cmp dword [LOCAL(GB_L)], 0
+    jle .tuft
+    dec dword [LOCAL(GB_L)]
+    inc dword [LOCAL(GB_PY)]
+    ; outward every second step
+    test dword [LOCAL(GB_L)], 1
+    jz .put
+    mov eax, [LOCAL(GB_DIR)]
+    lea rcx, [rel dir_step]
+    movsx edx, byte [rcx + rax * 2]
+    add [LOCAL(GB_PX)], edx
+    movsx edx, byte [rcx + rax * 2 + 1]
+    add [LOCAL(GB_PZ)], edx
+.put:
+    mov ecx, [LOCAL(GB_PX)]
+    mov edx, [LOCAL(GB_PY)]
+    mov r8d, [LOCAL(GB_PZ)]
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_LOG
+    call put_block
+    jmp .step
+.tuft:
+    call rng
+    movss xmm1, [rsi + TREE.radius + 4]
+    subss xmm1, [rsi + TREE.radius]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.radius]
+    movss xmm0, xmm1
+    mov ecx, [LOCAL(GB_PX)]
+    mov edx, [LOCAL(GB_PY)]
+    inc edx
+    mov r8d, [LOCAL(GB_PZ)]
+    movss xmm1, [rel c_bush_down]
+    movss xmm2, [rel c_bush_up]
+    call blob
+    jmp .branch
+.done:
+    RETURN
+ENDPROC
+
+section .rdata
+c_pad_top:      dd 1.3
+c_bb_lin:       dd 0.6
+c_bb_top:       dd 0.6
+; 8 directions as block steps (dx, dz)
+dir_step:       db 1, 0,  1, 1,  0, 1,  -1, 1,  -1, 0,  -1, -1,  0, -1,  1, -1

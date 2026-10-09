@@ -1,12 +1,12 @@
 # Oasis (design/biomes/desert.md): very rare lush pockets inside deserts
-# (the desert's climate, high weirdness, priority 1): flat grass around
+# (the desert's climate, high weirdness, priority 2): flat grass around
 # pools, palm trees, bushes, grass and flowers.
 
 [biome oasis]
 temperature   = 0.62, 1.00
 humidity      = 0.00, 0.42
 weirdness     = 0.88, 1.00
-priority      = 1
+priority      = 2
 height        = 98, 200
 hill_scale    = 0.15
 grass_color   = 5DC93A

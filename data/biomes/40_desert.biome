@@ -5,6 +5,7 @@
 [biome desert]
 temperature   = 0.62, 1.00
 humidity      = 0.00, 0.42
+priority      = 1
 height        = 98, 200
 hill_scale    = 0.3
 dune_height   = 20             # dunes up to this high (dunes noise below)

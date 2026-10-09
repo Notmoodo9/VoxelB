@@ -182,3 +182,32 @@ height = 2, 3
 kind   = fallen
 log    = spruce_log
 height = 4, 7
+
+# --- savanna (design/biomes/savanna.md) ------------------------------------
+#   acacia: trunk of `height` forking into 2 limbs with flat leaf pads of
+#   `radius`
+[tree acacia]
+kind      = acacia
+log       = acacia_log
+leaves    = acacia_leaves
+height    = 4, 6
+radius    = 2.5, 3.5
+leaf_gaps = 0.3
+
+#   baobab: fat bottle trunk (`base_radius`), `branches` stubby branches
+#   with leaf tufts of `radius`
+[tree baobab]
+kind        = baobab
+log         = acacia_log
+leaves      = acacia_leaves
+height      = 10, 16
+base_radius = 1.5, 2.5
+branches    = 5, 8
+radius      = 1.4, 2.0
+leaf_gaps   = 0.3
+
+[tree termite_mound]
+kind   = rock
+log    = termite_mound
+radius = 1.2, 2.0
+height = 3, 6

@@ -1661,6 +1661,19 @@ def make_taiga(out):
     out["berry_bush"] = img
 
 
+def make_savanna(out):
+    # termite mound: packed reddish-brown earth with darker tunnels
+    r = rng("termite_mound")
+    img = speckle("a2603a", r, cells=4, spread=0.2)
+    for _ in range(10):
+        x, y = r.integers(0, N, 2)
+        img[y, x] = hexrgb("5a2e1a")
+        img[(y + 1) % N, x] = hexrgb("6e3a22")
+    for y in range(0, N, 4):
+        img[y] = img[y] * 0.93
+    out["termite_mound"] = rgba(img)
+
+
 def build_all():
     out = {}
     make_terrain(out)
@@ -1675,6 +1688,7 @@ def build_all():
     make_forest(out)
     make_desert(out)
     make_taiga(out)
+    make_savanna(out)
     return out
 
 

@@ -35,3 +35,10 @@ octaves     = 2
 persistence = 0.45
 ridged      = 1
 salt        = 304
+
+# plateaus (savanna `plateau_height`): flat tops where this is above ~0.22
+[noise plateaus]
+scale       = 300
+octaves     = 2
+persistence = 0.4
+salt        = 305

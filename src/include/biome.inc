@@ -23,6 +23,8 @@
 %define TREE_FOSSIL     9               ; a half-buried spine with ribs
 %define TREE_PALM       10              ; leaning curved trunk, drooping fronds
 %define TREE_CONIFER    11              ; tall trunk with tiers of needles to a tip
+%define TREE_ACACIA     12              ; forked trunk with flat leaf pads
+%define TREE_BAOBAB     13              ; fat bottle trunk, stubby branches
 
 ; per-chunk blend map: biome samples every 16 blocks from -64 to +96 around
 ; the chunk, blurred (tent filter, radius 32) into points from -32 to +64
@@ -38,7 +40,7 @@ struc BIOME
     .hill           resd 1              ; float: hill height factor
     .grass          resd 1              ; 0xRRGGBB
     .foliage        resd 1
-    .gfac           resd 1              ; RGBA8 tint factors (128 = 1.0)
+    .gfac           resd 1              ; RGBA8 tint factors (64 = 1.0, up to 4x)
     .ffac           resd 1
     .top            resd 1              ; block id (0 = terrain default)
     .filler         resd 1
@@ -87,6 +89,7 @@ struc BIOME
     .dune_h         resd 1              ; float: dune height (blended)
     .steep          resd 1              ; block on steep slopes (0 = stone)
     .pond_slope     resd 1              ; int: ground height range a pond may cut into
+    .plateau_h      resd 1              ; float: plateau height (blended)
 endstruc
 
 struc TREE
@@ -112,7 +115,7 @@ endstruc
 
 %ifndef BIOME_IMPL
 extern biomes_load, biome_climate, biome_pick, bmap_build, bmap_col, bmap_tint
-extern biome_at, biome_point, biome_dunes
+extern biome_at, biome_point, biome_dunes, biome_plateau
 extern g_biomes, g_biome_count, g_trees, g_tree_count
 %endif
 %endif

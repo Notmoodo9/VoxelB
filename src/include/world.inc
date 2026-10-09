@@ -100,7 +100,7 @@ struc COLUMN
     .vstamp     resw SECTIONS_PER_COLUMN ; visibility walk: frame stamp per section
     .vqueue     resd SECTIONS_PER_COLUMN ; visibility walk: queue slot this frame
     .tint       resd 2 * 64             ; biome colours, 8 x 8 per layer (grass,
-                                        ;  foliage), RGBA8 factors (128 = 1.0); 0 = unset
+                                        ;  foliage), RGBA8 factors (64 = 1.0, up to 4x); 0 = unset
 endstruc
 
 %endif

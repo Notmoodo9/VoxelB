@@ -35,8 +35,8 @@ void main() {
         if (a < 0.5) discard;
     }
 
-    if (v_tint != 0u)   // biome colour as a factor (128 = 1.0)
-        c.rgb *= texture(u_tint, vec3(v_tuv, float(v_tint - 1u))).rgb * 1.9922;
+    if (v_tint != 0u)   // biome colour as a factor (64 = 1.0, so up to 4x)
+        c.rgb *= texture(u_tint, vec3(v_tuv, float(v_tint - 1u))).rgb * 3.984375;
     vec3 color = c.rgb * FACE_LIGHT[v_face];
     if (v_glow != 0u) {
         vec4 g = texture(u_blocks, vec3(v_uv, float(v_glow - 1u)));

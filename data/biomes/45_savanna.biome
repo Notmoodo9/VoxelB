@@ -1,0 +1,26 @@
+# Savanna (design/biomes/savanna.md): hot golden grassland between plains
+# and desert with scattered acacias, termite mounds, rare baobabs and rare
+# flat-topped plateaus with cliff sides.
+
+[biome savanna]
+temperature    = 0.52, 0.85
+humidity       = 0.00, 0.58
+height         = 98, 220
+hill_scale     = 0.4
+plateau_height = 22             # plateaus (plateaus noise) raise the land this much
+steep_block    = coarse_dirt
+grass_color    = D2B55A
+foliage_color  = 8AA040
+
+plant = short_grass, 0.25
+plant = tall_grass, 0.15
+plant = dead_bush, 0.004
+
+# acacias every ~20-30 blocks, rare baobabs (~1 per 150 x 150)
+tree         = acacia, 40
+tree         = baobab, 1
+tree_density = 0.0019
+
+# termite mounds (~1 per 40 x 40)
+bush         = termite_mound, 1
+bush_density = 0.000625

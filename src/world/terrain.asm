@@ -1367,7 +1367,8 @@ underground:
 %define G_POND      (G_FCTX + 16)              ; i16[HM*HM] pond levels
 %define G_TOPF      (G_FCTX + 24)              ; highest flora block
 %define G_DUNE      (G_FCTX + 28)              ; f32 blended dune height
-%define G_LOCALS    (96 + TSAMPLE_size + 64)
+%define G_PLAT      (G_FCTX + 32)              ; f32 blended plateau height
+%define G_LOCALS    (96 + TSAMPLE_size + 80)
 %define CG          (HM / 4 + 1)               ; coarse grid side (every 4 blocks)
 PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [LOCAL(G_COL)], rcx
@@ -1444,8 +1445,9 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov rcx, [LOCAL(G_BMAP)]
     lea edx, [r13d * 4 - HB]
     lea r8d, [r12d * 4 - HB]
-    call bmap_col                       ; xmm1 = hill factor, xmm2 = dune height
+    call bmap_col                       ; xmm1 hill factor, xmm2 dunes, xmm3 plateaus
     movss [LOCAL(G_DUNE)], xmm2
+    movss [LOCAL(G_PLAT)], xmm3
     movss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.height]
     comiss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.base]
     jbe .cg_dunes                       ; (at or below the base: unchanged)
@@ -1474,6 +1476,26 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     addss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.height]
     movss [LOCAL(G_SAMPLE) + TSAMPLE.height], xmm0
 .cg_store:
+    ; plateaus: + plateau shape x blended plateau height (on land)
+    xorps xmm0, xmm0
+    comiss xmm0, [LOCAL(G_PLAT)]
+    jae .cg_put
+    cvtsi2ss xmm0, dword [rel g_beach_high]
+    comiss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.height]
+    jae .cg_put
+    mov eax, [LOCAL(G_CX)]
+    shl eax, 5
+    lea eax, [eax + r13d * 4 - HB]
+    cvtsi2sd xmm0, eax
+    mov eax, [LOCAL(G_CZ)]
+    shl eax, 5
+    lea eax, [eax + r12d * 4 - HB]
+    cvtsi2sd xmm1, eax
+    call biome_plateau
+    mulss xmm0, [LOCAL(G_PLAT)]
+    addss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.height]
+    movss [LOCAL(G_SAMPLE) + TSAMPLE.height], xmm0
+.cg_put:
     imul ecx, r12d, CG
     add ecx, r13d
     mov rdx, [LOCAL(G_CGRID)]

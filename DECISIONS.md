@@ -615,7 +615,7 @@ up a world-space RGBA8 texture: 2 layers (grass, foliage) of 1024×1024
 texels, one per 4×4 blocks, wrapping every 4096 blocks (the loaded world is
 smaller). Each column writes its 8×8 texels when it becomes ready. The
 texture is linearly filtered, so colours blend smoothly with no quad
-format change and no mesh cost. The texel is a factor (128 = ×1.0) relative
+format change and no mesh cost. The texel is a factor (64 = ×1.0, up to ×4 since part 6 — see D63) relative
 to the texture's own colour (`grass_reference`), so the existing vibrant
 textures stay as authored outside biomes.
 
@@ -694,3 +694,28 @@ layered spruce look. The trunk stops 3 below the tip, so the top is
 needles. Snowy taiga is a separate colder biome (temperature 0–0.15) with
 snow as its top block and `spruce_snowy_leaves`. Rocks can take a second
 block for their upper half (mossy cobblestone boulders).
+
+## D63 — Savanna: plateaus, acacias, baobabs, and the tint fix (M10 part 6)
+* Plateaus: a fifth climate field, `plateaus` (scale 300), becomes a mask
+  `clamp((n − 0.22) × 14, 0, 1)`: mostly 0, with a narrow ramp up to 1.
+  The mask × the biome's blended `plateau_height` is added to the coarse
+  height grid on land above the beach. The result is a rare flat top with
+  steep sides, which get the biome's `steep_block`.
+* Two new generator kinds:
+  * `acacia`: a trunk that forks twice plus 2–4 diagonal limbs, each
+    ending in a flat two-layer leaf pad;
+  * `baobab`: stacked discs bulging as f = 1 + 0.6t − t², with stubby
+    branches leaving the rim and small leaf blobs.
+* Desert got priority 1 and oasis priority 2, so the wide savanna box
+  never takes desert land.
+* **Tint fix.** Biome colours had never shown in any biome:
+  * `draw_range` passed the section's world origin from entry offset 12,
+    but entries store it at offset 16 (after a padding dword). The shader
+    got (0, x, y) instead of (x, y, z), so the tint map was sampled in the
+    wrong place. This also skewed animation phases.
+  * The tint factor is now encoded as 64 = ×1.0 (up to ×4) instead of
+    128 = ×1.0. The old encoding capped the factor at ×2, so gold over a
+    green texture could not reach its red value.
+  * Plains, forest, birch grove, oasis, taiga and snowy taiga now show the
+    grass and foliage colours from their design docs.
+* The `--survey` run now also logs the nearest plateau top.

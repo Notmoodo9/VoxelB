@@ -1,11 +1,69 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 5): 🎨 DESIGN — Taiga + snowy taiga: DONE** (Windows CI green: run #28)
+**Milestone 10 (part 6): 🎨 DESIGN — Savanna: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 6: the next biome**. Candidates are savanna,
-badlands, dark forest, meadow, snowy tundra or river
+Next: **Milestone 10, part 7: the next biome**. Candidates are badlands,
+jungle, swamp, dark forest, meadow, snowy tundra or river
 (`design/BACKLOG.md`). It starts with its design interview.
+
+---
+
+## Milestone 10, part 6 — done (2026-10-09)
+
+### Design interview
+Two rounds plus approval: `design/biomes/savanna.md`.
+* Golden dry grassland, mostly flat, with rare flat-topped plateaus.
+* Scattered acacias, earthy termite-mound spires 3–6 tall, and rare huge
+  baobabs.
+
+### What was built
+* **Savanna** (`data/biomes/45_savanna.biome`), on ~9% of land near the
+  origin. It sits between plains and desert.
+* **Plateaus** (D63): a new `plateaus` noise mask and the biome setting
+  `plateau_height`. The tops are flat and the steep sides are coarse dirt.
+* **Generator kinds** `acacia` (forked trunk with flat leaf pads) and
+  `baobab` (bulging bottle trunk with stubby branches).
+* **Termite mounds**: a new `termite_mound` block, placed as `rock` spires.
+* **Survey**: logs the nearest plateau top.
+* **Biome tint fixed (all biomes)** (D63). Biome grass and foliage colours
+  had never reached the screen in any biome:
+  * the world origin passed to the shader was read from the wrong offset;
+  * the tint factor was capped at ×2.
+  * Plains, forests, birch groves, oases and both taigas now show their
+    designed colours.
+
+### How to see it (seed 20261009)
+* Golden savanna with acacias and termite mounds:
+  `voxelb.exe --pos -280 140 -20 --look 250 -15`.
+* From above: `voxelb.exe --pos -300 230 -60 --look 270 -30`.
+* A plateau rising from the savanna:
+  `voxelb.exe --pos -470 150 192 --look 90 -8`.
+* Baobabs are rare (about one per 150×150 blocks). Look around
+  `--pos -280 150 -20`.
+
+### Bugs found and fixed while testing
+* The tint bug above.
+* The first savanna climate box took land from the desert. Fixed by giving
+  the desert priority 1 and the oasis priority 2.
+
+### Verified
+* Debug and release headless tests pass.
+* Screenshots:
+  * golden grass with acacias and termite mounds;
+  * a plateau seen from the side;
+  * baobabs (with their weight raised for the test);
+  * plains, taiga and snowy taiga showing their own colours after the tint
+    fix.
+
+### Known issues
+* Plateau sides are steep ramps rather than sheer cliffs.
+* Grass plants are a darker, olive gold than the grass blocks, because
+  their textures are darker.
+
+### Performance
+Unchanged: generation ~10–11 ms per column, meshing ~9 ms; 3–5 FPS on
+software GL in savanna views (~320–560k quads drawn).
 
 ---
 
