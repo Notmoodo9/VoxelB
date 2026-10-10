@@ -68,3 +68,7 @@ textures = side: dead_wood, end: dead_wood_top
 
 # glowing forest (design/biomes/glowing_forest.md): luminous moss
 [block glow_moss]
+
+# mushroom fields (design/biomes/mushroom_fields.md): fungal ground
+[block mycelium]
+textures = top: mycelium_top, side: mycelium_side, bottom: dirt

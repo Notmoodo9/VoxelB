@@ -1622,6 +1622,32 @@ def make_sky_islands(out):
     out["hanging_roots"] = img
 
 
+def make_mushroom_fields(out):
+    # mycelium: purple-grey fungal mat with pink spore specks
+    r = rng("mycelium")
+    mp = ramp("8a7a8e", 6, spread=0.16, hue_shift=0.01)
+    v = 0.55 * noise(r, 4, 3) + 0.45 * r.random((N, N))
+    top = shade(stretch(v) * 0.999, mp)
+    specks = r.random((N, N)) < 0.07
+    top[specks] = hexrgb("f0a0d0")
+    out["mycelium_top"] = rgba(top)
+    dirt = out["dirt"]
+    dirt = dirt[0] if isinstance(dirt, list) else dirt
+    out["mycelium_side"] = rgba(fringe_side(dirt[..., :3], top, rng("mycelium_side"), (2, 4)))
+    # puffball: round white puffballs on short stalks (plant sprite)
+    img = np.zeros((N, N, 4))
+    wp = ramp("ece8e0", 4, spread=0.1)
+    yy, xx = np.mgrid[0:N, 0:N]
+    for (cx, cy, rr) in ((5.5, 11.5, 3.2), (10.5, 12.5, 2.6), (8.5, 7.5, 2.0)):
+        d = np.sqrt((xx - cx) ** 2 + (yy - cy) ** 2)
+        m = d < rr
+        img[m, :3] = np.array(wp[2])[None, :] * 1.0
+        img[m & (yy < cy - rr * 0.3), :3] = wp[3]
+        img[m & (yy > cy + rr * 0.4), :3] = wp[1]
+        img[m, 3] = 1.0
+    out["puffball"] = img
+
+
 def ladder_design(name, base):
     pal = ramp(base, 5, spread=0.15)
     img = np.zeros((N, N, 3)) + pal[1]
@@ -2139,6 +2165,7 @@ def build_all():
     make_dark_forest(out)
     make_glowing_forest(out)
     make_sky_islands(out)
+    make_mushroom_fields(out)
     return out
 
 

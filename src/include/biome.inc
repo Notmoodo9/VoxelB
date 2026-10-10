@@ -30,6 +30,7 @@
 %define TREE_STONE_RING 16              ; standing stones evenly on a ring
 %define TREE_CYPRESS    17              ; flared trunk, flat layered crowns, knees
 %define TREE_GNARLED    18              ; twisting leaning trunk, crooked branches
+%define TREE_MUSHROOM   19              ; stem with a dome or flat cap (giant mushrooms)
 
 ; per-chunk blend map: biome samples every 16 blocks from -64 to +96 around
 ; the chunk, blurred (tent filter, radius 32) into points from -32 to +64
@@ -152,6 +153,7 @@ struc TREE
     .pod_ch         resd 1
     .vine_len       resd 2              ; int length range of vines and strands
     .lean           resd 1              ; float: blocks east per block of height (wind)
+    .under          resd 1              ; block under a mushroom cap (gills), 0 = none
 endstruc
 
 struc BMAP

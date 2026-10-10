@@ -891,3 +891,20 @@ block for their upper half (mossy cobblestone boulders).
   the column's biome rules; root strands use `island_roots`.
 * Island ores use an inline position hash in the fill, from the biome's
   `island_ore` list.
+
+## D72 — Mushroom fields: islands lifted out of the sea (M10 part 15)
+* Ocean columns had no biome. The mushroom fields biome takes only
+  ocean-floor heights (≤ 86) in the rarity field (0.66–1.00, any
+  climate) and lifts its land with `flatten = 110, 0.9`. The blended
+  weight fades at the pocket's edge, so the lift becomes a natural
+  shoreline with ordinary beach sand.
+* Pockets must be large to beat the surrounding "none" (ocean) weight in
+  the 32-block blend. At rarity 0.80+ and depth ≤ 78 they vanished, so
+  the range was widened.
+* `mushroom` kind:
+  * a stem of discs;
+  * a cap blob (dome: down 0.15, up 0.75; flat: up 0.25);
+  * a gills disc (radius − 1) under the cap;
+  * shelf fungi on the stem (trunk_deco).
+* The survey logs the nearest "island lifted from the sea": an ocean
+  sample whose biome flattens well above sea level (+6).

@@ -122,7 +122,7 @@ align 8
 special_gen:    dq gen_giant, gen_fallen, gen_stump, gen_cactus, gen_rock
                 dq gen_arch, gen_fossil, gen_palm, gen_conifer
                 dq gen_acacia, gen_baobab, gen_kapok, gen_grove, gen_stone_ring
-                dq gen_cypress, gen_gnarled
+                dq gen_cypress, gen_gnarled, gen_mushroom
 
 section .text
 
@@ -2478,6 +2478,7 @@ PROC flora_survey, SVF_LOCALS, rbx, rsi, rdi, r12, r13
     mov dword [LOCAL(SVF_MD)], 0x7FFFFFFF
     mov dword [LOCAL(SVF_PD)], 0x7FFFFFFF
     mov dword [LOCAL(SVF_QD)], 0x7FFFFFFF
+    mov dword [rel g_sv_rise_d], 0x7FFFFFFF
     ; ---- biome shares ----
     xor r12d, r12d
 .gz:
@@ -2493,6 +2494,30 @@ PROC flora_survey, SVF_LOCALS, rbx, rsi, rdi, r12, r13
     cmp edx, [rel g_sea_level]
     jg .land
     mov dword [LOCAL(SVF_PREV)], -1
+    ; a biome that lifts the sea floor into an island (mushroom fields)?
+    imul rcx, rax, BIOME_size
+    lea rdx, [rel g_biomes]
+    add rcx, rdx
+    movss xmm0, [rcx + BIOME.flatten + 4]
+    comiss xmm0, [rel c_half]
+    jbe .gnext
+    mov edx, [rel g_sea_level]
+    add edx, 6                          ; (well above the sea: not swamps)
+    cvtsi2ss xmm0, edx
+    comiss xmm0, [rcx + BIOME.flatten]
+    jae .gnext
+    mov ecx, [LOCAL(SVF_X)]
+    imul ecx, ecx
+    mov edx, [LOCAL(SVF_Z)]
+    imul edx, edx
+    add ecx, edx
+    cmp ecx, [rel g_sv_rise_d]
+    jae .gnext
+    mov [rel g_sv_rise_d], ecx
+    mov ecx, [LOCAL(SVF_X)]
+    mov [rel g_sv_rise_x], ecx
+    mov ecx, [LOCAL(SVF_Z)]
+    mov [rel g_sv_rise_z], ecx
     jmp .gnext
 .land:
     inc dword [LOCAL(SVF_LAND)]
@@ -2798,6 +2823,13 @@ PROC flora_survey, SVF_LOCALS, rbx, rsi, rdi, r12, r13
     mov r8d, [LOCAL(SVF_QZ)]
     call log_xz
 .no_isle:
+    cmp dword [rel g_sv_rise_d], 0x7FFFFFFF
+    je .no_rise
+    lea rcx, [rel s_sv_rise]
+    mov edx, [rel g_sv_rise_x]
+    mov r8d, [rel g_sv_rise_z]
+    call log_xz
+.no_rise:
     RETURN
 
 ; sample_biome — biome (no blending) and height at [SVF_X], [SVF_Z]
@@ -2826,6 +2858,13 @@ s_sv_meadow:    db "survey: nearest flower meadow centre at", 0
 s_sv_pond:      db "survey: nearest pond centre at", 0
 s_sv_plateau:   db "survey: nearest plateau top at", 0
 s_sv_isle:      db "survey: nearest floating island at", 0
+s_sv_rise:      db "survey: nearest island lifted from the sea (mushroom fields) at", 0
+section .bss
+alignb 4
+g_sv_rise_d:    resd 1
+g_sv_rise_x:    resd 1
+g_sv_rise_z:    resd 1
+section .rdata
 c_sv_plat:      dd 0.95
 
 section .text
@@ -5696,3 +5735,164 @@ c_isle_rmax:    dd 25.0
 c_isle_wob:     dd 0.15                 ; rim wobble with the detail noise
 c_isle_dome:    dd 2.5                  ; top dome height
 c_isle_depth:   dd 0.9                  ; cone depth / radius
+
+section .text
+; -----------------------------------------------------------------------------
+; gen_mushroom — a giant mushroom (design/biomes/mushroom_fields.md): a stem
+; (TREE.log) of radius TREE.base_r, TREE.height tall, with a cap
+; (TREE.leaves) of TREE.radius: a dome when TREE.chance >= 0.5, else a flat
+; wide disc; a ring of TREE.under (gills) beneath the cap; shelf fungi on
+; the stem via TREE.fungus.
+;   in:  rbx = FCTX*, edi = rng state, ecx = x, edx = y, r8d = z, r9 = TREE*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define GM_X        0
+%define GM_Y        4
+%define GM_Z        8
+%define GM_H        12
+%define GM_R2       16                  ; f32 stem r^2
+%define GM_RI       20
+%define GM_CR       24                  ; f32 cap radius
+%define GM_YI       28
+%define GM_SR2      32                  ; f32 stem r^2 (kept for the fungi)
+%define GM_LOCALS   48
+PROC gen_mushroom, GM_LOCALS, rsi, r12, r13
+    mov rsi, r9
+    mov [LOCAL(GM_X)], ecx
+    mov [LOCAL(GM_Y)], edx
+    mov [LOCAL(GM_Z)], r8d
+    mov ecx, [rsi + TREE.height]
+    mov edx, [rsi + TREE.height + 4]
+    call rand_int
+    mov [LOCAL(GM_H)], eax
+    call rng
+    movss xmm1, [rsi + TREE.base_r + 4]
+    subss xmm1, [rsi + TREE.base_r]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.base_r]
+    mulss xmm1, xmm1
+    addss xmm1, [rel c_g_disc]
+    movss [LOCAL(GM_R2)], xmm1
+    movss [LOCAL(GM_SR2)], xmm1
+    sqrtss xmm1, xmm1
+    cvttss2si eax, xmm1
+    mov [LOCAL(GM_RI)], eax
+    call rng
+    movss xmm1, [rsi + TREE.radius + 4]
+    subss xmm1, [rsi + TREE.radius]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.radius]
+    movss [LOCAL(GM_CR)], xmm1
+    ; ---- stem ----
+    mov dword [LOCAL(GM_YI)], -1
+.disc:
+    mov r13d, [LOCAL(GM_RI)]
+    neg r13d
+.dz:
+    mov r12d, [LOCAL(GM_RI)]
+    neg r12d
+.dx:
+    mov eax, r12d
+    imul eax, eax
+    mov ecx, r13d
+    imul ecx, ecx
+    add eax, ecx
+    cvtsi2ss xmm0, eax
+    comiss xmm0, [LOCAL(GM_R2)]
+    ja .dn
+    mov ecx, [LOCAL(GM_X)]
+    add ecx, r12d
+    mov edx, [LOCAL(GM_Y)]
+    add edx, [LOCAL(GM_YI)]
+    mov r8d, [LOCAL(GM_Z)]
+    add r8d, r13d
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_LOG
+    call put_block
+.dn:
+    inc r12d
+    cmp r12d, [LOCAL(GM_RI)]
+    jle .dx
+    inc r13d
+    cmp r13d, [LOCAL(GM_RI)]
+    jle .dz
+    inc dword [LOCAL(GM_YI)]
+    mov eax, [LOCAL(GM_YI)]
+    cmp eax, [LOCAL(GM_H)]
+    jl .disc
+    ; ---- cap: a dome or a flat disc on top of the stem ----
+    mov ecx, [LOCAL(GM_X)]
+    mov edx, [LOCAL(GM_Y)]
+    add edx, [LOCAL(GM_H)]
+    mov r8d, [LOCAL(GM_Z)]
+    movss xmm0, [LOCAL(GM_CR)]
+    movss xmm1, [rel c_mu_dn]
+    movss xmm2, [rel c_mu_flat]
+    movss xmm3, [rsi + TREE.chance]
+    comiss xmm3, [rel c_half]
+    jb .flat
+    movss xmm2, [rel c_mu_dome]
+.flat:
+    call blob
+    ; ---- gills: a disc of radius cap - 1 just under the cap ----
+    cmp dword [rsi + TREE.under], 0
+    je .fungi
+    movss xmm0, [LOCAL(GM_CR)]
+    subss xmm0, [rel c_one]
+    mulss xmm0, xmm0
+    movss [LOCAL(GM_R2)], xmm0
+    sqrtss xmm0, xmm0
+    cvttss2si eax, xmm0
+    mov [LOCAL(GM_RI)], eax
+    mov r13d, eax
+    neg r13d
+.gz:
+    mov r12d, [LOCAL(GM_RI)]
+    neg r12d
+.gx:
+    mov eax, r12d
+    imul eax, eax
+    mov ecx, r13d
+    imul ecx, ecx
+    add eax, ecx
+    cvtsi2ss xmm0, eax
+    comiss xmm0, [LOCAL(GM_R2)]
+    ja .gn
+    mov ecx, [LOCAL(GM_X)]
+    add ecx, r12d
+    mov edx, [LOCAL(GM_Y)]
+    add edx, [LOCAL(GM_H)]
+    dec edx
+    mov r8d, [LOCAL(GM_Z)]
+    add r8d, r13d
+    mov r9d, [rsi + TREE.under]
+    mov r10d, PUT_LEAVES
+    call put_block
+.gn:
+    inc r12d
+    cmp r12d, [LOCAL(GM_RI)]
+    jle .gx
+    inc r13d
+    cmp r13d, [LOCAL(GM_RI)]
+    jle .gz
+.fungi:
+    ; ---- shelf fungi on the stem ----
+    cmp dword [rsi + TREE.fungus], 0
+    je .done
+    mov ecx, [LOCAL(GM_X)]
+    mov edx, [LOCAL(GM_Y)]
+    mov r8d, [LOCAL(GM_Z)]
+    mov r9d, [LOCAL(GM_H)]
+    sub r9d, 2
+    add r9d, edx
+    movss xmm0, [LOCAL(GM_SR2)]
+    call trunk_deco
+.done:
+    RETURN
+ENDPROC
+
+section .rdata
+align 4
+c_mu_dn:        dd 0.15                 ; mushroom caps: below the centre,
+c_mu_flat:      dd 0.25                 ;   above (flat),
+c_mu_dome:      dd 0.75                 ;   above (dome)

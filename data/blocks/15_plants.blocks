@@ -131,3 +131,9 @@ shape    = plant
 textures = hanging_roots
 render   = cutout
 sway     = 1
+
+# mushroom fields (design/biomes/mushroom_fields.md)
+[block puffball]
+shape    = plant
+textures = puffball
+render   = cutout

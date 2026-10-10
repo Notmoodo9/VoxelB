@@ -1,11 +1,60 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 14): 🎨 DESIGN — Sky islands: DONE** (Windows CI green: run #46)
+**Milestone 10 (part 15): 🎨 DESIGN — Mushroom fields: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 15: the next biome**. Candidates are mushroom
-fields, crystal caves, ice spikes, meadow, river (`design/BACKLOG.md`). It
-starts with its design interview.
+Next: **Milestone 10, part 16: the next biome**. Candidates are crystal
+caves (the first underground biome), ice spikes, meadow, river, glaciers,
+frozen ocean (`design/BACKLOG.md`). It starts with its design interview.
+
+---
+
+## Milestone 10, part 15 — done (2026-10-11)
+
+### Design interview
+Two rounds plus approval: `design/biomes/mushroom_fields.md`.
+* Rare islands in the ocean, with purple-grey mycelium and pink specks.
+* Giant red domes, flat brown caps, glowing blue ones, rare colossal ones.
+* Shelf fungi and puffballs; spore haze later.
+
+### What was built
+* **Mushroom fields** (`data/biomes/60_mushroom_fields.biome`): ocean-floor
+  pockets of the rarity field, lifted into islands with beaches (D72).
+* **New kind** `mushroom`: a stem, a dome or flat cap, gills underneath,
+  shelf fungi. New tree setting `underside`.
+* **Trees** (data): red, brown and glowing giants; colossal red and brown
+  (15–25 tall, caps up to 10 radius).
+* **New blocks** (texgen): `mycelium`, `puffball`.
+* **Survey**: logs the nearest island lifted from the sea.
+
+### How to see it (seed 20261009)
+* From above: `voxelb.exe --pos 192 320 256 --look 0 -89`.
+* Among the mushrooms: `voxelb.exe --pos 230 125 300 --look 220 -8`.
+
+### Bugs found and fixed while testing
+* The survey's lifted-island test also matched the swamp (it flattens
+  just above the sea). It now needs a level 6+ above the sea.
+* The first, rarer placement made pockets too small to survive the biome
+  blend: no islands appeared. Widened to rarity 0.66 and depth ≤ 86.
+
+### Verified
+* Debug and release headless tests pass. The debug build ran on the island
+  with no asserts.
+* Screenshots: the island from above (beach ring, mycelium, all three
+  mushroom kinds) and among the mushrooms (incl. a colossal brown one).
+
+### Known issues
+* The nearest island sits close to the coast, not far out at sea, because
+  ocean near land is also deep enough.
+* The `--survey` land shares do not count it: it is ocean-floor terrain
+  before the lift.
+
+### Deferred
+* Spore haze (BACKLOG, particles).
+
+### Performance
+Unchanged: generation ~13 ms per column, meshing ~10 ms; 2.1 FPS over the
+island on software GL.
 
 ---
 

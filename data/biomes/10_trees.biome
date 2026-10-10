@@ -437,3 +437,66 @@ kind   = rock
 log    = blue_crystal
 radius = 0.6, 1.1
 height = 1, 3
+
+# --- mushroom fields (design/biomes/mushroom_fields.md) ----------------------
+#   mushroom: a stem (`log`) of `base_radius`, `height` tall, a cap
+#   (`leaves`) of `radius`: a dome when `chance` >= 0.5, else flat;
+#   `underside` = the gills ring under the cap
+[tree giant_red_mushroom]
+kind        = mushroom
+log         = red_mushroom_stem
+leaves      = red_mushroom_cap
+underside   = red_mushroom_gills
+height      = 6, 12
+base_radius = 0.5, 0.5
+radius      = 3.0, 5.0
+chance      = 1
+leaf_gaps   = 0
+fungus      = shelf_fungus, 0.15
+
+[tree giant_brown_mushroom]
+kind        = mushroom
+log         = brown_mushroom_stem
+leaves      = brown_mushroom_cap
+underside   = brown_mushroom_gills
+height      = 6, 10
+base_radius = 0.5, 0.5
+radius      = 4.0, 7.0
+chance      = 0
+leaf_gaps   = 0
+fungus      = shelf_fungus, 0.15
+
+[tree giant_glowing_mushroom]
+kind        = mushroom
+log         = glowing_mushroom_stem
+leaves      = glowing_mushroom_cap
+underside   = glowing_mushroom_gills
+height      = 5, 9
+base_radius = 0.5, 0.5
+radius      = 3.0, 4.0
+chance      = 1
+leaf_gaps   = 0
+
+[tree colossal_red_mushroom]
+kind        = mushroom
+log         = red_mushroom_stem
+leaves      = red_mushroom_cap
+underside   = red_mushroom_gills
+height      = 15, 25
+base_radius = 1.0, 1.5
+radius      = 7.0, 9.5
+chance      = 1
+leaf_gaps   = 0
+fungus      = shelf_fungus, 0.35
+
+[tree colossal_brown_mushroom]
+kind        = mushroom
+log         = brown_mushroom_stem
+leaves      = brown_mushroom_cap
+underside   = brown_mushroom_gills
+height      = 15, 22
+base_radius = 1.0, 1.5
+radius      = 8.0, 10.0
+chance      = 0
+leaf_gaps   = 0
+fungus      = shelf_fungus, 0.35

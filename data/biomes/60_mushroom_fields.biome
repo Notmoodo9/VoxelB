@@ -1,0 +1,23 @@
+# Mushroom fields (design/biomes/mushroom_fields.md): rare islands far out
+# in the ocean, lifted from the sea floor (flatten), carpeted in
+# purple-grey mycelium with giant red, brown and glowing mushrooms, rare
+# colossal ones, shelf fungi, puffballs and small mushrooms.
+
+[biome mushroom_fields]
+height        = -300, 86         # only over the ocean floor,
+rarity        = 0.66, 1.00       #   in rare pockets of any climate
+priority      = 3
+flatten       = 110, 0.9         # lifted out of the sea into an island
+top_block     = mycelium
+
+plant = puffball, 0.02
+plant = red_mushroom, 0.03
+plant = brown_mushroom, 0.03
+
+# giant mushrooms ~one per 9 x 9 blocks; colossal ones very rare
+tree         = giant_red_mushroom, 10
+tree         = giant_brown_mushroom, 10
+tree         = giant_glowing_mushroom, 3
+tree         = colossal_red_mushroom, 0.6
+tree         = colossal_brown_mushroom, 0.6
+tree_density = 0.012
