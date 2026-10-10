@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 8): 🎨 DESIGN — Snowy tundra: DONE** (Windows CI: see below)
+**Milestone 10 (part 8): 🎨 DESIGN — Snowy tundra: DONE** (Windows CI green: run #34)
 
 Next: **Milestone 10, part 9: the next biome**. Candidates are badlands,
 swamp, dark forest, meadow, river, ice spikes (`design/BACKLOG.md`). It
