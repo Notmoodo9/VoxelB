@@ -1,0 +1,28 @@
+# Ice spikes (design/biomes/ice_spikes.md): rare pockets in the snowy
+# tundra with a forest of ice spires (packed ice with blue-ice cores and
+# tips): many short, scattered tall, rare giants; snow with packed-ice
+# patches and frozen ponds.
+
+[biome ice_spikes]
+temperature = 0.00, 0.38         # the snowy tundra's climate,
+humidity    = 0.00, 0.42
+rarity      = 0.72, 1.00         #   in rare pockets
+priority    = 2
+height      = 98, 150
+hill_scale  = 0.3
+top_block   = snow
+top_patch   = packed_ice, 0.35
+
+plant = dwarf_shrub, 0.006
+
+# a spike every ~10-15 blocks
+tree         = small_ice_spike, 12
+tree         = tall_ice_spike, 4
+tree         = giant_ice_spike, 0.6
+tree_density = 0.0065
+
+pond_chance = 0.3
+pond_radius = 1.5, 3.5
+pond_depth  = 2
+pond_floor  = gravel
+pond_top    = ice

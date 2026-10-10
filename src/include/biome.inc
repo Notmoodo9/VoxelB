@@ -31,6 +31,7 @@
 %define TREE_CYPRESS    17              ; flared trunk, flat layered crowns, knees
 %define TREE_GNARLED    18              ; twisting leaning trunk, crooked branches
 %define TREE_MUSHROOM   19              ; stem with a dome or flat cap (giant mushrooms)
+%define TREE_SPIKE      20              ; a tapering spire with a core (ice spikes)
 
 ; per-chunk blend map: biome samples every 16 blocks from -64 to +96 around
 ; the chunk, blurred (tent filter, radius 32) into points from -32 to +64

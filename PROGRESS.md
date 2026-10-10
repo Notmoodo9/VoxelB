@@ -1,11 +1,45 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 15): 🎨 DESIGN — Mushroom fields: DONE** (Windows CI green: run #48)
+**Milestone 10 (part 16): 🎨 DESIGN — Ice spikes: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 16: the next biome**. Candidates are crystal
-caves (the first underground biome), ice spikes, meadow, river, glaciers,
-frozen ocean (`design/BACKLOG.md`). It starts with its design interview.
+Next: **Milestone 10, part 17: the next biome**. Candidates are crystal
+caves (underground), glaciers, frozen ocean, meadow, river
+(`design/BACKLOG.md`). It starts with its design interview.
+
+---
+
+## Milestone 10, part 16 — done (2026-10-11)
+
+### Design interview
+Two rounds plus approval: `design/biomes/ice_spikes.md`.
+* Rare tundra pockets with a mixed forest of ice spires.
+* Packed ice with blue-ice cores and tips.
+* Snow with packed-ice patches and frozen ponds.
+
+### What was built
+* **Ice spikes** (`data/biomes/53_ice_spikes.biome`), ~1.1% of land near
+  the origin (tundra climate, rarity 0.72–1.00).
+* **New kind** `spike` (D73): a tapering spire with a core block.
+* **Trees** (data): small (4–10), tall (15–30) and giant (35–50) ice
+  spikes.
+* **New block** `blue_ice` (texgen).
+
+### How to see it (seed 20261009)
+* Among the spires: `voxelb.exe --pos -400 120 -600 --look 0 12`.
+* Over the pocket: `voxelb.exe --pos -384 170 -560 --look 0 -12`.
+
+### Verified
+* Debug and release headless tests pass. The debug build ran among the
+  spikes with no asserts.
+* Screenshots: the spike forest close up, over the pocket and from above.
+
+### Known issues
+* The top 30% of the tall spikes is a single-block blue needle. It reads
+  well, but it is thin.
+
+### Performance
+Unchanged: generation ~13 ms per column, meshing ~10 ms.
 
 ---
 

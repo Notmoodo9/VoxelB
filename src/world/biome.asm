@@ -175,6 +175,7 @@ v_stone_ring:   db "stone_ring", 0
 v_cypress:      db "cypress", 0
 v_gnarled:      db "gnarled", 0
 v_mushroom:     db "mushroom", 0
+v_spike:        db "spike", 0
 k_t_under:      db "underside", 0
 k_t_lean:       db "lean", 0
 k_b_dry:        db "dry_ponds", 0
@@ -308,8 +309,8 @@ climate_settings:
 kind_names:     dq v_round, v_branching, v_bush, v_giant, v_fallen, v_stump
                 dq v_cactus, v_rock, v_arch, v_fossil, v_palm, v_conifer
                 dq v_acacia, v_baobab, v_kapok, v_grove, v_stone_ring
-                dq v_cypress, v_gnarled, v_mushroom
-%define KIND_COUNT 20
+                dq v_cypress, v_gnarled, v_mushroom, v_spike
+%define KIND_COUNT 21
 
 align 4
 c_one:          dd 1.0

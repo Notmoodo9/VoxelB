@@ -122,7 +122,7 @@ align 8
 special_gen:    dq gen_giant, gen_fallen, gen_stump, gen_cactus, gen_rock
                 dq gen_arch, gen_fossil, gen_palm, gen_conifer
                 dq gen_acacia, gen_baobab, gen_kapok, gen_grove, gen_stone_ring
-                dq gen_cypress, gen_gnarled, gen_mushroom
+                dq gen_cypress, gen_gnarled, gen_mushroom, gen_spike
 
 section .text
 
@@ -5896,3 +5896,118 @@ align 4
 c_mu_dn:        dd 0.15                 ; mushroom caps: below the centre,
 c_mu_flat:      dd 0.25                 ;   above (flat),
 c_mu_dome:      dd 0.75                 ;   above (dome)
+
+section .text
+; -----------------------------------------------------------------------------
+; gen_spike — an ice spire (design/biomes/ice_spikes.md): discs whose radius
+; falls from TREE.radius at the base to a point at TREE.height, as
+; (1 - t)^1.3; the centre column and the top 30% are TREE.leaves (the
+; core), the rest TREE.log; the base sinks 2 blocks into the ground.
+;   in:  rbx = FCTX*, edi = rng state, ecx = x, edx = y, r8d = z, r9 = TREE*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define GP2_X       0
+%define GP2_Y       4
+%define GP2_Z       8
+%define GP2_H       12
+%define GP2_R0      16                  ; f32 base radius
+%define GP2_YI      20
+%define GP2_R2      24
+%define GP2_RI      28
+%define GP2_LOCALS  32
+PROC gen_spike, GP2_LOCALS, rsi, r12, r13
+    mov rsi, r9
+    mov [LOCAL(GP2_X)], ecx
+    mov [LOCAL(GP2_Y)], edx
+    mov [LOCAL(GP2_Z)], r8d
+    mov ecx, [rsi + TREE.height]
+    mov edx, [rsi + TREE.height + 4]
+    call rand_int
+    mov [LOCAL(GP2_H)], eax
+    call rng
+    movss xmm1, [rsi + TREE.radius + 4]
+    subss xmm1, [rsi + TREE.radius]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.radius]
+    movss [LOCAL(GP2_R0)], xmm1
+    mov dword [LOCAL(GP2_YI)], -2
+.disc:
+    ; r = R0 (1 - t)^1.3, t = y / H (y < 0: the base radius)
+    mov eax, [LOCAL(GP2_YI)]
+    xor ecx, ecx
+    test eax, eax
+    cmovs eax, ecx
+    cvtsi2ss xmm0, eax
+    cvtsi2ss xmm1, dword [LOCAL(GP2_H)]
+    divss xmm0, xmm1
+    movss xmm1, [rel c_one]
+    subss xmm1, xmm0                    ; 1 - t
+    maxss xmm1, [rel c_zero]
+    sqrtss xmm2, xmm1
+    sqrtss xmm2, xmm2                   ; (1 - t)^0.25
+    sqrtss xmm3, xmm2                   ; (1 - t)^0.125
+    mulss xmm2, xmm3                    ; ^0.375 ~ 0.3 extra
+    mulss xmm1, xmm2                    ; ~ (1 - t)^1.3
+    mulss xmm1, [LOCAL(GP2_R0)]
+    mulss xmm1, xmm1
+    addss xmm1, [rel c_spk_slack]
+    movss [LOCAL(GP2_R2)], xmm1
+    sqrtss xmm1, xmm1
+    cvttss2si eax, xmm1
+    mov [LOCAL(GP2_RI)], eax
+    mov r13d, eax
+    neg r13d
+.dz:
+    mov r12d, [LOCAL(GP2_RI)]
+    neg r12d
+.dx:
+    mov eax, r12d
+    imul eax, eax
+    mov ecx, r13d
+    imul ecx, ecx
+    add eax, ecx
+    cvtsi2ss xmm0, eax
+    comiss xmm0, [LOCAL(GP2_R2)]
+    ja .dn
+    ; core: the centre column, or the top 30%
+    mov r9d, [rsi + TREE.log]
+    mov ecx, r12d
+    or ecx, r13d
+    jz .core
+    mov eax, [LOCAL(GP2_YI)]
+    imul eax, eax, 10
+    mov ecx, [LOCAL(GP2_H)]
+    imul ecx, ecx, 7
+    cmp eax, ecx
+    jl .put
+.core:
+    mov eax, [rsi + TREE.leaves]
+    test eax, eax
+    jz .put
+    mov r9d, eax
+.put:
+    mov ecx, [LOCAL(GP2_X)]
+    add ecx, r12d
+    mov edx, [LOCAL(GP2_Y)]
+    add edx, [LOCAL(GP2_YI)]
+    mov r8d, [LOCAL(GP2_Z)]
+    add r8d, r13d
+    mov r10d, PUT_SOLID
+    call put_block
+.dn:
+    inc r12d
+    cmp r12d, [LOCAL(GP2_RI)]
+    jle .dx
+    inc r13d
+    cmp r13d, [LOCAL(GP2_RI)]
+    jle .dz
+    inc dword [LOCAL(GP2_YI)]
+    mov eax, [LOCAL(GP2_YI)]
+    cmp eax, [LOCAL(GP2_H)]
+    jl .disc
+    RETURN
+ENDPROC
+
+section .rdata
+align 4
+c_spk_slack:    dd 0.35                 ; disc test slack (single blocks at the tip)

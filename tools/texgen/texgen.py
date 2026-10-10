@@ -1648,6 +1648,23 @@ def make_mushroom_fields(out):
     out["puffball"] = img
 
 
+def make_ice_spikes(out):
+    # blue ice: deep vivid blue with lighter streaks and bubbles
+    r = rng("blue_ice")
+    bp = ramp("3a7ae8", 6, spread=0.18)
+    v = 0.6 * noise(r, 3, 2) + 0.4 * r.random((N, N))
+    img = shade(stretch(v) * 0.999, bp)
+    for _ in range(4):
+        x, y = r.integers(0, N, 2)
+        L = int(r.integers(4, 9))
+        for k in range(L):
+            img[(y + k) % N, (x + k // 2) % N] = hexrgb("a8d0ff")
+    for _ in range(6):
+        x, y = r.integers(0, N, 2)
+        img[y, x] = hexrgb("e0f0ff")
+    out["blue_ice"] = rgba(img)
+
+
 def ladder_design(name, base):
     pal = ramp(base, 5, spread=0.15)
     img = np.zeros((N, N, 3)) + pal[1]
@@ -2166,6 +2183,7 @@ def build_all():
     make_glowing_forest(out)
     make_sky_islands(out)
     make_mushroom_fields(out)
+    make_ice_spikes(out)
     return out
 
 

@@ -11,3 +11,6 @@ render = translucent
 render = translucent
 
 [block packed_ice]
+
+# ice spikes (design/biomes/ice_spikes.md): deep blue core ice
+[block blue_ice]

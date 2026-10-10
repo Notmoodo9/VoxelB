@@ -27,7 +27,8 @@ yet; each item gets its own doc in `design/` when we interview it.
 | done | Swamp | M10 | `design/biomes/swamp.md` |
 | done | Taiga + snowy taiga | M10 | `design/biomes/taiga.md` |
 | done | Snowy tundra | M10 | `design/biomes/snowy_tundra.md` |
-| todo | Cold biomes: ice spikes, glaciers, frozen ocean | M10 | |
+| done | Ice spikes | M10 | `design/biomes/ice_spikes.md` |
+| todo | Cold biomes: glaciers, frozen ocean | M10 | |
 | done | Glowing forest | M10 | `design/biomes/glowing_forest.md` |
 | done | Sky islands (floating islands) | M10 | `design/biomes/sky_islands.md` |
 | done | Mushroom fields | M10 | `design/biomes/mushroom_fields.md` |

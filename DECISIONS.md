@@ -908,3 +908,13 @@ block for their upper half (mossy cobblestone boulders).
   * shelf fungi on the stem (trunk_deco).
 * The survey logs the nearest "island lifted from the sea": an ocean
   sample whose biome flattens well above sea level (+6).
+
+## D73 — Ice spikes: the spike kind (M10 part 16)
+* `spike`:
+  * discs with radius R0·(1 − t)^1.3 (approximated as (1−t)·(1−t)^0.375
+    with square roots) and a 0.35 r² slack, so the tip ends in single
+    blocks;
+  * placed with PUT_SOLID, so spires replace snow and plants;
+  * the core (centre column and top 30%) is the `leaves` block.
+* Ice spikes are a rarity pocket (0.72–1.00) of the snowy tundra's
+  climate, priority 2, like the glowing forest and sky islands in theirs.

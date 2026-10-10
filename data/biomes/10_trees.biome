@@ -500,3 +500,27 @@ radius      = 8.0, 10.0
 chance      = 0
 leaf_gaps   = 0
 fungus      = shelf_fungus, 0.35
+
+# --- ice spikes (design/biomes/ice_spikes.md) --------------------------------
+#   spike: discs from `radius` at the base to a point at `height`; the
+#   centre column and the top 30% are `leaves` (the core)
+[tree small_ice_spike]
+kind   = spike
+log    = packed_ice
+leaves = blue_ice
+radius = 1.0, 1.6
+height = 4, 10
+
+[tree tall_ice_spike]
+kind   = spike
+log    = packed_ice
+leaves = blue_ice
+radius = 1.8, 2.6
+height = 15, 30
+
+[tree giant_ice_spike]
+kind   = spike
+log    = packed_ice
+leaves = blue_ice
+radius = 3.0, 4.0
+height = 35, 50
