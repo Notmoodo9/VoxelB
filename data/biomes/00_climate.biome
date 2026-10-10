@@ -56,3 +56,11 @@ scale       = 260
 octaves     = 2
 persistence = 0.5
 salt        = 307
+
+# rare pockets that the weirdness bands cannot give (the glowing forest):
+# biomes with a `rarity` range at its far end
+[noise rarity]
+scale       = 450
+octaves     = 2
+persistence = 0.5
+salt        = 308

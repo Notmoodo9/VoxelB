@@ -126,3 +126,12 @@ glow = star_crystal_ore_glow
 
 [texture glowcap]
 glow = glowcap_glow
+
+[texture glow_bellflower]
+glow = glow_bellflower_glow
+[texture star_bloom]
+glow = star_bloom_glow
+[texture glow_fern]
+glow = glow_fern_glow
+[texture glow_moss]
+glow = glow_moss_glow

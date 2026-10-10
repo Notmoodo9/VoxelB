@@ -1,0 +1,42 @@
+# Glowing forest (design/biomes/glowing_forest.md): rare magical pockets in
+# the temperate forests: tall weeping glowwoods with curtains of glowing
+# leaves, dark blue-green ground with luminous moss, glowing flowers, glow
+# ferns and glowcaps, cyan pools and blue crystal clusters.
+
+[biome glowing_forest]
+temperature   = 0.35, 0.70
+humidity      = 0.55, 1.00
+rarity        = 0.70, 1.00       # rare pockets (the rarity field)
+priority      = 2
+height        = 98, 220
+grass_color   = 2A6A5A           # deep blue-green
+water_color   = 2AD8D0           # glowing cyan pools
+
+top_patch = glow_moss, 0.25
+plant = glow_fern, 0.10
+plant = short_grass, 0.15
+plant = glowcap, 0.01
+
+# airy: a glowwood every ~8-10 blocks, glades between
+tree         = weeping_glowwood, 3
+tree         = weeping_glowwood_blooming, 1
+tree_density = 0.011
+
+bush         = crystal_cluster, 1
+bush_density = 0.0008
+
+flowers       = glow_bellflower, star_bloom
+flower_chance = 0.02
+meadow_cell    = 64
+meadow_chance  = 0.5
+meadow_radius  = 4, 7
+meadow_density = 0.45
+meadow_mixed   = 0.5
+
+clearing_chance        = 0.6
+clearing_radius        = 6, 10
+clearing_flower_chance = 0.10
+
+pond_chance = 0.12
+pond_radius = 2.5, 4.5
+pond_depth  = 2

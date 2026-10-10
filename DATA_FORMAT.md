@@ -264,7 +264,7 @@ biomes that use them. Records:
 colour of the grass / oak leaf textures (a biome colour equal to these leaves
 the texture unchanged); `contrast` (climate noise spread, default 1).
 
-`[noise temperature]`, `[noise humidity]`, `[noise weirdness]`, `[noise dunes]`, `[noise plateaus]`, `[noise mesas]`, `[noise strata]` — the climate fields, the dune shape, the plateau mask, the mesa mask and the band wave (`ridged = 1` allowed) (`scale`,
+`[noise temperature]`, `[noise humidity]`, `[noise weirdness]`, `[noise dunes]`, `[noise plateaus]`, `[noise mesas]`, `[noise strata]`, `[noise rarity]` — the climate fields, the dune shape, the plateau mask, the mesa mask, the band wave and the rarity field (`ridged = 1` allowed) (`scale`,
 `octaves`, `persistence`, `salt`); larger scale = larger biomes.
 Temperature and humidity are 0..1.
 
@@ -315,6 +315,7 @@ Temperature and humidity are 0..1.
 | `steep_block = strata` | (and any tree `log = strata`) the band at that block's height |
 | `wash_block` | dry washes: winding beds (the dune field's crest lines) on low ground off the mesas |
 | `dry_ponds` | `block, share`: this share of the biome's ponds are dry hollows: a flat pan one below the rim, no water, `block` on top (salt flats) |
+| `rarity` | `lo, hi`: the biome only where the `rarity` field (0..1, independent of temperature, humidity and weirdness) is in this range: rare pockets that overlap any weirdness band (default 0–1) |
 | `water_color` | RRGGBB: the biome's water colour (a third tint layer; water keeps its texture's brightness and takes this hue). Default: `water_reference` (`[climate]`, the texture's own colour) |
 | `flatten` | `level, pull`: pulls the land towards `level` by `pull` (0..1, blended). With the small detail bumps, a level just above the sea makes a maze of pools and islands (swamps) |
 | `own_shore` | 1: the shore band uses the biome's own ground (top, patches) above the sea and its `pond_floor` (else mud) below it, instead of beach sand |

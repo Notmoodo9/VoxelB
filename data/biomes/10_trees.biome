@@ -408,3 +408,32 @@ leaf_gaps = 0.25
 kind   = fallen
 log    = dark_oak_log
 height = 4, 8
+
+# --- glowing forest (design/biomes/glowing_forest.md) ------------------------
+# weeping glowwoods: tall slender trunks; curtains of glowing leaves hang
+# from the crown (hanging_vines = the leaves themselves)
+[tree weeping_glowwood]
+kind          = round
+log           = glowwood_log
+leaves        = glowwood_leaves
+height        = 10, 18
+radius        = 3.0, 4.5
+leaf_gaps     = 0.3
+hanging_vines = glowwood_leaves, 0.045
+vine_length   = 2, 6
+
+[tree weeping_glowwood_blooming]
+kind          = round
+log           = glowwood_log
+leaves        = glowwood_blooming_leaves
+height        = 10, 16
+radius        = 3.0, 4.0
+leaf_gaps     = 0.3
+hanging_vines = glowwood_blooming_leaves, 0.045
+vine_length   = 2, 6
+
+[tree crystal_cluster]
+kind   = rock
+log    = blue_crystal
+radius = 0.6, 1.1
+height = 1, 3

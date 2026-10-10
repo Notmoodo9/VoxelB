@@ -1553,6 +1553,57 @@ def make_dark_forest(out):
     out["glowcap_glow"] = glow_layer(mask, "a8f0ff", 0.85)
 
 
+def make_glowing_forest(out):
+    # glow flowers: cyan bells and teal stars; the blooms glow
+    def glowing(img, color):
+        mask = np.zeros((N, N))
+        c = np.array(hexrgb(color))
+        for y in range(N):
+            for x in range(N):
+                if img[y, x, 3] > 0 and np.abs(img[y, x, :3] - c).sum() < 0.9 and img[y, x, :3].sum() > 1.2:
+                    mask[y, x] = 1.0
+        return mask
+    bell = flower("glow_bellflower", "58e8f0", "e8ffff", "bells")
+    out["glow_bellflower"] = bell
+    out["glow_bellflower_glow"] = glow_layer(glowing(bell, "58e8f0"), "a0f8ff", 0.9)
+    star = flower("star_bloom", "40e0b0", "f0fff0", "star")
+    out["star_bloom"] = star
+    out["star_bloom_glow"] = glow_layer(glowing(star, "40e0b0"), "90ffd8", 0.9)
+    # glow fern: dark teal fronds with luminous tips
+    img = np.zeros((N, N, 4))
+    mask = np.zeros((N, N))
+    gp = ramp("2a7a6a", 6, spread=0.22)
+    r = rng("glow_fern")
+    for k, (bx, lean) in enumerate(((3, -1), (6, 0), (9, 0), (12, 1), (8, 1), (5, -1))):
+        h = int(r.integers(9, 15))
+        for i in range(h):
+            y = N - 1 - i
+            x = bx + (lean * (i * i) // 40)
+            if 0 <= x < N:
+                tip = i >= h - 3
+                img[y, x, :3] = hexrgb("90fff0") if tip else gp[1 + (i * 3) // h]
+                img[y, x, 3] = 1.0
+                if tip:
+                    mask[y, x] = 1.0
+                if i > 2 and i % 2 == 0:
+                    for dx in (-1, 1):
+                        xx = x + dx
+                        if 0 <= xx < N:
+                            img[y, xx, :3] = gp[2 + (i * 3) // h]
+                            img[y, xx, 3] = 1.0
+    out["glow_fern"] = img
+    out["glow_fern_glow"] = glow_layer(mask, "90fff0", 0.8)
+    # glow moss: deep teal moss with bright cyan specks
+    r = rng("glow_moss")
+    mp = ramp("1e5a50", 6, spread=0.2, hue_shift=0.01)
+    v = 0.6 * noise(r, 4, 3) + 0.4 * r.random((N, N))
+    m = shade(stretch(v) * 0.999, mp)
+    specks = r.random((N, N)) < 0.12
+    m[specks] = hexrgb("7af8e8")
+    out["glow_moss"] = rgba(m)
+    out["glow_moss_glow"] = glow_layer(specks.astype(float), "7af8e8", 0.9)
+
+
 def ladder_design(name, base):
     pal = ramp(base, 5, spread=0.15)
     img = np.zeros((N, N, 3)) + pal[1]
@@ -2068,6 +2119,7 @@ def build_all():
     make_steppe(out)
     make_swamp(out)
     make_dark_forest(out)
+    make_glowing_forest(out)
     return out
 
 

@@ -119,6 +119,7 @@ struc BIOME
     .nwplants       resd 1              ; water plants: block, chance (on the surface)
     .wplant         resd BIOME_PLANTS
     .wplant_ch      resd BIOME_PLANTS
+    .rarity         resd 2              ; range of the "rarity" field (rare pockets)
 endstruc
 
 struc TREE

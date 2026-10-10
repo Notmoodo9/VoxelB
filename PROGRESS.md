@@ -1,11 +1,62 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 12): 🎨 DESIGN — Dark forest: DONE** (Windows CI green: run #42)
+**Milestone 10 (part 13): 🎨 DESIGN — Glowing forest: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 13: the next biome**. Candidates are meadow,
-river, ice spikes, or the remaining cold biomes (`design/BACKLOG.md`). It
-starts with its design interview.
+Next: **Milestone 10, part 14: the next biome**. Candidates are mushroom
+fields, crystal caves, floating islands, ice spikes, meadow, river
+(`design/BACKLOG.md`). It starts with its design interview.
+
+---
+
+## Milestone 10, part 13 — done (2026-10-11)
+
+### Design interview
+Three rounds plus approval: `design/biomes/glowing_forest.md`.
+* Rare magical pockets in the temperate forests, glowing cyan and teal.
+* Tall weeping glowwoods; dark blue-green ground with luminous moss.
+* Glowing bellflowers, star-blooms, glow ferns and glowcaps.
+* Cyan pools and blue crystal clusters.
+* Fireflies later.
+
+### What was built
+* **Glowing forest** (`data/biomes/34_glowing_forest.biome`), ~1.2% of
+  land near the origin. One pocket sits right next to spawn.
+* **A rarity field** (D70): a fourth climate value with its own noise and
+  a biome `rarity` range, for rare pockets on top of the weirdness bands.
+* **Weeping glowwoods**: the round kind, with curtains of glowing leaves
+  hanging from the crown (`hanging_vines` = the leaves).
+* **New glowing blocks** (texgen, all with glow layers):
+  `glow_bellflower`, `star_bloom`, `glow_fern`, `glow_moss`.
+* **Cyan pools** (`water_color`) and blue crystal clusters.
+
+### How to see it (seed 20261009)
+* From above, next to spawn: `voxelb.exe --pos -64 175 20 --look 180 -25`.
+* Inside, among the glowwoods: `voxelb.exe --pos -64 128 64 --look 160 -5`.
+
+### Bugs found and fixed while testing
+* A weirdness band for the glowing forest replaced the plain forest and
+  broke it up. Replaced by the rarity field.
+* The first weeping curtains were solid walls of glowing leaves. Thinned
+  to 4.5% of leaves, 2–6 long.
+
+### Verified
+* Debug and release headless tests pass. The debug build ran in the
+  glowing forest with no asserts.
+* Screenshots:
+  * from above;
+  * inside (the floor with glow ferns, flowers, glowcaps and moss);
+  * crystals.
+
+### Known issues
+* By day the glow is texture brightness only. The forest lights up the
+  night once lighting arrives (M13).
+
+### Deferred
+* Fireflies (BACKLOG, M14+).
+
+### Performance
+Unchanged: generation ~12–15 ms per column, meshing ~10 ms.
 
 ---
 

@@ -65,3 +65,6 @@ textures = side: dead_wood, end: dead_wood_top
 
 # steppe salt flats (design/biomes/steppe.md)
 [block salt]
+
+# glowing forest (design/biomes/glowing_forest.md): luminous moss
+[block glow_moss]

@@ -855,3 +855,17 @@ block for their upper half (mossy cobblestone boulders).
   stays at 0.80–1.00.
 * Glowcaps go both in meadow-style clusters on the open floor and as a
   litter `shade_plant`, so they appear near trunks and roots too.
+
+## D70 — Glowing forest: a rarity field (M10 part 13)
+* The forest climate's weirdness axis was already split into bands
+  (birch 0–0.21, dark forest 0.21–0.40, old growth 0.80–1.00). A
+  glowing-forest band of 0.44–0.52 took the place of forests and broke up
+  their pockets.
+* So biomes got a fourth, independent climate value, `rarity` (its own
+  noise, scale 450). A biome with a `rarity` range only exists there, on
+  top of whatever weirdness band the land is in. The glowing forest uses
+  0.70–1.00 at priority 2: ~1.2% of land, in pockets of a few hundred
+  blocks.
+* Weeping glowwoods reuse the `round` kind. `hanging_vines` = the glowwood
+  leaves themselves (4.5% of leaves, 2–6 long) gives curtains of glowing
+  leaves without a new generator.

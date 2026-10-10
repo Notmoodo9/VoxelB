@@ -28,7 +28,9 @@ yet; each item gets its own doc in `design/` when we interview it.
 | done | Taiga + snowy taiga | M10 | `design/biomes/taiga.md` |
 | done | Snowy tundra | M10 | `design/biomes/snowy_tundra.md` |
 | todo | Cold biomes: ice spikes, glaciers, frozen ocean | M10 | |
-| todo | Fantasy biomes: mushroom fields, crystal caves, floating islands, glowing forests | M10 | |
+| done | Glowing forest | M10 | `design/biomes/glowing_forest.md` |
+| todo | Fantasy biomes: mushroom fields, crystal caves, floating islands | M10 | |
+| todo | Fireflies (drifting light particles in glowing forests and swamps) | M14+ | from the glowing forest and swamp interviews |
 | todo | Trees and vegetation per biome | M10 | |
 | done | Block set v1 and texture style | M7 | `design/blocks/block_set.md` (262 blocks, 16x16 vibrant shaded) |
 | done | Shaped blocks | M7b | `design/blocks/shaped_blocks.md` |

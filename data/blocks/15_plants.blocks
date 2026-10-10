@@ -119,3 +119,8 @@ sway     = 1
 shape    = plant
 textures = glowcap
 render   = cutout
+
+# glowing forest (design/biomes/glowing_forest.md): luminous plants
+[family glow_plants]
+templates = plant
+members   = glow_bellflower, star_bloom, glow_fern

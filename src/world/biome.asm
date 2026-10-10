@@ -95,6 +95,7 @@ n_dunes:        db "dunes", 0
 n_plateaus:     db "plateaus", 0
 n_mesas:        db "mesas", 0
 n_strata:       db "strata", 0
+n_rarity:       db "rarity", 0
 k_ridged:       db "ridged", 0
 k_scale:        db "scale", 0
 k_octaves:      db "octaves", 0
@@ -107,6 +108,7 @@ k_b_water:      db "water_color", 0
 k_b_flatten:    db "flatten", 0
 k_b_own_shore:  db "own_shore", 0
 k_b_wplant:     db "water_plant", 0
+k_b_rarity:     db "rarity", 0
 k_contrast:     db "contrast", 0
 ; biome keys
 k_b_temp:       db "temperature", 0
@@ -219,6 +221,7 @@ biome_settings:
     dq k_b_flatten,   T_RANGE_F,  BIOME.flatten
     dq k_b_own_shore, T_INT,      BIOME.own_shore
     dq k_b_wplant,    T_PLANT,    BIOME.nwplants
+    dq k_b_rarity,    T_RANGE_F,  BIOME.rarity
     dq k_b_top,       T_BLOCK,    BIOME.top
     dq k_b_filler,    T_BLOCK,    BIOME.filler
     dq k_b_plant,     T_PLANT,    BIOME.nplants
@@ -333,7 +336,7 @@ alignb 2
 g_strata:       resw MAX_BIOMES * STRATA_LEN
 g_is_strata:    resb 65536
 alignb 8
-g_clim_noise:   resb 7 * NOISE_size     ; temperature, humidity, weirdness, dunes, plateaus, mesas, strata
+g_clim_noise:   resb 8 * NOISE_size     ; temperature, humidity, weirdness, dunes, plateaus, mesas, strata, rarity
 alignb 4
 g_biome_count:  resd 1
 g_tree_count:   resd 1
@@ -436,7 +439,7 @@ PROC biomes_load, 0, rbx, rsi
     mov dword [rbx + NOISE.ridged], 0
     add rbx, NOISE_size
     inc esi
-    cmp esi, 7
+    cmp esi, 8
     jb .nd
     ; biome 0: none
     lea rcx, [rel g_biomes]
@@ -570,6 +573,7 @@ biome_defaults:
     mov dword [rdx + BIOME.pond_r + 4], 0x40C00000    ; 6
     mov dword [rdx + BIOME.pond_depth], 2
     mov dword [rdx + BIOME.weird + 4], 0x3F800000     ; 0 .. 1
+    mov dword [rdx + BIOME.rarity + 4], 0x3F800000    ; 0 .. 1
     mov dword [rdx + BIOME.litter_r], 2
     mov dword [rdx + BIOME.clear_r], 0x41000000       ; 8
     mov dword [rdx + BIOME.clear_r + 4], 0x41800000   ; 16
@@ -792,6 +796,11 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     jnz .noise_rec
     mov r12d, 6
     lea rdx, [rel n_strata]
+    INVOKE str_ieq, rdi, rdx
+    test eax, eax
+    jnz .noise_rec
+    mov r12d, 7
+    lea rdx, [rel n_rarity]
     INVOKE str_ieq, rdi, rdx
     test eax, eax
     jz .bad_rec
@@ -1189,9 +1198,10 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; biome_climate — temperature, humidity and weirdness at a point (0..1).
+; biome_climate — temperature, humidity, weirdness and rarity at a point
+; (0..1).
 ;   in:  xmm0 = x, xmm1 = z (doubles)
-;   out: xmm0 = temperature, xmm1 = humidity, xmm2 = weirdness
+;   out: xmm0 = temperature, xmm1 = humidity, xmm2 = weirdness, xmm3 = rarity
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC biome_climate, 32, rbx
@@ -1199,7 +1209,12 @@ PROC biome_climate, 32, rbx
     movsd [LOCAL(8)], xmm1
     xor ebx, ebx
 .f:
-    imul rcx, rbx, NOISE_size
+    mov eax, ebx
+    cmp eax, 3
+    jne .f_idx
+    mov eax, 7                          ; (the 4th value: the rarity field)
+.f_idx:
+    imul rcx, rax, NOISE_size
     lea rax, [rel g_clim_noise]
     add rcx, rax
     movsd xmm1, [LOCAL(0)]
@@ -1209,11 +1224,12 @@ PROC biome_climate, 32, rbx
     call clim_norm
     movss [LOCAL(16) + rbx * 4], xmm0
     inc ebx
-    cmp ebx, 3
+    cmp ebx, 4
     jb .f
     movss xmm0, [LOCAL(16)]
     movss xmm1, [LOCAL(20)]
     movss xmm2, [LOCAL(24)]
+    movss xmm3, [LOCAL(28)]
     RETURN
 ENDPROC
 
@@ -1242,12 +1258,13 @@ clim_norm:
 ; biome_pick — the biome for a climate and surface height: among the boxes
 ; that contain the climate, the highest priority, then the nearest centre.
 ;   in:  xmm0 = temperature, xmm1 = humidity, xmm2 = weirdness,
-;        ecx = surface height
+;        xmm3 = rarity, ecx = surface height
 ;   out: eax = biome index (0 = none)
 ;   clobbers: rax, rcx, rdx, r8-r11, xmm3-xmm5
 ; -----------------------------------------------------------------------------
 biome_pick:
-    sub rsp, 8                          ; (one float of scratch)
+    sub rsp, 8                          ; (one float of scratch, the rarity)
+    movss [rsp + 4], xmm3
     xor eax, eax                        ; best
     movss xmm5, [rel c_big]             ; best distance
     mov r11d, 0x80000000                ; best priority
@@ -1271,6 +1288,11 @@ biome_pick:
     comiss xmm2, [r8 + BIOME.weird]
     jb .next
     comiss xmm2, [r8 + BIOME.weird + 4]
+    ja .next
+    movss xmm4, [rsp + 4]
+    comiss xmm4, [r8 + BIOME.rarity]
+    jb .next
+    comiss xmm4, [r8 + BIOME.rarity + 4]
     ja .next
     ; distance to the box centre, relative to its size
     movss xmm3, [r8 + BIOME.temp]
