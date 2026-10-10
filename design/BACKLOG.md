@@ -21,7 +21,8 @@ yet; each item gets its own doc in `design/` when we interview it.
 | done | Desert + oasis | M10 | `design/biomes/desert.md` |
 | done | Savanna | M10 | `design/biomes/savanna.md` |
 | done | Jungle | M10 | `design/biomes/jungle.md` |
-| todo | Hot/dry biomes: badlands/mesa, swamp | M10 | |
+| done | Badlands | M10 | `design/biomes/badlands.md` |
+| todo | Swamp | M10 | |
 | done | Taiga + snowy taiga | M10 | `design/biomes/taiga.md` |
 | done | Snowy tundra | M10 | `design/biomes/snowy_tundra.md` |
 | todo | Cold biomes: ice spikes, glaciers, frozen ocean | M10 | |

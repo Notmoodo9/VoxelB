@@ -34,6 +34,11 @@
 %define BM_PTS          7
 %define BM_STEP         16
 
+; a block id that stands for "the striped band at this height" (badlands):
+; the biome's band table (g_strata) picks the real block by world y
+%define BLOCK_STRATA    0xFFFE
+%define STRATA_LEN      128             ; bands repeat every 128 blocks
+
 struc BIOME
     .name           resq 1              ; char*
     .temp           resd 2              ; temperature range (0..1)
@@ -95,6 +100,13 @@ struc BIOME
     .patch_low      resd 1              ; top patch where the detail noise is below a level
     .patch_low_lvl  resd 1
     .pond_top       resd 1              ; block for a pond's top water layer (0 = water; ice)
+    .mesa_h         resd 1              ; float: mesa height (blended, terraced)
+    .nstrata        resd 1              ; band blocks of striped rock (badlands)
+    .strata         resd BIOME_FLOWERS
+    .strata_thick   resd 2              ; int band thickness range
+    .strata_min     resd 1              ; int: bands from this world y up
+    .wash           resd 1              ; block of dry washes on low ground (0 = none)
+    .beach          resd 1              ; shore band block (0 = the world's beach sand)
 endstruc
 
 struc TREE
@@ -129,7 +141,8 @@ endstruc
 
 %ifndef BIOME_IMPL
 extern biomes_load, biome_climate, biome_pick, bmap_build, bmap_col, bmap_tint
-extern biome_at, biome_point, biome_dunes, biome_plateau
+extern biome_at, biome_point, biome_dunes, biome_plateau, biome_mesa, biome_strata_wave
+extern g_strata, g_is_strata, bmap_dither
 extern g_biomes, g_biome_count, g_trees, g_tree_count
 %endif
 %endif

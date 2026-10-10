@@ -46,11 +46,12 @@
 %include "biome.inc"
 
 global biomes_load, biome_climate, biome_pick, bmap_build, bmap_col, bmap_tint
-global biome_at, biome_point, biome_dunes, biome_plateau
+global biome_at, biome_point, biome_dunes, biome_plateau, biome_mesa, biome_strata_wave
+global g_strata, g_is_strata, bmap_dither
 global g_biomes, g_biome_count, g_trees, g_tree_count
 
 extern str_ieq, str_len, str_copy, str_dup, str_parse_float
-extern terrain_sample, g_world_seed
+extern terrain_sample, g_world_seed, g_b_stone
 
 IMPORT FindFirstFileA, FindNextFileA, FindClose
 
@@ -92,6 +93,8 @@ n_humid:        db "humidity", 0
 n_weird:        db "weirdness", 0
 n_dunes:        db "dunes", 0
 n_plateaus:     db "plateaus", 0
+n_mesas:        db "mesas", 0
+n_strata:       db "strata", 0
 k_ridged:       db "ridged", 0
 k_scale:        db "scale", 0
 k_octaves:      db "octaves", 0
@@ -139,6 +142,13 @@ k_b_ring:       db "ring_plants", 0
 k_b_patch:      db "top_patch", 0
 k_b_patch_low:  db "top_patch_low", 0
 k_b_pond_top:   db "pond_top", 0
+k_b_mesa:       db "mesa_height", 0
+k_b_strata:     db "strata", 0
+k_b_strata_t:   db "strata_thickness", 0
+k_b_strata_min: db "strata_min_y", 0
+k_b_wash:       db "wash_block", 0
+k_b_beach:      db "beach_block", 0
+v_strata:       db "strata", 0
 k_b_mcell:      db "meadow_cell", 0
 k_b_mflowers:   db "meadow_flowers", 0
 k_b_dune:       db "dune_height", 0
@@ -233,6 +243,12 @@ biome_settings:
     dq k_b_plateau,   T_FLOAT,    BIOME.plateau_h
     dq k_b_patch_low, T_PATCH,    BIOME.patch_low
     dq k_b_pond_top,  T_BLOCK,    BIOME.pond_top
+    dq k_b_mesa,      T_FLOAT,    BIOME.mesa_h
+    dq k_b_strata,    T_BLOCKLIST, BIOME.nstrata
+    dq k_b_strata_t,  T_RANGE_I,  BIOME.strata_thick
+    dq k_b_strata_min, T_INT,     BIOME.strata_min
+    dq k_b_wash,      T_BLOCK,    BIOME.wash
+    dq k_b_beach,     T_BLOCK,    BIOME.beach
     dq 0
 tree_settings:
     dq k_t_kind,      T_KIND,     TREE.kind
@@ -265,6 +281,12 @@ align 4
 c_one:          dd 1.0
 c_plateau_thr:  dd 0.22
 c_plateau_ramp: dd 14.0
+c_mesa_thr:     dd -0.05
+c_mesa_ramp:    dd 4.0
+c_mesa_steps:   dd 3.0
+c_mesa_riser:   dd 0.75
+c_four:         dd 4.0
+c_strata_wave:  dd 4.0
 c_half:         dd 0.5
 c_zero:         dd 0.0
 c_64:           dd 64.0
@@ -288,7 +310,11 @@ section .bss
 alignb 16
 g_biomes:       resb MAX_BIOMES * BIOME_size
 g_trees:        resb MAX_TREES * TREE_size
-g_clim_noise:   resb 5 * NOISE_size     ; temperature, humidity, weirdness, dunes, plateaus
+alignb 2
+g_strata:       resw MAX_BIOMES * STRATA_LEN
+g_is_strata:    resb 65536
+alignb 8
+g_clim_noise:   resb 7 * NOISE_size     ; temperature, humidity, weirdness, dunes, plateaus, mesas, strata
 alignb 4
 g_biome_count:  resd 1
 g_tree_count:   resd 1
@@ -391,7 +417,7 @@ PROC biomes_load, 0, rbx, rsi
     mov dword [rbx + NOISE.ridged], 0
     add rbx, NOISE_size
     inc esi
-    cmp esi, 5
+    cmp esi, 7
     jb .nd
     ; biome 0: none
     lea rcx, [rel g_biomes]
@@ -413,6 +439,7 @@ PROC biomes_load, 0, rbx, rsi
     inc ebx
     jmp .file
 .files_done:
+    call strata_build
     ; colour factors (relative to the textures' own colours)
     xor ebx, ebx
 .fac:
@@ -732,6 +759,16 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     lea rdx, [rel n_plateaus]
     INVOKE str_ieq, rdi, rdx
     test eax, eax
+    jnz .noise_rec
+    mov r12d, 5
+    lea rdx, [rel n_mesas]
+    INVOKE str_ieq, rdi, rdx
+    test eax, eax
+    jnz .noise_rec
+    mov r12d, 6
+    lea rdx, [rel n_strata]
+    INVOKE str_ieq, rdi, rdx
+    test eax, eax
     jz .bad_rec
 .noise_rec:
     mov [rel g_rec], r12d
@@ -903,6 +940,13 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     mov [r13], eax
     RETURN
 .t_block:
+    lea rdx, [rel v_strata]
+    INVOKE str_ieq, rsi, rdx
+    test eax, eax
+    jz .t_block_find
+    mov dword [r13], BLOCK_STRATA       ; banded by height (striped rock)
+    RETURN
+.t_block_find:
     INVOKE block_find, rsi
     cmp eax, -1
     je .bad_block
@@ -1420,6 +1464,201 @@ PROC bmap_col, MAX_BIOMES * 4
     minss xmm0, [rel c_one]
     movss xmm2, xmm4
     movss xmm3, xmm5
+    ; blended mesa height
+    xorps xmm4, xmm4
+    xor ecx, ecx
+    lea r8, [rel g_biomes]
+.m:
+    movss xmm5, [LOCAL(0) + rcx * 4]
+    mulss xmm5, [r8 + BIOME.mesa_h]
+    addss xmm4, xmm5
+    add r8, BIOME_size
+    inc ecx
+    cmp ecx, [rel g_biome_count]
+    jb .m
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; bmap_dither — the biome of a column with a ragged border: where the two
+; strongest biomes are close (weight difference below `jitter`), the second
+; one wins. With a per-block noise as the jitter, biome borders (and the top
+; blocks that follow them: snow, red sand) fray instead of running straight.
+;   in:  rcx = BMAP*, edx = lx, r8d = lz, xmm0 = jitter (f32)
+;   out: eax = biome      clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC bmap_dither, MAX_BIOMES * 4 + 16
+    movss [LOCAL(MAX_BIOMES * 4)], xmm0
+    lea r9, [LOCAL(0)]
+    call bmap_weights
+    xor eax, eax                        ; best
+    xor edx, edx                        ; second
+    xorps xmm1, xmm1                    ; best weight
+    xorps xmm2, xmm2                    ; second weight
+    xor ecx, ecx
+.b:
+    movss xmm0, [LOCAL(0) + rcx * 4]
+    comiss xmm0, xmm1
+    jbe .not_best
+    movss xmm2, xmm1
+    mov edx, eax
+    movss xmm1, xmm0
+    mov eax, ecx
+    jmp .next
+.not_best:
+    comiss xmm0, xmm2
+    jbe .next
+    movss xmm2, xmm0
+    mov edx, ecx
+.next:
+    inc ecx
+    cmp ecx, [rel g_biome_count]
+    jb .b
+    subss xmm1, xmm2
+    comiss xmm1, [LOCAL(MAX_BIOMES * 4)]
+    jae .done
+    xorps xmm0, xmm0
+    comiss xmm2, xmm0
+    jbe .done                           ; (no second biome here)
+    mov eax, edx
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; biome_mesa — mesa shape 0..1 at a world point (design/biomes/badlands.md):
+; the "mesas" field ramps to a mask m = clamp((n - thr) * ramp), which is
+; cut into MESA_STEPS flat terraces with steep risers in the last quarter
+; of each step: buttes and stepped mesas with cliffs between.
+;   in:  xmm0 = x, xmm1 = z (doubles)     out: xmm0
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define MESA_STEPS  3
+PROC biome_mesa, 0
+    movsd xmm2, xmm1
+    movsd xmm1, xmm0
+    lea rcx, [rel g_clim_noise + 5 * NOISE_size]
+    mov edx, [rel g_world_seed]
+    call fbm2
+    subss xmm0, [rel c_mesa_thr]
+    mulss xmm0, [rel c_mesa_ramp]
+    maxss xmm0, [rel c_zero]
+    minss xmm0, [rel c_one]
+    mulss xmm0, [rel c_mesa_steps]      ; s = m * steps
+    roundss xmm1, xmm0, 9               ; i = floor(s)
+    subss xmm0, xmm1                    ; f
+    subss xmm0, [rel c_mesa_riser]      ; riser: f 0.75 .. 1 -> 0 .. 1
+    mulss xmm0, [rel c_four]
+    maxss xmm0, [rel c_zero]
+    minss xmm0, [rel c_one]
+    addss xmm0, xmm1
+    divss xmm0, [rel c_mesa_steps]
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; biome_strata_wave — the slow "strata" field at a world point, in blocks
+; (bands shift up and down by up to STRATA_WAVE).
+;   in:  xmm0 = x, xmm1 = z (doubles)     out: eax (signed)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC biome_strata_wave, 0
+    movsd xmm2, xmm1
+    movsd xmm1, xmm0
+    lea rcx, [rel g_clim_noise + 6 * NOISE_size]
+    mov edx, [rel g_world_seed]
+    call fbm2
+    mulss xmm0, [rel c_strata_wave]
+    cvtss2si eax, xmm0
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; strata_build — fill every biome's band table (g_strata, STRATA_LEN ids):
+; its `strata` blocks in seeded random order (never the same twice in a
+; row), each `strata_thickness` thick; biomes without bands get stone.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC strata_build, 0, rbx, rsi, rdi, r12, r13
+    xor ebx, ebx                        ; biome
+.biome:
+    cmp ebx, [rel g_biome_count]
+    jae .done
+    imul rsi, rbx, BIOME_size
+    lea rax, [rel g_biomes]
+    add rsi, rax
+    mov eax, ebx
+    shl eax, 8                          ; (STRATA_LEN * 2 bytes)
+    lea rdi, [rel g_strata]
+    add rdi, rax
+    cmp dword [rsi + BIOME.nstrata], 0
+    jne .bands
+    xor ecx, ecx
+    mov eax, [rel g_b_stone]
+.fill_stone:
+    mov [rdi + rcx * 2], ax
+    inc ecx
+    cmp ecx, STRATA_LEN
+    jb .fill_stone
+    jmp .next
+.bands:
+    ; mark the band blocks (ores may replace them)
+    xor ecx, ecx
+.mark:
+    mov eax, [rsi + BIOME.strata + rcx * 4]
+    lea rdx, [rel g_is_strata]
+    mov byte [rdx + rax], 1
+    inc ecx
+    cmp ecx, [rsi + BIOME.nstrata]
+    jb .mark
+    ; walk the table: hash -> band, hash -> thickness
+    mov r12d, [rel g_world_seed]
+    imul eax, ebx, 0x9E3779B1
+    xor r12d, eax                       ; rng state
+    xor r13d, r13d                      ; y
+    mov r8d, -1                         ; previous band
+.band:
+    cmp r13d, STRATA_LEN
+    jae .next
+    imul r12d, r12d, 1664525
+    add r12d, 1013904223
+    mov eax, r12d
+    shr eax, 8
+    xor edx, edx
+    div dword [rsi + BIOME.nstrata]
+    cmp edx, r8d
+    jne .band_ok
+    inc edx                             ; not the same band twice in a row
+    cmp edx, [rsi + BIOME.nstrata]
+    jb .band_ok
+    xor edx, edx
+.band_ok:
+    mov r8d, edx
+    mov r9d, [rsi + BIOME.strata + rdx * 4]
+    imul r12d, r12d, 1664525
+    add r12d, 1013904223
+    mov eax, r12d
+    shr eax, 8
+    mov ecx, [rsi + BIOME.strata_thick + 4]
+    sub ecx, [rsi + BIOME.strata_thick]
+    inc ecx
+    xor edx, edx
+    div ecx
+    add edx, [rsi + BIOME.strata_thick]
+    jg .thick_ok
+    mov edx, 1
+.thick_ok:
+    mov [rdi + r13 * 2], r9w
+    inc r13d
+    cmp r13d, STRATA_LEN
+    jae .next
+    dec edx
+    jnz .thick_ok
+    jmp .band
+.next:
+    inc ebx
+    jmp .biome
+.done:
     RETURN
 ENDPROC
 

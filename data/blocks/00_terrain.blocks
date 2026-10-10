@@ -56,3 +56,8 @@ textures = side: spruce_needle_floor_side, top: spruce_needle_floor_top, bottom:
 
 # savanna termite mounds
 [block termite_mound]
+
+# badlands (design/biomes/badlands.md): bleached dead tree wood
+[block dead_wood]
+shape    = axis
+textures = side: dead_wood, end: dead_wood_top

@@ -1,0 +1,40 @@
+# Badlands (design/biomes/badlands.md): a very rare wonder in the hot, dry
+# climate: flat-topped mesas and buttes 30-60 high with sheer cliffs in warm
+# sunset bands, canyons and dry washes between them, red sand with sparse
+# scrub, dead bushes, cacti, bleached dead trees, rare striped hoodoos and
+# arches, and gold ore high up, even in the cliffs.
+
+[biome badlands]
+temperature  = 0.62, 1.00
+humidity     = 0.00, 0.42
+weirdness    = 0.00, 0.30        # a rare pocket in deserts and savannas
+priority     = 3
+height       = 90, 400
+hill_scale   = 0.5
+mesa_height  = 54                # terraced mesas (mesas noise) this high
+top_block    = red_sand
+filler_block = red_sand
+steep_block  = strata            # cliffs show the bands
+beach_block  = red_sand         # the shore band too
+wash_block   = gravel            # dry washes on the canyon floors
+
+# the bands: picked in seeded random order, 1-4 blocks thick, from y 60 up
+strata           = red_terracotta, orange_terracotta, red_terracotta, orange_terracotta, brown_terracotta, yellow_terracotta, white_terracotta, sandstone, red_sand
+strata_thickness = 1, 4
+strata_min_y     = 60
+
+grass_color = D2B55A             # dry golden scrub
+plant = dead_bush, 0.012
+plant = short_grass, 0.03
+
+# cacti and bleached dead trees, both sparse
+tree         = cactus, 3
+tree         = dead_tree, 1
+tree_density = 0.0008
+
+# rare striped hoodoos (~1 per 150 x 150) and arches (~1 per 400 x 400),
+# striped boulders
+bush         = hoodoo, 7
+bush         = striped_arch, 1
+bush         = badlands_boulder, 10
+bush_density = 0.0001

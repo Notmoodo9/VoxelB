@@ -247,6 +247,7 @@ One `[ore <name>]` record per ore (up to 32):
 | `size_min`, `size_max` | blocks per cluster (a random walk) |
 | `per_section` | clusters per 32³ section inside the range |
 | `mountain_only` | 1: only inside mountains (y ≥ 180, 8+ blocks below the surface) |
+| `strata` | 1: only in columns with banded rock (badlands), and it may replace band blocks (gold in the cliffs) |
 | `mountain_bonus` | extra share of clusters where the surface is 250+ |
 | `deep_only` | 1: only in deep stone |
 | `vein_chance`, `vein_size` | chance per section of one long vein of this many blocks |
@@ -263,7 +264,7 @@ biomes that use them. Records:
 colour of the grass / oak leaf textures (a biome colour equal to these leaves
 the texture unchanged); `contrast` (climate noise spread, default 1).
 
-`[noise temperature]`, `[noise humidity]`, `[noise weirdness]`, `[noise dunes]`, `[noise plateaus]` — the climate fields, the dune shape and the plateau mask (`ridged = 1` allowed) (`scale`,
+`[noise temperature]`, `[noise humidity]`, `[noise weirdness]`, `[noise dunes]`, `[noise plateaus]`, `[noise mesas]`, `[noise strata]` — the climate fields, the dune shape, the plateau mask, the mesa mask and the band wave (`ridged = 1` allowed) (`scale`,
 `octaves`, `persistence`, `salt`); larger scale = larger biomes.
 Temperature and humidity are 0..1.
 
@@ -282,6 +283,7 @@ Temperature and humidity are 0..1.
 | `chance` | cactus: flower chance; grove: share of columns with a stalk |
 | `vines` | `block, chance`: per trunk side, a run of this block (ladder shape) hanging down the trunk from below the crown |
 | `hanging_vines` | `block, chance`: per leaf, a strand of this block (plant shape) hanging down, stopping above the ground |
+| `log = strata` | rocks and arches in the band of the biome they stand in (striped hoodoos and arches) |
 | `vine_length` | length range of vine runs and strands (default 2–8) |
 | `fungus` | `block, chance`: per trunk side, one of this block somewhere on the trunk (shelf fungi) |
 | `pods` | `block, chance`: per tree, 1–3 of this block (ladder shape) on the lower trunk (cocoa) |
@@ -307,6 +309,11 @@ Temperature and humidity are 0..1.
 | `clearing_chance`, `clearing_radius`, `clearing_flower_chance` | treeless clearings: chance per 160×160 cell, radius range, flower share |
 | `ring_chance`, `ring_radius`, `ring_plants` | mushroom rings: chance per 128×128 cell, radius range, blocks |
 | `top_patch` | `block, level`: replaces the top block where the detail noise is above `level` (moss) |
+| `mesa_height` | mesas: the `mesas` noise, cut into 3 flat terraces with steep risers, × this is added to the land (blended across borders) |
+| `strata`, `strata_thickness`, `strata_min_y` | striped rock: band blocks (up to 16, repeats weight a colour), band thickness range, lowest banded y. Bands are picked in seeded random order into a 128-block table, so cliffs line up; the `strata` noise shifts them a few blocks. Every block of the column from the second down to `strata_min_y` is banded |
+| `steep_block = strata` | (and any tree `log = strata`) the band at that block's height |
+| `wash_block` | dry washes: winding beds (the dune field's crest lines) on low ground off the mesas |
+| `beach_block` | the shore band block (default the world's beach sand) |
 | `top_patch_low` | `block, level`: replaces the top block where the detail noise is below `level` (a second kind of patch, e.g. frozen dirt beside gravel) |
 | `dune_height` | dunes: the `dunes` noise × this is added to the height (blended across borders) |
 | `plateau_height` | plateaus: where the `plateaus` noise is high, this many blocks are added to the land (a steep ramp to a flat top; blended across borders) |

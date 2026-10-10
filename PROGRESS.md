@@ -1,11 +1,80 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 8): 🎨 DESIGN — Snowy tundra: DONE** (Windows CI green: run #34)
+**Milestone 10 (part 9): 🎨 DESIGN — Badlands: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 9: the next biome**. Candidates are badlands,
-swamp, dark forest, meadow, river, ice spikes (`design/BACKLOG.md`). It
-starts with its design interview.
+Next: **Milestone 10, part 10: the next biome**. Candidates are swamp,
+dark forest, meadow, river, ice spikes, or a biome for the cool, dry gap
+(`design/BACKLOG.md`). It starts with its design interview.
+
+---
+
+## Milestone 10, part 9 — done (2026-10-10)
+
+### Design interview
+Three rounds plus approval: `design/biomes/badlands.md`.
+* A very rare wonder: mesas and buttes 30–60 high with sheer cliffs in
+  warm sunset bands that are level and slightly wavy.
+* Canyons with dry washes and red sand with sparse scrub.
+* Dead bushes, cacti and bleached dead trees.
+* Rare striped hoodoos and arches.
+* Gold ore high up, even in the cliffs.
+
+### What was built
+* **Badlands** (`data/biomes/46_badlands.biome`), on ~2% of land near the
+  origin, as pockets inside deserts.
+* **Terrain** (D66):
+  * terraced mesas (`mesa_height`, `mesas` noise);
+  * banded rock from per-biome band tables (`strata`, `strata_thickness`,
+    `strata_min_y`, with a `strata` wave noise);
+  * dry washes (`wash_block`) and red-sand shores (`beach_block`).
+* **Striped rocks**: `log = strata` makes hoodoos, arches and boulders
+  take the bands.
+* **Gold**: a `badlands_gold` ore with the new ore setting `strata = 1`,
+  in the cliffs from y 60 up.
+* **Dead trees**: a new `dead_wood` log (bleached bark, texgen), and a
+  forked `dead_tree` with no leaves.
+* **Ragged biome borders for every biome**: columns near a border pick
+  between the two strongest biomes using the detail noise. The straight
+  snow edges (taiga/snowy taiga, tundra/grass) and sand edges now fray
+  naturally.
+
+### How to see it (seed 20261009)
+* A sheer striped mesa cliff over a red-sand shore:
+  `voxelb.exe --pos -515 135 425 --look 355 -6`.
+* The same pocket from above: `voxelb.exe --pos -512 260 470 --look 0 -35`.
+* Hoodoos and arches are rare (~1 per 150×150 and 400×400 blocks).
+
+### Bugs found and fixed while testing
+* The first climate pocket gave only 0.3% of land in scattered spots.
+  Widened to ~2%, restricted to deserts.
+* Low badlands near lakes showed beach sand, because the shore band
+  ignored the biome. Fixed with `beach_block`.
+* The first mesa mask was too weak (small bumps). The threshold and ramp
+  were raised and the noise widened.
+* Biome edges ran in straight lines along the blend lattice: the ragged
+  borders above.
+
+### Verified
+* Debug and release headless tests pass. The debug build ran at the
+  badlands with no asserts.
+* Screenshots:
+  * the striped mesa cliff;
+  * the badlands from above;
+  * hoodoos, an arch and gold in the cliffs, with their frequency raised
+    for the test;
+  * the tundra with ragged borders.
+
+### Known issues
+* The badlands pockets near the origin are a few hundred blocks wide, not
+  the 600–1500 of a large region. They are bounded by the desert climate
+  and the weirdness pocket.
+* Where a pocket's ragged edge crosses a mesa cliff, the cliff turns to
+  the neighbour's steep block (stone or sandstone).
+
+### Performance
+Unchanged within noise: generation ~15 ms per column, meshing ~13 ms.
+0.4 FPS on software GL in views with jungle in range.
 
 ---
 

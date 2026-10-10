@@ -23,7 +23,7 @@ endstruc
 %define HM              (32 + 2 * HB)
 
 ; per-column info of the 32 x 32 interior (terrain_gen_column)
-%define INFO_SIZE       16
+%define INFO_SIZE       20
 %define INFO_A          0               ; f32 overhang amplitude
 %define INFO_TOP        4               ; u16 top block
 %define INFO_FILL       6               ; u16 filler block
@@ -33,6 +33,10 @@ endstruc
 %define INFO_BIOME      12              ; u8 biome
 %define INFO_DENS       13              ; u8 vegetation density 0..255
 %define INFO_POND       14              ; i16 pond water level (POND_NONE)
+%define INFO_WAVE       16              ; i8 band shift (striped rock)
+%define INFO_SFLAG      17              ; u8: SF_STRATA, SF_WASH
+%define SF_STRATA       1               ; the column's rock is banded
+%define SF_WASH         2               ; a dry wash runs here
 %define POND_NONE       -32768
 
 
@@ -50,6 +54,7 @@ struc ORE                               ; one [ore] record (ores.cfg)
     .deep_only      resd 1              ; 1 = only in deep stone
     .vein_chance    resd 1              ; float: large vein chance per section
     .vein_size      resd 1              ; blocks in a large vein
+    .strata         resd 1              ; 1 = only in banded columns, may replace bands
 endstruc
 
 %endif

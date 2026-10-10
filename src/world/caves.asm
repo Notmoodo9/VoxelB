@@ -54,7 +54,7 @@ extern g_shaft_rmin, g_shaft_rmax
 extern g_shaft_dmin, g_shaft_dmax, g_aq_size, g_lake_chance, g_lake_min, g_lake_max
 extern g_lava_top, g_lava_min, g_lava_max, g_drip_chance, g_patch_thr, g_pillar_w
 extern g_cave_bottom, g_ore_wall, g_b_lava, g_b_drip, g_b_mud, g_b_water, g_b_stone
-extern g_b_deep, g_b_gravel, g_b_clay
+extern g_b_deep, g_b_gravel, g_b_clay, g_is_strata
 
 ; field indices (match terrain.asm)
 %define F_DETAIL        9
@@ -931,12 +931,21 @@ host_ok:
     ret
 .deep:
     cmp eax, [rel g_b_deep]
-    jne .no
+    jne .band
     mov eax, [rsi + ORE.deep]
     test eax, eax
     jnz .have
     mov eax, [rsi + ORE.block]          ; one look in both (deep-only ores)
 .have:
+    ret
+.band:
+    ; striped rock (badlands bands) hosts ores marked `strata`
+    cmp dword [rsi + ORE.strata], 0
+    je .no
+    lea rdx, [rel g_is_strata]
+    cmp byte [rdx + rax], 0
+    je .no
+    mov eax, [rsi + ORE.block]
     ret
 .no:
     xor eax, eax
@@ -1077,6 +1086,18 @@ PROC caves_finish, 64, rbx, rsi, rdi, r12, r13, r14, r15
     mov edx, eax
     shr edx, 5
     and edx, 31                         ; z
+    ; `strata` ores: only in banded columns
+    cmp dword [rsi + ORE.strata], 0
+    je .any_column
+    mov r8d, edx
+    shl r8d, 5
+    add r8d, ecx
+    imul r8d, r8d, INFO_SIZE
+    mov r9, [LOCAL(FN_CTX)]
+    add r8, [r9 + CAVECTX.info]
+    test byte [r8 + INFO_SFLAG], SF_STRATA
+    jz .attempt_next
+.any_column:
     lea edx, [edx + HB]
     imul edx, edx, HM
     lea edx, [edx + ecx + HB]

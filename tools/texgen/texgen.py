@@ -1370,6 +1370,13 @@ def make_tundra(out):
     out["lingonberry_shrub"] = twigs("lingonberry_shrub", True)
 
 
+def make_badlands(out):
+    # dead wood: bleached, sun-cracked grey-white bark with dark splits
+    r = rng("dead_wood")
+    out["dead_wood"] = bark("dead_wood", "c8c2b4", "groove", r)
+    out["dead_wood_top"] = log_top("d8d0c0", "b0a898", rng("dead_wood_top"))
+
+
 def ladder_design(name, base):
     pal = ramp(base, 5, spread=0.15)
     img = np.zeros((N, N, 3)) + pal[1]
@@ -1881,6 +1888,7 @@ def build_all():
     make_savanna(out)
     make_jungle(out)
     make_tundra(out)
+    make_badlands(out)
     return out
 
 

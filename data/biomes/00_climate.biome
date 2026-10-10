@@ -42,3 +42,17 @@ scale       = 300
 octaves     = 2
 persistence = 0.4
 salt        = 305
+
+# mesas (badlands `mesa_height`): terraced where this is above 0
+[noise mesas]
+scale       = 200
+octaves     = 3
+persistence = 0.45
+salt        = 306
+
+# the slow wave of the badlands bands (a few blocks up and down)
+[noise strata]
+scale       = 260
+octaves     = 2
+persistence = 0.5
+salt        = 307

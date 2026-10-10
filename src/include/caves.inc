@@ -37,6 +37,8 @@ struc CAVECTX
     .cur_c          resd 1              ; values at the block being tested
     .cur_t          resd 1
     .col_special    resd 1              ; column has a ravine, shaft or sky cavern
+    .pad2           resd 1
+    .info           resq 1              ; INFO_SIZE x 1024 (terrain.inc)
 endstruc
 
 %ifndef CAVES_IMPL

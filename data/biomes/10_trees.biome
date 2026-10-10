@@ -296,3 +296,30 @@ kind   = rock
 log    = snow
 radius = 2.0, 3.5
 height = 1, 2
+
+# --- badlands (design/biomes/badlands.md) ------------------------------------
+#   log = strata: each block takes the band of the local biome at its height
+# bleached, twisted dead tree: a forked trunk with crooked limbs, no leaves
+[tree dead_tree]
+kind     = acacia
+log      = dead_wood
+height   = 4, 8
+radius   = 0, 0
+
+[tree hoodoo]
+kind   = rock
+log    = strata
+radius = 1.2, 2.2
+height = 8, 20
+
+[tree striped_arch]
+kind   = arch
+log    = strata
+radius = 7, 11
+height = 1, 1
+
+[tree badlands_boulder]
+kind   = rock
+log    = strata
+radius = 1.2, 2.2
+height = 2, 3

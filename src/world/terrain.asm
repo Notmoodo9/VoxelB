@@ -107,6 +107,9 @@ endstruc
 %define MAX_ORES        32
 
 section .rdata
+c_dither:       dd 1.5                  ; biome borders: ragged within this weight gap
+c_wash_mesa:    dd 0.02                 ; washes: off the mesas
+c_wash_crest:   dd 0.86                 ;   on the dune crest lines
 str_cfg_path:   db "data/world/terrain.cfg", 0
 str_cfg_label:  db "terrain.cfg", 0
 k_noise:        db "noise", 0
@@ -243,6 +246,7 @@ k_o_mbonus:     db "mountain_bonus", 0
 k_o_donly:      db "deep_only", 0
 k_o_vchance:    db "vein_chance", 0
 k_o_vsize:      db "vein_size", 0
+k_o_strata:     db "strata", 0
 str_caves_path: db "data/world/caves.cfg", 0
 str_caves_label: db "caves.cfg", 0
 str_ores_path:  db "data/world/ores.cfg", 0
@@ -325,6 +329,7 @@ ore_settings:
     dq k_o_smax,     T_INT,   ORE.size_max
     dq k_o_per,      T_FLOAT, ORE.per_section
     dq k_o_monly,    T_INT,   ORE.mountain_only
+    dq k_o_strata,   T_INT,   ORE.strata
     dq k_o_mbonus,   T_FLOAT, ORE.mountain_bonus
     dq k_o_donly,    T_INT,   ORE.deep_only
     dq k_o_vchance,  T_FLOAT, ORE.vein_chance
@@ -1368,6 +1373,8 @@ underground:
 %define G_TOPF      (G_FCTX + 24)              ; highest flora block
 %define G_DUNE      (G_FCTX + 28)              ; f32 blended dune height
 %define G_PLAT      (G_FCTX + 32)              ; f32 blended plateau height
+%define G_MESA      (G_FCTX + 36)              ; f32 blended mesa height
+%define G_TMP       (G_FCTX + 40)              ; scratch qword
 %define G_LOCALS    (96 + TSAMPLE_size + 80)
 %define CG          (HM / 4 + 1)               ; coarse grid side (every 4 blocks)
 PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
@@ -1414,6 +1421,8 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [rbx + CAVECTX.cz], eax
     mov rax, [LOCAL(G_H)]
     mov [rbx + CAVECTX.heights], rax
+    mov rax, [LOCAL(G_INFO)]
+    mov [rbx + CAVECTX.info], rax
 
     ; ---- biomes around the chunk (blend map) -----------------------------------------
     INVOKE bmap_build, [LOCAL(G_BMAP)], [LOCAL(G_CX)], [LOCAL(G_CZ)]
@@ -1448,6 +1457,7 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     call bmap_col                       ; xmm1 hill factor, xmm2 dunes, xmm3 plateaus
     movss [LOCAL(G_DUNE)], xmm2
     movss [LOCAL(G_PLAT)], xmm3
+    movss [LOCAL(G_MESA)], xmm4         ; (xmm4: mesas)
     movss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.height]
     comiss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.base]
     jbe .cg_dunes                       ; (at or below the base: unchanged)
@@ -1479,6 +1489,26 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     ; plateaus: + plateau shape x blended plateau height (on land)
     xorps xmm0, xmm0
     comiss xmm0, [LOCAL(G_PLAT)]
+    jae .cg_mesa
+    cvtsi2ss xmm0, dword [rel g_beach_high]
+    comiss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.height]
+    jae .cg_mesa
+    mov eax, [LOCAL(G_CX)]
+    shl eax, 5
+    lea eax, [eax + r13d * 4 - HB]
+    cvtsi2sd xmm0, eax
+    mov eax, [LOCAL(G_CZ)]
+    shl eax, 5
+    lea eax, [eax + r12d * 4 - HB]
+    cvtsi2sd xmm1, eax
+    call biome_plateau
+    mulss xmm0, [LOCAL(G_PLAT)]
+    addss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.height]
+    movss [LOCAL(G_SAMPLE) + TSAMPLE.height], xmm0
+.cg_mesa:
+    ; mesas: + terraced mesa shape x blended mesa height (on land)
+    xorps xmm0, xmm0
+    comiss xmm0, [LOCAL(G_MESA)]
     jae .cg_put
     cvtsi2ss xmm0, dword [rel g_beach_high]
     comiss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.height]
@@ -1491,8 +1521,8 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     shl eax, 5
     lea eax, [eax + r12d * 4 - HB]
     cvtsi2sd xmm1, eax
-    call biome_plateau
-    mulss xmm0, [LOCAL(G_PLAT)]
+    call biome_mesa
+    mulss xmm0, [LOCAL(G_MESA)]
     addss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.height]
     movss [LOCAL(G_SAMPLE) + TSAMPLE.height], xmm0
 .cg_put:
@@ -1656,16 +1686,79 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     add ecx, r13d
     imul rcx, rcx, INFO_SIZE
     add rcx, [LOCAL(G_INFO)]
-    mov [rcx + INFO_BIOME], al
     mulss xmm0, [rel c_255]
     cvttss2si eax, xmm0
     mov [rcx + INFO_DENS], al
+    ; the column's biome, with ragged borders (detail noise as the jitter)
+    mov [LOCAL(G_TMP)], rcx
+    movsx eax, byte [rcx + INFO_SNOW]   ; detail * snow_line_variation
+    cvtsi2ss xmm0, eax
+    divss xmm0, [rel g_snow_var]
+    mulss xmm0, [rel c_dither]
+    mov rcx, [LOCAL(G_BMAP)]
+    mov edx, r13d
+    mov r8d, r12d
+    call bmap_dither
+    mov rcx, [LOCAL(G_TMP)]
+    mov [rcx + INFO_BIOME], al
     lea eax, [r12d + HB]
     imul eax, eax, HM
     lea eax, [eax + r13d + HB]
     mov rdx, [LOCAL(G_POND)]
     mov ax, [rdx + rax * 2]
     mov [rcx + INFO_POND], ax
+    ; striped rock and dry washes (badlands)
+    mov word [rcx + INFO_WAVE], 0       ; (wave and flags)
+    movzx eax, byte [rcx + INFO_BIOME]
+    imul rax, rax, BIOME_size
+    lea rdx, [rel g_biomes]
+    add rax, rdx
+    cmp dword [rax + BIOME.nstrata], 0
+    je .bi_next
+    mov [LOCAL(G_TMP)], rcx             ; (info)
+    mov byte [rcx + INFO_SFLAG], SF_STRATA
+    mov eax, [LOCAL(G_CX)]
+    shl eax, 5
+    add eax, r13d
+    cvtsi2sd xmm0, eax
+    mov eax, [LOCAL(G_CZ)]
+    shl eax, 5
+    add eax, r12d
+    cvtsi2sd xmm1, eax
+    call biome_strata_wave
+    mov rcx, [LOCAL(G_TMP)]
+    mov [rcx + INFO_WAVE], al
+    movzx eax, byte [rcx + INFO_BIOME]
+    imul rax, rax, BIOME_size
+    lea rdx, [rel g_biomes]
+    cmp dword [rdx + rax + BIOME.wash], 0
+    je .bi_next
+    ; washes: the dune field's crest lines, on low ground off the mesas
+    mov eax, [LOCAL(G_CX)]
+    shl eax, 5
+    add eax, r13d
+    cvtsi2sd xmm0, eax
+    mov eax, [LOCAL(G_CZ)]
+    shl eax, 5
+    add eax, r12d
+    cvtsi2sd xmm1, eax
+    call biome_mesa
+    comiss xmm0, [rel c_wash_mesa]
+    ja .bi_next
+    mov eax, [LOCAL(G_CX)]
+    shl eax, 5
+    add eax, r13d
+    cvtsi2sd xmm0, eax
+    mov eax, [LOCAL(G_CZ)]
+    shl eax, 5
+    add eax, r12d
+    cvtsi2sd xmm1, eax
+    call biome_dunes
+    comiss xmm0, [rel c_wash_crest]
+    jb .bi_next
+    mov rcx, [LOCAL(G_TMP)]
+    or byte [rcx + INFO_SFLAG], SF_WASH
+.bi_next:
     inc r13d
     cmp r13d, 32
     jb .bi_x
@@ -1760,7 +1853,15 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     jg .inland
     cmp r8d, [rel g_scree]
     jge .gravel_top
+    ; the biome's shore block (red sand in badlands), else beach sand
+    movzx r10d, byte [rcx + INFO_BIOME]
+    imul r10, r10, BIOME_size
+    lea rax, [rel g_biomes]
+    mov eax, [rax + r10 + BIOME.beach]
+    test eax, eax
+    jnz .beach_have
     mov eax, [rel g_b_beach]
+.beach_have:
     mov edx, eax
     jmp .sf_store
 .inland:
@@ -1775,6 +1876,11 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     imul r10, r10, BIOME_size
     lea rax, [rel g_biomes]
     add r10, rax
+    test byte [rcx + INFO_SFLAG], SF_WASH
+    jz .no_wash
+    mov eax, [r10 + BIOME.wash]
+    jmp .no_patch_low
+.no_wash:
     mov eax, [r10 + BIOME.top]
     test eax, eax
     jnz .grass_top
@@ -2015,6 +2121,17 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     dec eax
     sub eax, edi                        ; depth below the top block
     jz .top
+    test byte [r15 + INFO_SFLAG], SF_STRATA
+    jz .no_strata
+    ; banded rock: from the second block down to the biome's strata_min_y
+    cmp eax, 1
+    je .filler
+    movzx ecx, byte [r15 + INFO_BIOME]
+    imul ecx, ecx, BIOME_size
+    lea rdx, [rel g_biomes]
+    cmp edi, [rdx + rcx + BIOME.strata_min]
+    jge .band
+.no_strata:
     cmp eax, 3
     jle .filler
     mov ecx, edi
@@ -2024,12 +2141,42 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     jmp .carve
 .top:
     movzx eax, word [r15 + 4]
+    cmp eax, BLOCK_STRATA
+    je .band
     jmp .carve
 .filler:
     movzx eax, word [r15 + 6]
+    cmp eax, BLOCK_STRATA
+    je .band
+    movzx ecx, word [r15 + 4]
+    cmp ecx, BLOCK_STRATA
+    je .band                            ; (under a banded top: bands)
+    jmp .carve
+.band:
+    ; the band at this height: the biome's table, shifted by the wave
+    movsx eax, byte [r15 + INFO_WAVE]
+    add eax, edi
+    and eax, STRATA_LEN - 1
+    movzx ecx, byte [r15 + INFO_BIOME]
+    shl ecx, 7
+    add eax, ecx
+    lea rcx, [rel g_strata]
+    movzx eax, word [rcx + rax * 2]
     jmp .carve
 .crag:
+    test byte [r15 + INFO_SFLAG], SF_STRATA
+    jnz .band_put
     mov eax, [rel g_b_stone]
+    jmp .put
+.band_put:
+    movsx eax, byte [r15 + INFO_WAVE]
+    add eax, edi
+    and eax, STRATA_LEN - 1
+    movzx ecx, byte [r15 + INFO_BIOME]
+    shl ecx, 7
+    add eax, ecx
+    lea rcx, [rel g_strata]
+    movzx eax, word [rcx + rax * 2]
     jmp .put
 .carve:
     ; caves, ravines, shafts (solid blocks below the surface)

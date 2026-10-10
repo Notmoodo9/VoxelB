@@ -203,6 +203,9 @@ put_block:
     sub edx, [rbx + FCTX.y0]
     cmp edx, 31
     ja .no
+    cmp r9d, BLOCK_STRATA
+    je .strata
+.id_ok:
     shl edx, 10
     shl r8d, 5
     or edx, r8d
@@ -231,6 +234,26 @@ put_block:
 .put:
     mov [rax + rdx * 2], r9w
 .no:
+    ret
+.strata:
+    ; striped rock: the band of this column's biome at this height
+    push r9
+    mov eax, r8d
+    shl eax, 5
+    add eax, ecx
+    imul rax, rax, INFO_SIZE
+    add rax, [rbx + FCTX.info]
+    movsx r9d, byte [rax + INFO_WAVE]
+    add r9d, edx
+    add r9d, [rbx + FCTX.y0]
+    and r9d, STRATA_LEN - 1
+    movzx eax, byte [rax + INFO_BIOME]
+    shl eax, 7
+    add r9d, eax
+    lea rax, [rel g_strata]
+    movzx r9d, word [rax + r9 * 2]
+    call .id_ok
+    pop r9
     ret
 
 ; -----------------------------------------------------------------------------

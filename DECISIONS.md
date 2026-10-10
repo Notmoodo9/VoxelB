@@ -759,3 +759,32 @@ block for their upper half (mossy cobblestone boulders).
 * Snow caps on boulders reuse the rock's upper-half block. Snow drifts
   are low, wide snow rocks.
 * MAX_TREES went from 32 to 64 (the tree registry was full).
+
+## D66 — Badlands: mesas, bands, washes, ragged biome borders (M10 part 9)
+* Mesas: a `mesas` noise (scale 200) is ramped to a mask m =
+  clamp((n + 0.05) × 4). It is cut into 3 terraces: each step is flat for
+  3/4 and rises over the last 1/4. The result × the blended `mesa_height`
+  is added to the coarse height grid (every 4 blocks, bilinear), so the
+  risers become near-sheer cliffs.
+* Bands:
+  * one 128-entry u16 table per biome (`g_strata`), built at load from
+    the biome's `strata` list in seeded random order, never the same
+    block twice in a row, with thicknesses from `strata_thickness`;
+  * a block's band is `table[(y + wave) & 127]`;
+  * `wave` is a per-column i8 from a slow `strata` noise (×4), stored in
+    INFO (INFO_SIZE went from 16 to 20: INFO_WAVE, INFO_SFLAG).
+  * The marker id `BLOCK_STRATA` (0xFFFE) stands for "the band here". It
+    is accepted as `steep_block` (cliff tops) and as a tree `log` (striped
+    hoodoos and arches). `put_block` and the terrain fill resolve it.
+* Washes: the dune field's ridged crest lines, only where the mesa shape
+  is ~0 (canyon floors). No new noise.
+* Ores: an ore with `strata = 1` only starts clusters in banded columns
+  (CAVECTX now points at the column INFO), and may replace any band block
+  (`g_is_strata`, one byte per block id).
+* Ragged biome borders (all biomes): a column's biome is the strongest
+  one, unless the gap to the second is below `detail noise × 1.5`; then
+  the second wins. Top blocks follow the column biome, so snow, sand and
+  red-sand edges now fray instead of running in straight lines along the
+  16-block blend lattice. Weights for colours, heights and vegetation are
+  unchanged.
+* `beach_block`: the shore band can be the biome's own block (red sand).
