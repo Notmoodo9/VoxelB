@@ -1,11 +1,57 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 11): 🎨 DESIGN — Swamp: DONE** (Windows CI green: run #40)
+**Milestone 10 (part 12): 🎨 DESIGN — Dark forest: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 12: the next biome**. Candidates are dark
-forest, meadow, river, ice spikes (`design/BACKLOG.md`). About 8% of land
-near the origin is still "none". It starts with its design interview.
+Next: **Milestone 10, part 13: the next biome**. Candidates are meadow,
+river, ice spikes, or the remaining cold biomes (`design/BACKLOG.md`). It
+starts with its design interview.
+
+---
+
+## Milestone 10, part 12 — done (2026-10-11)
+
+### Design interview
+Three rounds plus approval: `design/biomes/dark_forest.md`.
+* Pockets inside wet forests: tall gnarled dark-oak giants (20–30) that
+  twist and lean, with crooked sprawling branches and dense dark crowns.
+* Smaller dark oaks and bushes between; a very dim, closed canopy.
+* Leaf litter, ferns, small mushrooms, moss, roots and fallen logs; rare
+  glowing mushrooms.
+
+### What was built
+* **Dark forest** (`data/biomes/33_dark_forest.biome`), ~3.1% of land
+  near the origin (forest weirdness 0.21–0.40).
+* **New kind** `gnarled` (D69): a drifting trunk, knotted roots and
+  crooked branches.
+* **Trees** (data): `gnarled_dark_oak`, `small_dark_oak`,
+  `dark_oak_bush`, `fallen_dark_oak`. Dark-oak leaves are now
+  foliage-tinted (very dark emerald here).
+* **`glowcap`**: a new glowing mushroom plant (texgen, with a glow layer).
+  It grows in small clusters and in the litter near trunks.
+
+### How to see it (seed 20261009)
+* A dark forest pocket from above: `voxelb.exe --pos 512 160 1080 --look 200 -25`.
+* The pocket sits beside a birch grove, a jungle and a swamp, which shows
+  how the borders fray.
+
+### Verified
+* Debug and release headless tests pass. The debug build ran over the
+  dark forest with no asserts.
+* Screenshots:
+  * the canopy;
+  * the floor among gnarled trunks (moss, litter, ferns);
+  * glowcaps (raised chance for the test).
+* For the tests the dark forest was temporarily given the whole forest
+  climate.
+
+### Known issues
+* Under the canopy it is dim only in colour. Real darkness comes with
+  lighting (M13).
+
+### Performance
+Unchanged: generation ~12–15 ms per column, meshing ~10 ms; 2.4 FPS on
+software GL over the dark forest.
 
 ---
 

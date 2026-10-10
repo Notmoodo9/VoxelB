@@ -122,7 +122,7 @@ align 8
 special_gen:    dq gen_giant, gen_fallen, gen_stump, gen_cactus, gen_rock
                 dq gen_arch, gen_fossil, gen_palm, gen_conifer
                 dq gen_acacia, gen_baobab, gen_kapok, gen_grove, gen_stone_ring
-                dq gen_cypress
+                dq gen_cypress, gen_gnarled
 
 section .text
 
@@ -4761,3 +4761,337 @@ c_cy_top:       dd 0.7                  ; cypress crowns: radius share at the to
 c_cy_step:      dd 0.18                 ;   wider each layer down
 c_cy_dn:        dd 0.25                 ; flat layers
 c_cy_up:        dd 0.35
+
+section .text
+; -----------------------------------------------------------------------------
+; gen_gnarled — a gnarled dark-oak giant (design/biomes/dark_forest.md): a
+; trunk of radius TREE.base_r tapering upwards whose centre drifts (it turns
+; every 4 blocks, so the trunk twists and leans), TREE.roots knotted roots,
+; TREE.branches crooked branches (turning every 2 blocks) from 55-85% of
+; the height ending in crown clusters of TREE.radius, and a top crown.
+;   in:  rbx = FCTX*, edi = rng state, ecx = x, edx = y, r8d = z, r9 = TREE*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define GN_X        0
+%define GN_Y        4
+%define GN_Z        8
+%define GN_H        12
+%define GN_R0       16                  ; f32 base radius
+%define GN_HT       20                  ; trunk top (relative)
+%define GN_DIR      24                  ; heading 0..15
+%define GN_CX       28                  ; f32 trunk centre
+%define GN_CZ       32
+%define GN_YI       36
+%define GN_R2       40                  ; f32 disc r^2
+%define GN_RI       44
+%define GN_N        48
+%define GN_I        52
+%define GN_L        56
+%define GN_PX       60                  ; f32 branch position
+%define GN_PY       64
+%define GN_PZ       68
+%define GN_BD       72                  ; branch heading
+%define GN_K        76
+%define GN_PATH     80                  ; f32 (cx, cz) per trunk block, 40 max
+%define GN_LOCALS   (80 + 40 * 8)
+PROC gen_gnarled, GN_LOCALS, rsi, r12, r13
+    mov rsi, r9
+    mov [LOCAL(GN_X)], ecx
+    mov [LOCAL(GN_Y)], edx
+    mov [LOCAL(GN_Z)], r8d
+    mov ecx, [rsi + TREE.height]
+    mov edx, [rsi + TREE.height + 4]
+    call rand_int
+    cmp eax, 44
+    jle .h_ok
+    mov eax, 44
+.h_ok:
+    mov [LOCAL(GN_H)], eax
+    imul eax, eax, 7                    ; trunk to 85% (7/8)
+    shr eax, 3
+    mov [LOCAL(GN_HT)], eax
+    call rng
+    movss xmm1, [rsi + TREE.base_r + 4]
+    subss xmm1, [rsi + TREE.base_r]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.base_r]
+    movss [LOCAL(GN_R0)], xmm1
+    xor ecx, ecx
+    mov edx, 15
+    call rand_int
+    mov [LOCAL(GN_DIR)], eax
+    cvtsi2ss xmm0, dword [LOCAL(GN_X)]
+    addss xmm0, [rel c_half]
+    movss [LOCAL(GN_CX)], xmm0
+    cvtsi2ss xmm0, dword [LOCAL(GN_Z)]
+    addss xmm0, [rel c_half]
+    movss [LOCAL(GN_CZ)], xmm0
+    ; ---- trunk ----
+    mov dword [LOCAL(GN_YI)], -1
+.disc:
+    ; remember the centre at this height (for the branches)
+    mov eax, [LOCAL(GN_YI)]
+    inc eax
+    movss xmm0, [LOCAL(GN_CX)]
+    movss [LOCAL(GN_PATH) + rax * 8], xmm0
+    movss xmm0, [LOCAL(GN_CZ)]
+    movss [LOCAL(GN_PATH) + rax * 8 + 4], xmm0
+    ; radius: R0 x (1 - 0.45 t), at least 0.6
+    mov eax, [LOCAL(GN_YI)]
+    xor ecx, ecx
+    test eax, eax
+    cmovs eax, ecx
+    cvtsi2ss xmm0, eax
+    cvtsi2ss xmm1, dword [LOCAL(GN_H)]
+    divss xmm0, xmm1
+    mulss xmm0, [rel c_gn_taper]
+    movss xmm1, [rel c_one]
+    subss xmm1, xmm0
+    mulss xmm1, [LOCAL(GN_R0)]
+    maxss xmm1, [rel c_gn_min_r]
+    mulss xmm1, xmm1
+    addss xmm1, [rel c_g_disc]
+    movss [LOCAL(GN_R2)], xmm1
+    sqrtss xmm1, xmm1
+    cvttss2si eax, xmm1
+    inc eax
+    mov [LOCAL(GN_RI)], eax
+    mov r13d, eax
+    neg r13d
+.ddz:
+    mov r12d, [LOCAL(GN_RI)]
+    neg r12d
+.ddx:
+    ; block (cx + dx, cz + dz): distance of its centre to the trunk centre
+    roundss xmm0, [LOCAL(GN_CX)], 9
+    cvttss2si ecx, xmm0
+    add ecx, r12d                       ; block x
+    roundss xmm0, [LOCAL(GN_CZ)], 9
+    cvttss2si r8d, xmm0
+    add r8d, r13d                       ; block z
+    cvtsi2ss xmm0, ecx
+    addss xmm0, [rel c_half]
+    subss xmm0, [LOCAL(GN_CX)]
+    mulss xmm0, xmm0
+    cvtsi2ss xmm1, r8d
+    addss xmm1, [rel c_half]
+    subss xmm1, [LOCAL(GN_CZ)]
+    mulss xmm1, xmm1
+    addss xmm0, xmm1
+    comiss xmm0, [LOCAL(GN_R2)]
+    ja .dnext
+    mov edx, [LOCAL(GN_Y)]
+    add edx, [LOCAL(GN_YI)]
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_LOG
+    call put_block
+.dnext:
+    inc r12d
+    cmp r12d, [LOCAL(GN_RI)]
+    jle .ddx
+    inc r13d
+    cmp r13d, [LOCAL(GN_RI)]
+    jle .ddz
+    ; drift: every 4 blocks turn by -2..2, then move 0.3 along the heading
+    mov eax, [LOCAL(GN_YI)]
+    and eax, 3
+    jnz .no_turn
+    mov ecx, -2
+    mov edx, 2
+    call rand_int
+    add eax, [LOCAL(GN_DIR)]
+    and eax, 15
+    mov [LOCAL(GN_DIR)], eax
+.no_turn:
+    cmp dword [LOCAL(GN_YI)], 2
+    jl .no_drift                        ; (the base stands straight)
+    mov eax, [LOCAL(GN_DIR)]
+    lea rcx, [rel dirs16]
+    movss xmm0, [rcx + rax * 8]
+    mulss xmm0, [rel c_gn_drift]
+    addss xmm0, [LOCAL(GN_CX)]
+    movss [LOCAL(GN_CX)], xmm0
+    movss xmm0, [rcx + rax * 8 + 4]
+    mulss xmm0, [rel c_gn_drift]
+    addss xmm0, [LOCAL(GN_CZ)]
+    movss [LOCAL(GN_CZ)], xmm0
+.no_drift:
+    inc dword [LOCAL(GN_YI)]
+    mov eax, [LOCAL(GN_YI)]
+    cmp eax, [LOCAL(GN_HT)]
+    jl .disc
+    ; ---- knotted roots: short arcs out of the base ----
+    mov ecx, [rsi + TREE.roots]
+    mov edx, [rsi + TREE.roots + 4]
+    call rand_int
+    mov [LOCAL(GN_N)], eax
+.root:
+    cmp dword [LOCAL(GN_N)], 0
+    jle .branches
+    dec dword [LOCAL(GN_N)]
+    xor ecx, ecx
+    mov edx, 15
+    call rand_int
+    mov [LOCAL(GN_BD)], eax
+    mov ecx, 3
+    mov edx, 5
+    call rand_int
+    mov [LOCAL(GN_L)], eax
+    mov dword [LOCAL(GN_K)], 0
+.rstep:
+    mov eax, [LOCAL(GN_BD)]
+    lea rcx, [rel dirs16]
+    cvtsi2ss xmm2, dword [LOCAL(GN_K)]
+    addss xmm2, [LOCAL(GN_R0)]
+    movss xmm0, [rcx + rax * 8]
+    mulss xmm0, xmm2
+    addss xmm0, [LOCAL(GN_PATH)]        ; (base centre)
+    roundss xmm0, xmm0, 9
+    cvttss2si ecx, xmm0
+    lea r9, [rel dirs16]
+    movss xmm0, [r9 + rax * 8 + 4]
+    mulss xmm0, xmm2
+    addss xmm0, [LOCAL(GN_PATH) + 4]
+    roundss xmm0, xmm0, 9
+    cvttss2si r8d, xmm0
+    ; arch: up one in the first half, down into the ground at the end
+    mov edx, [LOCAL(GN_Y)]
+    mov eax, [LOCAL(GN_K)]
+    shl eax, 1
+    cmp eax, [LOCAL(GN_L)]
+    jl .rup
+    dec edx
+.rup:
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_LOG
+    call put_block
+    inc dword [LOCAL(GN_K)]
+    mov eax, [LOCAL(GN_K)]
+    cmp eax, [LOCAL(GN_L)]
+    jl .rstep
+    jmp .root
+.branches:
+    mov ecx, [rsi + TREE.branches]
+    mov edx, [rsi + TREE.branches + 4]
+    call rand_int
+    mov [LOCAL(GN_N)], eax
+    mov dword [LOCAL(GN_I)], 0
+.branch:
+    mov eax, [LOCAL(GN_I)]
+    cmp eax, [LOCAL(GN_N)]
+    jge .top
+    ; heading: spread evenly, jittered
+    shl eax, 4
+    cdq
+    idiv dword [LOCAL(GN_N)]
+    add eax, [LOCAL(GN_DIR)]
+    mov [LOCAL(GN_BD)], eax
+    ; start: 55 .. 85% of the height, on the trunk path
+    call rng
+    mulss xmm0, [rel c_gn_bspan]
+    addss xmm0, [rel c_gn_blo]
+    cvtsi2ss xmm1, dword [LOCAL(GN_H)]
+    mulss xmm0, xmm1
+    cvttss2si eax, xmm0
+    cmp eax, [LOCAL(GN_HT)]
+    jl .b_in
+    mov eax, [LOCAL(GN_HT)]
+    dec eax
+.b_in:
+    cvtsi2ss xmm1, eax
+    cvtsi2ss xmm0, dword [LOCAL(GN_Y)]
+    addss xmm1, xmm0
+    movss [LOCAL(GN_PY)], xmm1
+    inc eax
+    movss xmm0, [LOCAL(GN_PATH) + rax * 8]
+    movss [LOCAL(GN_PX)], xmm0
+    movss xmm0, [LOCAL(GN_PATH) + rax * 8 + 4]
+    movss [LOCAL(GN_PZ)], xmm0
+    mov ecx, 6
+    mov edx, 10
+    call rand_int
+    mov [LOCAL(GN_L)], eax
+    mov dword [LOCAL(GN_K)], 0
+.bstep:
+    ; crooked: turn -1..1 every 2 blocks
+    test dword [LOCAL(GN_K)], 1
+    jnz .bmove
+    mov ecx, -1
+    mov edx, 1
+    call rand_int
+    add [LOCAL(GN_BD)], eax
+.bmove:
+    mov eax, [LOCAL(GN_BD)]
+    and eax, 15
+    lea rcx, [rel dirs16]
+    movss xmm4, [rcx + rax * 8]
+    movss xmm5, [rcx + rax * 8 + 4]
+    movss xmm0, [LOCAL(GN_PX)]
+    addss xmm0, xmm4
+    movss [LOCAL(GN_PX)], xmm0
+    movss xmm0, [LOCAL(GN_PZ)]
+    addss xmm0, xmm5
+    movss [LOCAL(GN_PZ)], xmm0
+    movss xmm0, [LOCAL(GN_PY)]
+    addss xmm0, [rel c_gn_rise]
+    movss [LOCAL(GN_PY)], xmm0
+    roundss xmm0, [LOCAL(GN_PX)], 9
+    cvttss2si ecx, xmm0
+    roundss xmm0, [LOCAL(GN_PY)], 9
+    cvttss2si edx, xmm0
+    roundss xmm0, [LOCAL(GN_PZ)], 9
+    cvttss2si r8d, xmm0
+    mov r9d, [rsi + TREE.log]
+    AXIS_LOG r9d
+    mov r10d, PUT_LOG
+    call put_block
+    inc dword [LOCAL(GN_K)]
+    mov eax, [LOCAL(GN_K)]
+    cmp eax, [LOCAL(GN_L)]
+    jl .bstep
+    ; crown cluster at the end
+    call rng
+    movss xmm1, [rsi + TREE.radius + 4]
+    subss xmm1, [rsi + TREE.radius]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.radius]
+    movss xmm0, xmm1
+    roundss xmm1, [LOCAL(GN_PX)], 9
+    cvttss2si ecx, xmm1
+    roundss xmm1, [LOCAL(GN_PY)], 9
+    cvttss2si edx, xmm1
+    inc edx
+    roundss xmm1, [LOCAL(GN_PZ)], 9
+    cvttss2si r8d, xmm1
+    movss xmm1, [rel c_gn_dn]
+    movss xmm2, [rel c_gn_up]
+    call blob
+    inc dword [LOCAL(GN_I)]
+    jmp .branch
+.top:
+    mov eax, [LOCAL(GN_HT)]
+    movss xmm0, [LOCAL(GN_PATH) + rax * 8]
+    roundss xmm0, xmm0, 9
+    cvttss2si ecx, xmm0
+    movss xmm0, [LOCAL(GN_PATH) + rax * 8 + 4]
+    roundss xmm0, xmm0, 9
+    cvttss2si r8d, xmm0
+    mov edx, [LOCAL(GN_Y)]
+    add edx, [LOCAL(GN_HT)]
+    movss xmm0, [rsi + TREE.radius + 4]
+    movss xmm1, [rel c_gn_dn]
+    movss xmm2, [rel c_gn_up]
+    call blob
+    RETURN
+ENDPROC
+
+section .rdata
+align 4
+c_gn_taper:     dd 0.45                 ; gnarled: radius loss to the top
+c_gn_min_r:     dd 0.6
+c_gn_drift:     dd 0.3                  ; trunk centre drift per block
+c_gn_blo:       dd 0.55                 ; branches from 55 ..
+c_gn_bspan:     dd 0.30                 ;   85% of the height
+c_gn_rise:      dd 0.4
+c_gn_dn:        dd 0.55
+c_gn_up:        dd 0.65

@@ -166,6 +166,7 @@ v_kapok:        db "kapok", 0
 v_grove:        db "grove", 0
 v_stone_ring:   db "stone_ring", 0
 v_cypress:      db "cypress", 0
+v_gnarled:      db "gnarled", 0
 k_t_lean:       db "lean", 0
 k_b_dry:        db "dry_ponds", 0
 k_t_vines:      db "vines", 0
@@ -291,8 +292,8 @@ climate_settings:
 kind_names:     dq v_round, v_branching, v_bush, v_giant, v_fallen, v_stump
                 dq v_cactus, v_rock, v_arch, v_fossil, v_palm, v_conifer
                 dq v_acacia, v_baobab, v_kapok, v_grove, v_stone_ring
-                dq v_cypress
-%define KIND_COUNT 18
+                dq v_cypress, v_gnarled
+%define KIND_COUNT 19
 
 align 4
 c_one:          dd 1.0

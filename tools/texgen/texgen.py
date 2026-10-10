@@ -1530,6 +1530,29 @@ def make_swamp(out):
     out["reeds"] = img
 
 
+def make_dark_forest(out):
+    # glowcap: a cluster of small pale-blue mushrooms; the caps glow
+    img = np.zeros((N, N, 4))
+    mask = np.zeros((N, N))
+    cp = ramp("7ad8f0", 4, spread=0.2)
+    st = ramp("d8e0e8", 3, spread=0.12)
+    for (cx, base, h, w) in ((4, N - 1, 5, 2), (9, N - 1, 8, 3), (12, N - 1, 4, 2), (7, N - 1, 3, 1)):
+        for y in range(base - h + 1, base + 1):
+            img[y, cx, :3] = st[1]; img[y, cx, 3] = 1.0
+        top = base - h
+        for dy in range(-1, 1):
+            ww = w if dy == 0 else w - 1
+            for dx in range(-ww, ww + 1):
+                x, y = cx + dx, top + dy
+                if 0 <= x < N and 0 <= y < N:
+                    img[y, x, :3] = cp[2 if dy < 0 else 1]; img[y, x, 3] = 1.0
+                    mask[y, x] = 1.0
+        if 0 <= top - 1 < N:
+            img[top - 1, cx, :3] = cp[3]; mask[top - 1, cx] = 1.0
+    out["glowcap"] = img
+    out["glowcap_glow"] = glow_layer(mask, "a8f0ff", 0.85)
+
+
 def ladder_design(name, base):
     pal = ramp(base, 5, spread=0.15)
     img = np.zeros((N, N, 3)) + pal[1]
@@ -2044,6 +2067,7 @@ def build_all():
     make_badlands(out)
     make_steppe(out)
     make_swamp(out)
+    make_dark_forest(out)
     return out
 
 

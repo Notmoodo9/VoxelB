@@ -1,0 +1,48 @@
+# Dark forest (design/biomes/dark_forest.md): mysterious pockets inside the
+# wet temperate forests: tall gnarled dark-oak giants that twist and lean,
+# with crooked sprawling branches and dense dark crowns closing a roof;
+# smaller dark oaks and bushes between; a dim floor of dark leaf litter,
+# ferns, small mushrooms, moss, roots and fallen logs; rare clusters of
+# softly glowing mushrooms.
+
+[biome dark_forest]
+temperature   = 0.35, 0.70
+humidity      = 0.55, 1.00
+weirdness     = 0.21, 0.40       # between the birch groves and the forest
+priority      = 1
+height        = 98, 220
+grass_color   = 2E7A2A           # deep green
+foliage_color = 1E6A22           # very dark emerald
+
+top_patch = moss_block, 0.2
+plant = fern, 0.20
+plant = short_grass, 0.10
+
+# giants every ~12-15 blocks, smaller dark oaks between
+tree         = gnarled_dark_oak, 1
+tree         = small_dark_oak, 1
+tree_density = 0.011
+
+bush         = dark_oak_bush, 6
+bush         = fallen_dark_oak, 1
+bush         = mossy_stump, 1
+bush_density = 0.006
+
+# dark leaf litter around trunks, with ferns and mushrooms on it
+litter_block  = forest_floor
+litter_radius = 3
+litter_chance = 0.75
+shade_plant   = fern, 0.12
+shade_plant   = brown_mushroom, 0.03
+shade_plant   = red_mushroom, 0.02
+shade_plant   = glowcap, 0.012          # glowing fungi near the roots
+
+# rare clusters of glowing mushrooms (one candidate per 32 x 32 blocks)
+flowers        = glowcap
+flower_chance  = 0
+meadow_cell    = 32
+meadow_chance  = 0.6
+meadow_radius  = 1.5, 2.5
+meadow_density = 0.5
+meadow_mixed   = 0
+meadow_flowers = glowcap

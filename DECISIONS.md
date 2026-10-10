@@ -840,3 +840,18 @@ block for their upper half (mossy cobblestone boulders).
   * 3 flat blobs (down 0.25, up 0.35) 3 apart, widening downwards;
   * knees: log stubs up to just above the water, inside-chunk columns
     only (the rng is consumed in the same order everywhere).
+
+## D69 — Dark forest: the gnarled kind (M10 part 12)
+* `gnarled`:
+  * the trunk is a disc around a float centre that starts at the
+    candidate and, from 2 blocks up, moves 0.3 blocks per block along a
+    heading, which turns by −2..2 of 16 directions every 4 blocks;
+  * the radius tapers to ×0.55 at the top, at least 0.6;
+  * the centre at every height is kept (≤ 40 entries) so branches leave
+    the bent trunk where it really is;
+  * branches turn by −1..1 every 2 blocks and rise 0.4 per block.
+* The dark forest is a weirdness pocket of the forest climate (0.21–0.40)
+  between the birch groves (0–0.21) and the plain forest. Old growth
+  stays at 0.80–1.00.
+* Glowcaps go both in meadow-style clusters on the open floor and as a
+  litter `shade_plant`, so they appear near trunks and roots too.

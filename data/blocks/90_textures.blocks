@@ -123,3 +123,6 @@ interpolate = 1
 glow        = lava_glow
 [texture star_crystal_ore]
 glow = star_crystal_ore_glow
+
+[texture glowcap]
+glow = glowcap_glow

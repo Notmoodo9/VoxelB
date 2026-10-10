@@ -112,3 +112,10 @@ shape    = plant
 textures = reeds
 render   = cutout
 sway     = 1
+
+# dark forest (design/biomes/dark_forest.md): softly glowing mushrooms
+# (the glow layer reads bright now; real block light arrives in M13)
+[block glowcap]
+shape    = plant
+textures = glowcap
+render   = cutout

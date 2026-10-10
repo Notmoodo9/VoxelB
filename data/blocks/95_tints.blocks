@@ -20,3 +20,7 @@ tint = foliage
 # swamp cypresses (design/biomes/swamp.md)
 [block mangrove_leaves]
 tint = foliage
+
+# dark forest (design/biomes/dark_forest.md)
+[block dark_oak_leaves]
+tint = foliage
