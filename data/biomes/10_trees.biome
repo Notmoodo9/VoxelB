@@ -524,3 +524,29 @@ log    = packed_ice
 leaves = blue_ice
 radius = 3.0, 4.0
 height = 35, 50
+
+# --- meadow (design/biomes/meadow.md) ----------------------------------------
+# small stones half-sunk in the grass, with a mossy top
+[tree meadow_stone]
+kind   = rock
+log    = stone
+leaves = mossy_cobblestone
+radius = 0.8, 1.4
+height = 1, 2
+
+# rare big mossy boulders
+[tree big_mossy_boulder]
+kind   = rock
+log    = stone
+leaves = mossy_cobblestone
+radius = 2.5, 3.5
+height = 3, 5
+
+# lone meadow spruces, a little taller and fuller than the taiga's
+[tree meadow_spruce]
+kind      = conifer
+log       = spruce_log
+leaves    = spruce_leaves
+height    = 10, 16
+radius    = 2.6, 3.4
+leaf_gaps = 0.2

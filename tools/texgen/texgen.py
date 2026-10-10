@@ -1665,6 +1665,99 @@ def make_ice_spikes(out):
     out["blue_ice"] = rgba(img)
 
 
+def make_meadow(out):
+    # lavender: grey-green stems below, purple flower spikes above
+    r = rng("lavender")
+    gp = ramp("7a9a6a", 4, spread=0.2)
+    lp = ramp("9a6ad8", 4, spread=0.22)
+    stems = (3, 6, 9, 12)
+    low = np.zeros((N, N, 4))
+    for i, x0 in enumerate(stems):
+        for y in range(N):
+            x = x0 + (1 if (y < 6 and i % 2) else 0)
+            low[y, x, :3] = gp[1 + (y % 2)]; low[y, x, 3] = 1.0
+        for y in range(8, N, 3):              # narrow leaves
+            dx = -1 if (y // 3 + i) % 2 else 1
+            if 0 <= x0 + dx < N:
+                low[y, x0 + dx, :3] = gp[3]; low[y, x0 + dx, 3] = 1.0
+    out["lavender_lower"] = low
+    up = np.zeros((N, N, 4))
+    for i, x0 in enumerate(stems):
+        top = 2 + (i * 3) % 4
+        x = x0 + (1 if i % 2 else 0)
+        for y in range(top + 7, N):
+            up[y, x, :3] = gp[2]; up[y, x, 3] = 1.0
+        for y in range(top, top + 7):         # the spike of florets
+            up[y, x, :3] = lp[1 + (y % 3)]; up[y, x, 3] = 1.0
+            if y % 2 == 0 and r.random() < 0.8:
+                dx = -1 if (y + i) % 4 == 0 else 1
+                if 0 <= x + dx < N:
+                    up[y, x + dx, :3] = lp[2]; up[y, x + dx, 3] = 1.0
+    out["lavender_upper"] = up
+
+    # lupins: a clump of palmate leaves below, a tall tapering spike above
+    def lupin(name, color):
+        r = rng(name)
+        gp = ramp("4a9a3a", 5, spread=0.22)
+        fp = ramp(color, 4, spread=0.24)
+        low = np.zeros((N, N, 4))
+        for y in range(N):
+            low[y, 8, :3] = gp[2]; low[y, 8, 3] = 1.0
+        for (cx, cy) in ((4, 10), (12, 9), (7, 13), (10, 5)):
+            for a in range(7):                # leaflets fanning out
+                ang = np.pi * (0.1 + 0.8 * a / 6.0)
+                for d in (1, 2, 3):
+                    x = int(round(cx + np.cos(ang) * d))
+                    y = int(round(cy - np.sin(ang) * d * 0.6))
+                    if 0 <= x < N and 0 <= y < N:
+                        low[y, x, :3] = gp[2 + d // 2]; low[y, x, 3] = 1.0
+        out[name + "_lower"] = low
+        up = np.zeros((N, N, 4))
+        for (x0, top) in ((8, 1), (4, 6)):
+            for y in range(top, N):
+                up[y, x0, :3] = gp[2]; up[y, x0, 3] = 1.0
+            span = N - 3 - top
+            for k in range(span):
+                y = top + k
+                w = 0 if k < 2 else (1 if k < span * 0.6 else 2)
+                for dx in range(-w, w + 1):
+                    x = x0 + dx
+                    if 0 <= x < N and (dx == 0 or (y + dx) % 2 == 0 or r.random() < 0.5):
+                        up[y, x, :3] = fp[1 + (k + abs(dx)) % 3]; up[y, x, 3] = 1.0
+        out[name + "_upper"] = up
+    lupin("blue_lupin", "4a6ae8")
+    lupin("pink_lupin", "f07ab8")
+    lupin("white_lupin", "f4f0f4")
+
+    # clover: low trefoil leaves with a few round white heads
+    r = rng("clover")
+    gp = ramp("3a9a3a", 5, spread=0.2)
+    img = np.zeros((N, N, 4))
+    for (cx, cy) in ((3, 12), (8, 13), (12, 11), (6, 9), (11, 14)):
+        for (dx, dy) in ((0, -1), (-1, 0), (1, 0)):
+            for (ex, ey) in ((0, 0), (1, 0), (0, 1)):
+                x, y = cx + 2 * dx + ex, cy + 2 * dy + ey
+                if 0 <= x < N and 0 <= y < N:
+                    img[y, x, :3] = gp[2 + (ex + ey) % 2]; img[y, x, 3] = 1.0
+        for y in range(cy + 1, N):
+            img[y, cx, :3] = gp[1]; img[y, cx, 3] = 1.0
+    wp = ramp("f0f0e8", 3, spread=0.12)
+    for (cx, cy) in ((5, 5), (11, 6)):
+        for y in range(cy + 2, N):
+            img[y, cx, :3] = gp[1]; img[y, cx, 3] = 1.0
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if dx * dx + dy * dy < 2 or r.random() < 0.4:
+                    img[cy + dy, cx + dx, :3] = wp[1 + (dx + dy) % 2]; img[cy + dy, cx + dx, 3] = 1.0
+        img[cy, cx, :3] = hexrgb("f0c8d8")
+    out["clover"] = img
+
+    out["buttercup"] = flower("buttercup", "f8d820", "e89a10", "cup")
+    out["edelweiss"] = flower("edelweiss", "eef0e4", "d8c050", "star")
+    out["gentian"] = flower("gentian", "2a44e0", "e8f0ff", "tulip")
+    out["alpine_aster"] = flower("alpine_aster", "a880e8", "f0c830", "daisy")
+
+
 def ladder_design(name, base):
     pal = ramp(base, 5, spread=0.15)
     img = np.zeros((N, N, 3)) + pal[1]
@@ -2184,6 +2277,7 @@ def build_all():
     make_sky_islands(out)
     make_mushroom_fields(out)
     make_ice_spikes(out)
+    make_meadow(out)
     return out
 
 

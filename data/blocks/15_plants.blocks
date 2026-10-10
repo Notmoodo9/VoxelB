@@ -137,3 +137,20 @@ sway     = 1
 shape    = plant
 textures = puffball
 render   = cutout
+
+# meadow (design/biomes/meadow.md)
+[template tall_flower]
+name           = {}
+shape          = tall_plant
+textures       = {}_lower
+upper_textures = {}_upper
+render         = cutout
+sway           = 1
+
+[family meadow_tall_flowers]
+templates = tall_flower
+members   = lavender, blue_lupin, pink_lupin, white_lupin
+
+[family meadow_plants]
+templates = plant
+members   = clover, buttercup, edelweiss, gentian, alpine_aster

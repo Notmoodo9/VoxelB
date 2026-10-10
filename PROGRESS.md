@@ -1,11 +1,59 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 16): 🎨 DESIGN — Ice spikes: DONE** (Windows CI green: run #50)
+**Milestone 10 (part 17): 🎨 DESIGN — Meadow: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 17: the next biome**. Candidates are crystal
-caves (underground), glaciers, frozen ocean, meadow, river
-(`design/BACKLOG.md`). It starts with its design interview.
+Next: **Milestone 10, part 18: the next biome**. Candidates are crystal
+caves (underground), glaciers, frozen ocean, river (`design/BACKLOG.md`).
+It starts with its design interview.
+
+---
+
+## Milestone 10, part 17 — done (2026-10-10)
+
+### Design interview
+Three rounds plus approval: `design/biomes/meadow.md`.
+* Highland meadows on the temperate foothills.
+* Mint grass with pastel flower drifts: lavender, lupins and buttercups
+  lower down; alpine flowers higher up.
+* Lone spruces, birch clumps, mossy boulders, clear ponds.
+* Beehives and streams are deferred.
+
+### What was built
+* **Meadow** and **alpine meadow** (`data/biomes/22_meadow.biome`):
+  * temperate climates at heights 140–180 and 181–230, priority 2;
+  * 6.0% of land near the origin.
+* **Groves** (D74): new biome settings `grove_chance`, `grove_radius`,
+  `grove_density` and `grove_tree` for tree clumps. `in_clearing` and
+  the new `in_grove` share one routine, `in_disc`.
+* **New blocks** (texgen):
+  * `lavender`, `blue_lupin`, `pink_lupin`, `white_lupin` (2 tall);
+  * `clover`, `buttercup`, `edelweiss`, `gentian`, `alpine_aster`.
+* **Trees** (data): `meadow_spruce`, `meadow_stone`, `big_mossy_boulder`.
+* Sky islands and the glowing forest moved to priority 3, to keep their
+  pockets.
+
+### How to see it (seed 20261009)
+* Flower drifts, spruces and boulders:
+  `voxelb.exe --pos -300 172 -180 --look 300 -25`.
+* Over the meadow: `voxelb.exe --pos -250 180 -192 --look 270 -35`.
+* From above: `voxelb.exe --pos -300 330 -200 --look 0 -89`.
+
+### Verified
+* Debug and release headless tests pass. The debug build ran in the
+  meadow with no asserts.
+* Screenshots: the drifts close up, over the meadow and from above. Birch
+  groves were checked with a forced grove chance, then set back.
+
+### Known issues
+* The alpine band lies mostly on steep slopes (bare stone), so its
+  flowers are on the ledges. A gentler foothill terrain shape would need
+  terrain changes and was not part of this design.
+
+### Performance
+Unchanged: meshing 10.1 ms per column on average. The full 16-chunk view
+(797 columns) is ready after 9.5 s on 3 workers. 6.3 FPS average under
+Wine with llvmpipe.
 
 ---
 

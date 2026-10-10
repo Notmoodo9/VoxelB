@@ -676,6 +676,7 @@ pick_weighted:
 %define FR_D        40
 %define FR_H        44
 %define FR_KIND     48                  ; 0 tree, 1 bush
+%define FR_GROVE    52                  ; 1: inside a grove (its density and trees)
 %define FR_LOCALS   64
 PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov rbx, rcx
@@ -759,9 +760,26 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     lea rcx, [rel g_biomes]
     add rax, rcx
     mov [LOCAL(FR_B)], rax
-    movss xmm1, [rax + BIOME.tree_dens]
+    mov dword [LOCAL(FR_GROVE)], 0
     cmp dword [LOCAL(FR_KIND)], 0
+    jne .bush_dens
+    ; trees: inside a grove of the biome, its density and its tree list
+    mov ecx, [rbx + FCTX.cx]
+    shl ecx, 5
+    add ecx, [LOCAL(FR_X)]
+    mov edx, [rbx + FCTX.cz]
+    shl edx, 5
+    add edx, [LOCAL(FR_Z)]
+    mov r8, [LOCAL(FR_B)]
+    call in_grove
+    mov [LOCAL(FR_GROVE)], eax
+    mov rax, [LOCAL(FR_B)]
+    movss xmm1, [rax + BIOME.tree_dens]
+    cmp dword [LOCAL(FR_GROVE)], 0
     je .dens
+    movss xmm1, [rax + BIOME.grove_d]
+    jmp .dens
+.bush_dens:
     movss xmm1, [rax + BIOME.bush_dens]
 .dens:
     mulss xmm1, [rel c_16]
@@ -843,6 +861,12 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     FRAC16 ax
     mov rcx, [LOCAL(FR_B)]
     add rcx, BIOME.ntrees
+    cmp dword [LOCAL(FR_GROVE)], 0
+    je .not_grove
+    mov rcx, [LOCAL(FR_B)]
+    add rcx, BIOME.ngtrees
+    jmp .pick
+.not_grove:
     cmp dword [LOCAL(FR_KIND)], 0
     je .pick
     mov rcx, [LOCAL(FR_B)]
@@ -955,54 +979,101 @@ ENDPROC
 ;   out: eax = 1 inside
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
+in_clearing:
+    add r8, BIOME.clear_ch
+    mov r9d, (160 << 16) | 0x434C       ; "CL"
+    jmp in_disc
+
+; -----------------------------------------------------------------------------
+; in_grove — is a world column inside a tree grove of the biome? (one
+; candidate per 128 x 128 cell, design/biomes/meadow.md)
+;   in:  ecx = world x, edx = world z, r8 = BIOME*
+;   out: eax = 1 inside
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+in_grove:
+    add r8, BIOME.grove_ch
+    mov r9d, (128 << 16) | 0x4752       ; "GR"
+    jmp in_disc
+
+; -----------------------------------------------------------------------------
+; in_disc — is a world column inside a hashed disc: one candidate per cell
+; with a chance, its centre inside the middle 70% of the cell.
+;   in:  ecx = world x, edx = world z, r8 = {f32 chance, f32 radius range},
+;        r9d = cell size << 16 | hash salt
+;   out: eax = 1 inside
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
 %define IC_X        0
 %define IC_Z        4
 %define IC_H        8
 %define IC_OX       12                  ; cell origin
 %define IC_OZ       16
+%define IC_CELL     20
+%define IC_SALT     24
 %define IC_LOCALS   32
-PROC in_clearing, IC_LOCALS, rbx
+PROC in_disc, IC_LOCALS, rbx
     mov rbx, r8
     xorps xmm0, xmm0
-    comiss xmm0, [rbx + BIOME.clear_ch]
+    comiss xmm0, [rbx]
     jae .no
     mov [LOCAL(IC_X)], ecx
     mov [LOCAL(IC_Z)], edx
+    mov eax, r9d
+    shr eax, 16
+    mov [LOCAL(IC_CELL)], eax
+    and r9d, 0xFFFF
+    mov [LOCAL(IC_SALT)], r9d
     mov eax, ecx
-    mov ecx, 160
+    mov ecx, [LOCAL(IC_CELL)]
     call floordiv
     mov r9d, eax                        ; cell x
     mov eax, [LOCAL(IC_Z)]
-    mov ecx, 160
+    mov ecx, [LOCAL(IC_CELL)]
     call floordiv
     mov edx, eax                        ; cell z
-    imul eax, r9d, 160
+    mov eax, r9d
+    imul eax, [LOCAL(IC_CELL)]
     mov [LOCAL(IC_OX)], eax
-    imul eax, edx, 160
+    mov eax, edx
+    imul eax, [LOCAL(IC_CELL)]
     mov [LOCAL(IC_OZ)], eax
     mov ecx, r9d
-    mov r8d, 0x434C                     ; "CL"
+    mov r8d, [LOCAL(IC_SALT)]
     xor r9d, r9d
     call hash4
     mov [LOCAL(IC_H)], eax
     FRAC16 ax
-    comiss xmm0, [rbx + BIOME.clear_ch]
+    comiss xmm0, [rbx]
     jae .no
-    ; centre 24 .. 136 inside the cell
+    ; centre: 15% + 0..70% of the cell
+    mov r8d, [LOCAL(IC_CELL)]
+    imul r8d, r8d, 7
+    mov eax, r8d
+    xor edx, edx
+    mov ecx, 10
+    div ecx
+    mov r8d, eax                        ; span
+    mov eax, [LOCAL(IC_CELL)]
+    imul eax, eax, 3
+    xor edx, edx
+    mov ecx, 20
+    div ecx
+    mov r10d, eax                       ; margin
     mov eax, [LOCAL(IC_H)]
     shr eax, 16
     and eax, 0xFF
-    imul eax, eax, 112
+    imul eax, r8d
     shr eax, 8
-    add eax, 24
+    add eax, r10d
     add eax, [LOCAL(IC_OX)]
     mov ecx, [LOCAL(IC_X)]
     sub ecx, eax
     mov eax, [LOCAL(IC_H)]
     shr eax, 24
-    imul eax, eax, 112
+    imul eax, r8d
     shr eax, 8
-    add eax, 24
+    add eax, r10d
     add eax, [LOCAL(IC_OZ)]
     mov edx, [LOCAL(IC_Z)]
     sub edx, eax
@@ -1015,10 +1086,10 @@ PROC in_clearing, IC_LOCALS, rbx
     and eax, 0xFF
     cvtsi2ss xmm0, eax
     mulss xmm0, [rel c_inv255]
-    movss xmm1, [rbx + BIOME.clear_r + 4]
-    subss xmm1, [rbx + BIOME.clear_r]
+    movss xmm1, [rbx + 8]
+    subss xmm1, [rbx + 4]
     mulss xmm1, xmm0
-    addss xmm1, [rbx + BIOME.clear_r]   ; radius
+    addss xmm1, [rbx + 4]               ; radius
     mulss xmm1, xmm1
     comiss xmm3, xmm1
     ja .no

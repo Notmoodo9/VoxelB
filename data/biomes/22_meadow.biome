@@ -1,0 +1,86 @@
+# Meadow (design/biomes/meadow.md): sunny highland meadows on the temperate
+# foothills, above the plains and forests: mint-green grass, knee-high and
+# waving, with drifts of pastel flowers (lavender, lupins, buttercups),
+# very sparse lone spruces, small birch clumps, mossy stones and clear
+# ponds. Higher up it turns alpine (alpine_meadow below).
+
+[biome meadow]
+temperature   = 0.30, 0.68       # the temperate climates (plains, forest),
+humidity      = 0.15, 0.85
+priority      = 2                #   on their upper slopes
+height        = 140, 180
+hill_scale    = 0.7
+grass_color   = 68D884           # mint green
+foliage_color = 4CB070
+
+plant = tall_grass, 0.12
+plant = short_grass, 0.20
+plant = clover, 0.10
+
+# flowers everywhere in drifts: mostly one colour, some mixed
+flowers        = lavender, blue_lupin, pink_lupin, white_lupin, buttercup, oxeye_daisy, cornflower, allium, pink_tulip
+flower_chance  = 0.10
+meadow_cell    = 64
+meadow_chance  = 1.0
+meadow_radius  = 12, 24
+meadow_density = 0.7
+meadow_mixed   = 0.3
+
+# very sparse lone spruces; small birch clumps in half the 128 x 128 cells
+tree          = meadow_spruce, 1
+tree_density  = 0.00025
+grove_chance  = 0.5
+grove_radius  = 6, 10
+grove_density = 0.04
+grove_tree    = birch, 1
+
+# many small mossy stones, a few boulders, rare big ones
+bush         = meadow_stone, 12
+bush         = mossy_boulder, 3
+bush         = big_mossy_boulder, 1
+bush_density = 0.0012
+
+# small clear ponds
+pond_chance = 0.05
+pond_radius = 2.5, 6
+pond_depth  = 2
+pond_floor  = gravel
+
+# the upper meadow: alpine flowers take over
+[biome alpine_meadow]
+temperature   = 0.30, 0.68
+humidity      = 0.15, 0.85
+priority      = 2
+height        = 181, 230
+hill_scale    = 0.7
+grass_color   = 68D884           # mint green
+foliage_color = 4CB070
+
+plant = short_grass, 0.24
+plant = tall_grass, 0.06
+plant = clover, 0.08
+
+flowers        = edelweiss, gentian, alpine_aster, buttercup
+flower_chance  = 0.10
+meadow_cell    = 64
+meadow_chance  = 1.0
+meadow_radius  = 10, 20
+meadow_density = 0.7
+meadow_mixed   = 0.35
+
+tree          = meadow_spruce, 1
+tree_density  = 0.0002
+grove_chance  = 0.2
+grove_radius  = 4, 7
+grove_density = 0.04
+grove_tree    = birch, 1
+
+bush         = meadow_stone, 10
+bush         = mossy_boulder, 3
+bush         = big_mossy_boulder, 2
+bush_density = 0.0016
+
+pond_chance = 0.05
+pond_radius = 2.5, 5
+pond_depth  = 2
+pond_floor  = gravel

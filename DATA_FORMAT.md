@@ -321,6 +321,8 @@ Temperature and humidity are 0..1.
 | `island_radius`, `island_height` | island radius range (max 25) and centre height range (Y) |
 | `island_ore` | `block, chance` (repeatable, up to 8): blocks in the islands' stone (ores, crystals) |
 | `island_roots` | `block, chance`: strands (2–5 long) hanging under the islands, chance per column |
+| `grove_chance`, `grove_radius`, `grove_density` | tree groves (clumps): chance per 128×128 cell, radius range, trees per block² inside a grove (instead of `tree_density`) |
+| `grove_tree` | `tree, weight` (repeatable, up to 8): the trees of the groves (instead of the `tree` list) |
 | `water_color` | RRGGBB: the biome's water colour (a third tint layer; water keeps its texture's brightness and takes this hue). Default: `water_reference` (`[climate]`, the texture's own colour) |
 | `flatten` | `level, pull`: pulls the land towards `level` by `pull` (0..1, blended). With the small detail bumps, a level just above the sea makes a maze of pools and islands (swamps) |
 | `own_shore` | 1: the shore band uses the biome's own ground (top, patches) above the sea and its `pond_floor` (else mud) below it, instead of beach sand |

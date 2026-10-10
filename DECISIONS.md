@@ -918,3 +918,18 @@ block for their upper half (mossy cobblestone boulders).
   * the core (centre column and top 30%) is the `leaves` block.
 * Ice spikes are a rarity pocket (0.72–1.00) of the snowy tundra's
   climate, priority 2, like the glowing forest and sky islands in theirs.
+
+## D74 — Meadow: height bands and tree groves (M10 part 17)
+* The meadow is two biome entries with one look: `meadow` (heights
+  140–180) and `alpine_meadow` (181–230), in the temperate climates at
+  priority 2. Height already picks biomes, so "alpine flowers only higher
+  up" needs no new code, and the blend makes the change gradual.
+* Sky islands and the glowing forest moved to priority 3, so the meadow
+  never takes their rare pockets on the slopes.
+* Groves (birch clumps): a biome may list `grove_tree`s with a
+  `grove_chance` per 128×128 cell, a `grove_radius` and a
+  `grove_density`. Inside a grove disc, the tree layer uses the grove's
+  density and list.
+* `in_clearing` became one routine, `in_disc` (cell size and hash salt
+  as parameters), shared with `in_grove`. Clearings are unchanged:
+  same 160 cell, salt and centre range.

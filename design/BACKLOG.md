@@ -17,7 +17,7 @@ yet; each item gets its own doc in `design/` when we interview it.
 | done | Old-growth forest (rare pockets in forests) | M10 | `design/biomes/old_growth_forest.md` |
 | done | Birch grove (small pockets in forests) | M10 | `design/biomes/birch_grove.md` |
 | done | Dark forest | M10 | `design/biomes/dark_forest.md` |
-| todo | Temperate biomes: meadow, river | M10 | one biome at a time |
+| todo | Temperate biomes: river | M10 | one biome at a time |
 | done | Steppe (the cool, dry gap) | M10 | `design/biomes/steppe.md` |
 | todo | Transition biomes (forest edge, desert scrubland, …) | M10 | from the biome system interview |
 | done | Desert + oasis | M10 | `design/biomes/desert.md` |
@@ -32,14 +32,16 @@ yet; each item gets its own doc in `design/` when we interview it.
 | done | Glowing forest | M10 | `design/biomes/glowing_forest.md` |
 | done | Sky islands (floating islands) | M10 | `design/biomes/sky_islands.md` |
 | done | Mushroom fields | M10 | `design/biomes/mushroom_fields.md` |
+| done | Meadow (and alpine meadow) | M10 | `design/biomes/meadow.md` |
 | todo | Crystal caves (underground) | M10 | |
+| todo | Babbling streams down the meadow slopes | M15 | from the meadow interview (needs rivers and flowing water) |
 | todo | Fireflies (glowing forests, swamps) and spore haze (mushroom fields): drifting particles | M14+ | from the biome interviews |
 | todo | Trees and vegetation per biome | M10 | |
 | done | Block set v1 and texture style | M7 | `design/blocks/block_set.md` (262 blocks, 16x16 vibrant shaded) |
 | done | Shaped blocks | M7b | `design/blocks/shaped_blocks.md` |
 | todo | Sign text, pressure plate mechanisms (wiring) | M16+ | from the M7b interview |
 | todo | Items, inventory, chests, crafting, tool tiers, smelting | M18 | |
-| todo | Passive animals | M19 | one mob at a time |
+| todo | Passive animals | M19 | one mob at a time; bees and beehives on meadow trees (meadow interview) |
 | todo | Survival: health, hunger, damage, death, difficulty levels, Hardcore | M20 | |
 | todo | Combat: melee, ranged, armor | M21 | |
 | todo | Hostile mobs and spawning rules | M22 | |

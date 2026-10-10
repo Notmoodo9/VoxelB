@@ -130,6 +130,12 @@ struc BIOME
     .isle_ore_ch    resd BIOME_PLANTS
     .isle_roots     resd 1              ; strands under the islands: block, chance
     .isle_roots_ch  resd 1
+    .grove_ch       resd 1              ; tree groves: chance per 128 x 128 cell,
+    .grove_r        resd 2              ;   f32 radius range (follows grove_ch)
+    .grove_d        resd 1              ; trees per block^2 inside a grove
+    .ngtrees        resd 1              ; grove trees: TREE index, weight
+    .gtree          resd BIOME_TREES
+    .gtree_w        resd BIOME_TREES
 endstruc
 
 struc TREE

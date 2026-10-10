@@ -7,7 +7,7 @@
 temperature   = 0.35, 0.65       # the plains climate,
 humidity      = 0.20, 0.60
 rarity        = 0.72, 1.00       #   in rare pockets
-priority      = 2
+priority      = 3
 height        = 98, 170
 hill_scale    = 0.7              # gentle hills
 grass_color   = 4CDC3C           # vivid spring green

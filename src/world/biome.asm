@@ -114,6 +114,10 @@ k_b_isle_r:     db "island_radius", 0
 k_b_isle_y:     db "island_height", 0
 k_b_isle_ore:   db "island_ore", 0
 k_b_isle_roots: db "island_roots", 0
+k_b_grove_ch:   db "grove_chance", 0
+k_b_grove_r:    db "grove_radius", 0
+k_b_grove_d:    db "grove_density", 0
+k_b_grove_tree: db "grove_tree", 0
 k_contrast:     db "contrast", 0
 ; biome keys
 k_b_temp:       db "temperature", 0
@@ -235,6 +239,10 @@ biome_settings:
     dq k_b_isle_y,    T_RANGE_I,  BIOME.isle_y
     dq k_b_isle_ore,  T_PLANT,    BIOME.nisle_ore
     dq k_b_isle_roots, T_PATCH,   BIOME.isle_roots
+    dq k_b_grove_ch,  T_FLOAT,    BIOME.grove_ch
+    dq k_b_grove_r,   T_RANGE_F,  BIOME.grove_r
+    dq k_b_grove_d,   T_FLOAT,    BIOME.grove_d
+    dq k_b_grove_tree, T_TREEREF, BIOME.ngtrees
     dq k_b_top,       T_BLOCK,    BIOME.top
     dq k_b_filler,    T_BLOCK,    BIOME.filler
     dq k_b_plant,     T_PLANT,    BIOME.nplants
