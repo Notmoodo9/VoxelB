@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 7): 🎨 DESIGN — Jungle: DONE** (Windows CI: see below)
+**Milestone 10 (part 7): 🎨 DESIGN — Jungle: DONE** (Windows CI green: run #32)
 
 Next: **Milestone 10, part 8: the next biome**. Candidates are badlands,
 swamp, dark forest, meadow, snowy tundra or river (`design/BACKLOG.md`).
