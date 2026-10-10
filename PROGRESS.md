@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 13): 🎨 DESIGN — Glowing forest: DONE** (Windows CI: see below)
+**Milestone 10 (part 13): 🎨 DESIGN — Glowing forest: DONE** (Windows CI green: run #44)
 
 Next: **Milestone 10, part 14: the next biome**. Candidates are mushroom
 fields, crystal caves, floating islands, ice spikes, meadow, river
