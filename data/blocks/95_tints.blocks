@@ -16,3 +16,7 @@ sway     = 1
 # jungle (design/biomes/jungle.md)
 [block jungle_leaves]
 tint = foliage
+
+# swamp cypresses (design/biomes/swamp.md)
+[block mangrove_leaves]
+tint = foliage

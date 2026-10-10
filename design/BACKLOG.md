@@ -23,7 +23,7 @@ yet; each item gets its own doc in `design/` when we interview it.
 | done | Savanna | M10 | `design/biomes/savanna.md` |
 | done | Jungle | M10 | `design/biomes/jungle.md` |
 | done | Badlands | M10 | `design/biomes/badlands.md` |
-| todo | Swamp | M10 | |
+| done | Swamp | M10 | `design/biomes/swamp.md` |
 | done | Taiga + snowy taiga | M10 | `design/biomes/taiga.md` |
 | done | Snowy tundra | M10 | `design/biomes/snowy_tundra.md` |
 | todo | Cold biomes: ice spikes, glaciers, frozen ocean | M10 | |
@@ -37,7 +37,7 @@ yet; each item gets its own doc in `design/` when we interview it.
 | todo | Survival: health, hunger, damage, death, difficulty levels, Hardcore | M20 | |
 | todo | Combat: melee, ranged, armor | M21 | |
 | todo | Hostile mobs and spawning rules | M22 | |
-| todo | Structures: villages, ruins, dungeons | M23 | |
+| todo | Structures: villages, ruins, dungeons; swamp witch hut; badlands mineshafts | M23 | witch hut and mineshafts from the biome interviews |
 | todo | Audio: SFX, ambience, music | M24 | |
 | todo | Weather | M25 | |
 | todo | Villagers/NPCs and trading | M26 | |

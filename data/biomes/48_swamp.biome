@@ -1,0 +1,31 @@
+# Swamp (design/biomes/swamp.md): a moody bayou in the warm, wet lowlands:
+# tall bald cypresses with flared trunks, flat layered moss-draped crowns
+# and knees, in a maze of shallow murky pools and low muddy grassy islands;
+# lily pads, cattails and reeds.
+
+[biome swamp]
+temperature   = 0.50, 0.80
+humidity      = 0.62, 1.00
+priority      = 2
+height        = 90, 104          # only the wet lowlands
+hill_scale    = 0.2
+flatten       = 96.6, 0.9        # pulled to just above the sea: bumps make pools
+own_shore     = 1                # olive grass and mud down to the water, mud below it
+top_patch     = mud, 0.15
+pond_floor    = mud
+grass_color   = 5E7A3A           # dark olive
+foliage_color = 59861A           # dark olive on the cypress needles
+water_color   = 4E6A3A           # murky olive-green
+
+plant = cattail, 0.06
+plant = reeds, 0.05
+plant = fern, 0.06
+plant = short_grass, 0.15
+plant = brown_mushroom, 0.006
+
+water_plant = lily_pad, 0.10
+water_plant = flowering_lily_pad, 0.02
+
+# a cypress every ~8-10 blocks
+tree         = bald_cypress, 1
+tree_density = 0.012

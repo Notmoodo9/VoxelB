@@ -32,7 +32,7 @@
 
 global flora_ponds, flora_prepare, flora_section, flora_survey
 
-extern g_world_seed, g_sea_level, g_beach_high, g_b_top
+extern g_world_seed, g_sea_level, g_beach_high, g_b_top, g_b_water
 extern terrain_sample, log_xz
 
 %define POND_CELL       64
@@ -122,6 +122,7 @@ align 8
 special_gen:    dq gen_giant, gen_fallen, gen_stump, gen_cactus, gen_rock
                 dq gen_arch, gen_fossil, gen_palm, gen_conifer
                 dq gen_acacia, gen_baobab, gen_kapok, gen_grove, gen_stone_ring
+                dq gen_cypress
 
 section .text
 
@@ -218,6 +219,11 @@ put_block:
     je .put
     cmp r10d, PUT_PLANT
     je .no
+    cmp r11d, [rel g_b_water]           ; logs stand in water (swamp trees)
+    jne .not_water
+    cmp r10d, PUT_LOG
+    je .put
+.not_water:
     lea rcx, [rel g_block_shape]
     movzx ecx, byte [rcx + r11]
     cmp ecx, SHAPE_PLANT
@@ -773,7 +779,17 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov r12d, [rcx + rax * 4]           ; H
     lea edx, [r12d - 1]
     cmp edx, [rel g_beach_high]
-    jle .next_kind
+    jg .ground_high
+    ; low ground: only biomes with their own shore (swamps), down into
+    ; shallow water (2 deep)
+    mov r8, [LOCAL(FR_B)]
+    cmp dword [r8 + BIOME.own_shore], 0
+    je .next_kind
+    mov r8d, [rel g_sea_level]
+    sub r8d, 2
+    cmp edx, r8d
+    jl .next_kind
+.ground_high:
     mov rdx, [rbx + FCTX.pond]
     cmp word [rdx + rax * 2], POND_NONE
     jne .next_kind
@@ -2191,6 +2207,61 @@ PROC flora_section, FS_LOCALS, rbx, rsi, rdi, r12, r13
     jz .pnext
     cmp byte [rsi + INFO_DENS], 0
     je .pnext
+    ; ---- water plants (lily pads) floating on ponds and shallow sea ----
+    movzx eax, byte [rsi + INFO_BIOME]
+    imul r8, rax, BIOME_size
+    lea rax, [rel g_biomes]
+    add r8, rax
+    cmp dword [r8 + BIOME.nwplants], 0
+    je .no_wplant
+    movsx edi, word [rsi + INFO_POND]   ; water level: a pond's,
+    cmp edi, POND_DRY
+    jle .wp_sea
+    jmp .wp_have
+.wp_sea:
+    HM_INDEX r13d, r12d                 ; or the sea's over low ground
+    mov rcx, [rbx + FCTX.heights]
+    mov eax, [rcx + rax * 4]
+    mov edi, [rel g_sea_level]
+    cmp eax, edi
+    jg .no_wplant                       ; (dry land)
+.wp_have:
+    inc edi                             ; the plant floats on top
+    mov eax, edi
+    sub eax, [rbx + FCTX.y0]
+    cmp eax, 31
+    ja .pnext
+    mov [LOCAL(FS_B)], r8
+    mov ecx, [rbx + FCTX.cx]
+    shl ecx, 5
+    add ecx, r13d
+    mov edx, [rbx + FCTX.cz]
+    shl edx, 5
+    add edx, r12d
+    mov r8d, 0x5750                     ; "WP"
+    xor r9d, r9d
+    call hash4
+    FRAC16 ax
+    mov r8, [LOCAL(FS_B)]
+    xorps xmm2, xmm2
+    xor ecx, ecx
+.wp:
+    cmp ecx, [r8 + BIOME.nwplants]
+    jae .pnext
+    addss xmm2, [r8 + BIOME.wplant_ch + rcx * 4]
+    comiss xmm0, xmm2
+    jb .wp_found
+    inc ecx
+    jmp .wp
+.wp_found:
+    mov r9d, [r8 + BIOME.wplant + rcx * 4]
+    mov ecx, r13d
+    mov edx, edi
+    mov r8d, r12d
+    mov r10d, PUT_PLANT
+    call put_block
+    jmp .pnext
+.no_wplant:
     cmp word [rsi + INFO_POND], POND_NONE
     jne .pnext
     ; plants grow on grass and on the biome's top patch block (moss)
@@ -4495,3 +4566,198 @@ PROC gen_stone_ring, GS_LOCALS, rsi, r12, r13
 .done:
     RETURN
 ENDPROC
+
+section .text
+; -----------------------------------------------------------------------------
+; gen_cypress — a bald cypress (design/biomes/swamp.md): a trunk flared at
+; the water line (radius TREE.base_r tapering to one block over 3 blocks),
+; TREE.height tall, 2-3 flat layered crowns (TREE.radius, flat blobs that
+; also hang moss via TREE.hang), and TREE.roots knees: log stubs poking out
+; of the water around it.
+;   in:  rbx = FCTX*, edi = rng state, ecx = x, edx = y, r8d = z, r9 = TREE*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define GC_X        0
+%define GC_Y        4
+%define GC_Z        8
+%define GC_H        12
+%define GC_R0       16                  ; f32 base radius
+%define GC_YI       20
+%define GC_RI       24
+%define GC_R2       28                  ; f32 this disc's r^2
+%define GC_N        32
+%define GC_I        36
+%define GC_KX       40
+%define GC_KZ       44
+%define GC_KH       48
+%define GC_R        52                  ; f32 crown radius
+%define GC_LOCALS   64
+PROC gen_cypress, GC_LOCALS, rsi, r12, r13
+    mov rsi, r9
+    mov [LOCAL(GC_X)], ecx
+    mov [LOCAL(GC_Y)], edx
+    mov [LOCAL(GC_Z)], r8d
+    mov ecx, [rsi + TREE.height]
+    mov edx, [rsi + TREE.height + 4]
+    call rand_int
+    mov [LOCAL(GC_H)], eax
+    call rng
+    movss xmm1, [rsi + TREE.base_r + 4]
+    subss xmm1, [rsi + TREE.base_r]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.base_r]
+    movss [LOCAL(GC_R0)], xmm1
+    call rng
+    movss xmm1, [rsi + TREE.radius + 4]
+    subss xmm1, [rsi + TREE.radius]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.radius]
+    movss [LOCAL(GC_R)], xmm1
+    ; ---- trunk: r = 0.5 + (R0 - 0.5) * max(0, 1 - y / 3), from below the ground ----
+    mov dword [LOCAL(GC_YI)], -2
+.disc:
+    mov eax, [LOCAL(GC_YI)]
+    xor ecx, ecx
+    test eax, eax
+    cmovs eax, ecx
+    cvtsi2ss xmm0, eax
+    mulss xmm0, [rel c_third]
+    movss xmm1, [rel c_one]
+    subss xmm1, xmm0
+    maxss xmm1, [rel c_zero]
+    movss xmm0, [LOCAL(GC_R0)]
+    subss xmm0, [rel c_half]
+    mulss xmm0, xmm1
+    addss xmm0, [rel c_half]
+    mulss xmm0, xmm0
+    addss xmm0, [rel c_g_disc]
+    movss [LOCAL(GC_R2)], xmm0
+    sqrtss xmm0, xmm0
+    cvttss2si eax, xmm0
+    mov [LOCAL(GC_RI)], eax
+    mov r13d, eax
+    neg r13d
+.ddz:
+    mov r12d, [LOCAL(GC_RI)]
+    neg r12d
+.ddx:
+    mov eax, r12d
+    imul eax, eax
+    mov ecx, r13d
+    imul ecx, ecx
+    add eax, ecx
+    cvtsi2ss xmm0, eax
+    comiss xmm0, [LOCAL(GC_R2)]
+    ja .dnext
+    mov ecx, [LOCAL(GC_X)]
+    add ecx, r12d
+    mov edx, [LOCAL(GC_Y)]
+    add edx, [LOCAL(GC_YI)]
+    mov r8d, [LOCAL(GC_Z)]
+    add r8d, r13d
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_LOG
+    call put_block
+.dnext:
+    inc r12d
+    cmp r12d, [LOCAL(GC_RI)]
+    jle .ddx
+    inc r13d
+    cmp r13d, [LOCAL(GC_RI)]
+    jle .ddz
+    inc dword [LOCAL(GC_YI)]
+    mov eax, [LOCAL(GC_YI)]
+    cmp eax, [LOCAL(GC_H)]
+    jl .disc
+    ; ---- crowns: flat layers near the top, the lowest the widest ----
+    mov dword [LOCAL(GC_I)], 0
+.crown:
+    mov ecx, [LOCAL(GC_X)]
+    mov edx, [LOCAL(GC_I)]
+    imul edx, edx, -3
+    add edx, [LOCAL(GC_H)]
+    add edx, [LOCAL(GC_Y)]
+    mov r8d, [LOCAL(GC_Z)]
+    cvtsi2ss xmm0, dword [LOCAL(GC_I)]
+    mulss xmm0, [rel c_cy_step]         ; r * (0.7 + 0.18 i)
+    addss xmm0, [rel c_cy_top]
+    mulss xmm0, [LOCAL(GC_R)]
+    movss xmm1, [rel c_cy_dn]
+    movss xmm2, [rel c_cy_up]
+    call blob
+    inc dword [LOCAL(GC_I)]
+    cmp dword [LOCAL(GC_I)], 3
+    jb .crown
+    ; ---- knees: stubs out of the water around the trunk ----
+    mov ecx, [rsi + TREE.roots]
+    mov edx, [rsi + TREE.roots + 4]
+    call rand_int
+    mov [LOCAL(GC_N)], eax
+.knee:
+    cmp dword [LOCAL(GC_N)], 0
+    jle .done
+    dec dword [LOCAL(GC_N)]
+    xor ecx, ecx
+    mov edx, 15
+    call rand_int
+    mov r12d, eax                       ; direction
+    mov ecx, 2
+    mov edx, 4
+    call rand_int
+    cvtsi2ss xmm2, eax
+    addss xmm2, [LOCAL(GC_R0)]          ; distance
+    lea rcx, [rel dirs16]
+    movss xmm0, [rcx + r12 * 8]
+    mulss xmm0, xmm2
+    cvtss2si eax, xmm0
+    add eax, [LOCAL(GC_X)]
+    mov [LOCAL(GC_KX)], eax
+    movss xmm0, [rcx + r12 * 8 + 4]
+    mulss xmm0, xmm2
+    cvtss2si eax, xmm0
+    add eax, [LOCAL(GC_Z)]
+    mov [LOCAL(GC_KZ)], eax
+    xor ecx, ecx
+    mov edx, 1
+    call rand_int
+    mov [LOCAL(GC_KH)], eax             ; extra height 0..1
+    ; ground of that column (inside the chunk only)
+    mov ecx, [LOCAL(GC_KX)]
+    cmp ecx, 31
+    ja .knee
+    mov edx, [LOCAL(GC_KZ)]
+    cmp edx, 31
+    ja .knee
+    HM_INDEX ecx, edx
+    mov rcx, [rbx + FCTX.heights]
+    mov r13d, [rcx + rax * 4]           ; first air
+    ; up to just above the water (or 1 above dry ground)
+    mov eax, [rel g_sea_level]
+    inc eax
+    cmp eax, r13d
+    cmovl eax, r13d
+    add eax, [LOCAL(GC_KH)]
+    mov [LOCAL(GC_KH)], eax             ; (top y, inclusive)
+    dec r13d                            ; from the ground block
+.kup:
+    mov ecx, [LOCAL(GC_KX)]
+    mov edx, r13d
+    mov r8d, [LOCAL(GC_KZ)]
+    mov r9d, [rsi + TREE.log]
+    mov r10d, PUT_LOG
+    call put_block
+    inc r13d
+    cmp r13d, [LOCAL(GC_KH)]
+    jle .kup
+    jmp .knee
+.done:
+    RETURN
+ENDPROC
+
+section .rdata
+align 4
+c_third:        dd 0.33333334
+c_cy_top:       dd 0.7                  ; cypress crowns: radius share at the top,
+c_cy_step:      dd 0.18                 ;   wider each layer down
+c_cy_dn:        dd 0.25                 ; flat layers
+c_cy_up:        dd 0.35

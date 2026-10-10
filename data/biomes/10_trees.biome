@@ -357,3 +357,18 @@ leaves   = mossy_cobblestone
 radius   = 5, 8
 height   = 3, 5
 branches = 6, 10
+
+# --- swamp (design/biomes/swamp.md) ------------------------------------------
+#   cypress: trunk flared to `base_radius` at the water line, `height` tall,
+#   3 flat crown layers of `radius`, `roots` knees around it
+[tree bald_cypress]
+kind          = cypress
+log           = mangrove_log
+leaves        = mangrove_leaves
+height        = 10, 18
+base_radius   = 1.4, 1.9
+radius        = 3.2, 4.4
+roots         = 1, 3
+leaf_gaps     = 0.35
+hanging_vines = spanish_moss, 0.05
+vine_length   = 2, 6

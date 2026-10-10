@@ -81,3 +81,34 @@ sway           = 1
 [family steppe_plants]
 templates = plant
 members   = sagebrush, blue_sage, yarrow, pasqueflower
+
+# swamp (design/biomes/swamp.md)
+[block spanish_moss]
+shape    = plant
+textures = spanish_moss
+render   = cutout
+sway     = 1
+
+# floating on the water surface (thin plate)
+[block lily_pad]
+shape    = pressure_plate
+textures = lily_pad
+render   = cutout
+
+[block flowering_lily_pad]
+shape    = pressure_plate
+textures = flowering_lily_pad
+render   = cutout
+
+[block cattail]
+shape          = tall_plant
+textures       = cattail_lower
+upper_textures = cattail_upper
+render         = cutout
+sway           = 1
+
+[block reeds]
+shape    = plant
+textures = reeds
+render   = cutout
+sway     = 1

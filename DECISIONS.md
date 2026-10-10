@@ -803,3 +803,40 @@ block for their upper half (mossy cobblestone boulders).
   stones, up to one direction of slack). Each stone draws its size from
   the rng before its position is checked, so a ring is identical in every
   chunk it touches.
+
+## D68 — Swamp: water colour, flatten, own shores, floating plants, cypress; tint fix for cutout/translucent (M10 part 11)
+* **Draw-list fix**: the cutout and translucent pass lists stored each
+  section's world origin as only (x, y). The section pointer at +24
+  overwrote world z. Every leaf, plant and water face therefore sampled
+  the tint map at a garbage z, and their biome colours were effectively
+  random (opaque faces such as grass tops were right).
+  * The entry is now rel xyz (0), world xyz (12), SECT* (24): 32 bytes,
+    no padding.
+  * `g_vec_tmp`/`g_vec_tmp2` are laid out the same way, so the opaque
+    pass passes them directly.
+  * Since then, every biome's leaves and plants show their designed
+    foliage colours.
+* **Water tint**: a third tint layer (texture depth 3, COLUMN.tint
+  3×64). `tint = water` sets both tint bits (mode 3). The shader recolours
+  water: `WATER_REF × factor × luma(texel) / luma(WATER_REF)`, which keeps
+  ripples and sparkles light under a strong factor instead of turning
+  them yellow. Biomes without `water_color` get the reference, i.e. the
+  usual blue.
+* **flatten** (`level, pull`, blended through a separate `bmap_flatten`)
+  pulls the coarse height grid towards a level. Swamps use 96.6 (sea level
+  96): the ±2 detail bumps then give a natural pool-and-island maze, with
+  water filled to sea level.
+* **own_shore**: the shore band uses the biome's ground above the sea and
+  its pond floor (mud) below.
+* **Swamp trees** are allowed on low ground down to 2 blocks under the
+  sea. `put_block` lets logs replace water, so trunks and knees stand in
+  it.
+* **Water plants**: per column, on a pond's level or the sea over low
+  ground, one hash picks from the biome's `water_plant` list. Lily pads
+  use the pressure-plate plate shape.
+* **cypress** kind:
+  * a disc trunk with radius 0.5 + (R0 − 0.5)·max(0, 1 − y/3) from 2
+    below the ground;
+  * 3 flat blobs (down 0.25, up 0.35) 3 apart, widening downwards;
+  * knees: log stubs up to just above the water, inside-chunk columns
+    only (the rng is consumed in the same order everywhere).

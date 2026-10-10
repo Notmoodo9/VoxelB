@@ -34,6 +34,7 @@ textures = side: sandstone, top: sandstone_top, bottom: sandstone_bottom
 # --- water (still for now; flowing water and reflections arrive in M15) ---
 [block water]
 render = translucent
+tint   = water
 
 # soft moss ground of old-growth forests
 [block moss_block]

@@ -47,7 +47,7 @@
 
 global biomes_load, biome_climate, biome_pick, bmap_build, bmap_col, bmap_tint
 global biome_at, biome_point, biome_dunes, biome_plateau, biome_mesa, biome_strata_wave
-global g_strata, g_is_strata, bmap_dither
+global g_strata, g_is_strata, bmap_dither, bmap_flatten
 global g_biomes, g_biome_count, g_trees, g_tree_count
 
 extern str_ieq, str_len, str_copy, str_dup, str_parse_float
@@ -102,6 +102,11 @@ k_persistence:  db "persistence", 0
 k_salt:         db "salt", 0
 k_grass_ref:    db "grass_reference", 0
 k_foliage_ref:  db "foliage_reference", 0
+k_water_ref:    db "water_reference", 0
+k_b_water:      db "water_color", 0
+k_b_flatten:    db "flatten", 0
+k_b_own_shore:  db "own_shore", 0
+k_b_wplant:     db "water_plant", 0
 k_contrast:     db "contrast", 0
 ; biome keys
 k_b_temp:       db "temperature", 0
@@ -160,6 +165,7 @@ v_baobab:       db "baobab", 0
 v_kapok:        db "kapok", 0
 v_grove:        db "grove", 0
 v_stone_ring:   db "stone_ring", 0
+v_cypress:      db "cypress", 0
 k_t_lean:       db "lean", 0
 k_b_dry:        db "dry_ponds", 0
 k_t_vines:      db "vines", 0
@@ -208,6 +214,10 @@ biome_settings:
     dq k_b_hill,      T_FLOAT,    BIOME.hill
     dq k_b_grass,     T_COLOR,    BIOME.grass
     dq k_b_foliage,   T_COLOR,    BIOME.foliage
+    dq k_b_water,     T_COLOR,    BIOME.water
+    dq k_b_flatten,   T_RANGE_F,  BIOME.flatten
+    dq k_b_own_shore, T_INT,      BIOME.own_shore
+    dq k_b_wplant,    T_PLANT,    BIOME.nwplants
     dq k_b_top,       T_BLOCK,    BIOME.top
     dq k_b_filler,    T_BLOCK,    BIOME.filler
     dq k_b_plant,     T_PLANT,    BIOME.nplants
@@ -275,12 +285,14 @@ tree_settings:
 climate_settings:
     dq k_grass_ref,   T_COLOR,    g_grass_ref
     dq k_foliage_ref, T_COLOR,    g_foliage_ref
+    dq k_water_ref,   T_COLOR,    g_water_ref
     dq k_contrast,    T_FLOAT,    g_contrast
     dq 0
 kind_names:     dq v_round, v_branching, v_bush, v_giant, v_fallen, v_stump
                 dq v_cactus, v_rock, v_arch, v_fossil, v_palm, v_conifer
                 dq v_acacia, v_baobab, v_kapok, v_grove, v_stone_ring
-%define KIND_COUNT 17
+                dq v_cypress
+%define KIND_COUNT 18
 
 align 4
 c_one:          dd 1.0
@@ -309,6 +321,7 @@ section .data
 align 4
 g_grass_ref:    dd 0x6DB33F             ; average colour of the grass texture
 g_foliage_ref:  dd 0x4E9A2E
+g_water_ref:    dd 0x0D58CF             ; average colour of the water texture
 g_contrast:     dd 1.0
 
 section .bss
@@ -461,6 +474,10 @@ PROC biomes_load, 0, rbx, rsi
     mov edx, [rel g_foliage_ref]
     call color_factor
     mov [rsi + BIOME.ffac], eax
+    mov ecx, [rsi + BIOME.water]
+    mov edx, [rel g_water_ref]
+    call color_factor
+    mov [rsi + BIOME.wfac], eax
     inc ebx
     jmp .fac
 .fac_done:
@@ -542,6 +559,8 @@ biome_defaults:
     mov [rdx + BIOME.grass], eax
     mov eax, [rel g_foliage_ref]
     mov [rdx + BIOME.foliage], eax
+    mov eax, [rel g_water_ref]
+    mov [rdx + BIOME.water], eax
     mov dword [rdx + BIOME.meadow_r], 0x41A00000      ; 20
     mov dword [rdx + BIOME.meadow_r + 4], 0x42480000  ; 50
     mov dword [rdx + BIOME.meadow_dens], 0x3F19999A   ; 0.6
@@ -1532,6 +1551,38 @@ PROC bmap_dither, MAX_BIOMES * 4 + 16
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; bmap_flatten — the blended `flatten` pull at a local block: how strongly the
+; land is drawn to a level (swamps: just above the sea), and that level.
+;   in:  rcx = BMAP*, edx = lx, r8d = lz
+;   out: xmm0 = pull 0..1, xmm1 = target height (valid when pull > 0)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC bmap_flatten, MAX_BIOMES * 4
+    lea r9, [LOCAL(0)]
+    call bmap_weights
+    xorps xmm0, xmm0                    ; sum w * pull
+    xorps xmm1, xmm1                    ; sum w * pull * target
+    xor ecx, ecx
+    lea r8, [rel g_biomes]
+.b:
+    movss xmm2, [LOCAL(0) + rcx * 4]
+    mulss xmm2, [r8 + BIOME.flatten + 4]
+    addss xmm0, xmm2
+    mulss xmm2, [r8 + BIOME.flatten]
+    addss xmm1, xmm2
+    add r8, BIOME_size
+    inc ecx
+    cmp ecx, [rel g_biome_count]
+    jb .b
+    xorps xmm2, xmm2
+    comiss xmm0, xmm2
+    jbe .done
+    divss xmm1, xmm0
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 ; biome_mesa — mesa shape 0..1 at a world point (design/biomes/badlands.md):
 ; the "mesas" field ramps to a mask m = clamp((n - thr) * ramp), which is
 ; cut into MESA_STEPS flat terraces with steep risers in the last quarter
@@ -1709,7 +1760,8 @@ PROC biome_dunes, 0
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; bmap_tint — blended grass and foliage tint factors at a local block.
+; bmap_tint — blended grass, foliage and water tint factors at a local block
+; (out: eax grass, edx foliage, ecx water).
 ;   in:  rcx = BMAP*, edx = lx, r8d = lz
 ;   out: eax = grass RGBA8, edx = foliage RGBA8
 ;   clobbers: volatile registers
@@ -1730,6 +1782,9 @@ PROC bmap_tint, MAX_BIOMES * 4 + 32, rbx
     test ebx, ebx
     jz .have
     mov eax, [r8 + BIOME.ffac]
+    cmp ebx, 1
+    je .have
+    mov eax, [r8 + BIOME.wfac]
 .have:
     movzx edx, al
     cvtsi2ss xmm1, edx
@@ -1758,10 +1813,11 @@ PROC bmap_tint, MAX_BIOMES * 4 + 32, rbx
     or eax, 0xFF000000
     mov [LOCAL(MAX_BIOMES * 4) + rbx * 4], eax
     inc ebx
-    cmp ebx, 2
+    cmp ebx, 3
     jb .layer
     mov eax, [LOCAL(MAX_BIOMES * 4)]
     mov edx, [LOCAL(MAX_BIOMES * 4 + 4)]
+    mov ecx, [LOCAL(MAX_BIOMES * 4 + 8)]
     RETURN
 ENDPROC
 

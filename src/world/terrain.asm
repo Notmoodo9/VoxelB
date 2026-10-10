@@ -1509,10 +1509,10 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     ; mesas: + terraced mesa shape x blended mesa height (on land)
     xorps xmm0, xmm0
     comiss xmm0, [LOCAL(G_MESA)]
-    jae .cg_put
+    jae .cg_flat
     cvtsi2ss xmm0, dword [rel g_beach_high]
     comiss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.height]
-    jae .cg_put
+    jae .cg_flat
     mov eax, [LOCAL(G_CX)]
     shl eax, 5
     lea eax, [eax + r13d * 4 - HB]
@@ -1525,6 +1525,19 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mulss xmm0, [LOCAL(G_MESA)]
     addss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.height]
     movss [LOCAL(G_SAMPLE) + TSAMPLE.height], xmm0
+.cg_flat:
+    ; flatten (swamps): pull the land towards the biomes' blended level
+    mov rcx, [LOCAL(G_BMAP)]
+    lea edx, [r13d * 4 - HB]
+    lea r8d, [r12d * 4 - HB]
+    call bmap_flatten
+    xorps xmm2, xmm2
+    comiss xmm0, xmm2
+    jbe .cg_put
+    subss xmm1, [LOCAL(G_SAMPLE) + TSAMPLE.height]
+    mulss xmm1, xmm0
+    addss xmm1, [LOCAL(G_SAMPLE) + TSAMPLE.height]
+    movss [LOCAL(G_SAMPLE) + TSAMPLE.height], xmm1
 .cg_put:
     imul ecx, r12d, CG
     add ecx, r13d
@@ -1775,12 +1788,14 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     lea edx, [r13d * 4 + 2]
     lea r8d, [r12d * 4 + 2]
     call bmap_tint
+    mov r9d, ecx                        ; water layer
     mov ecx, r12d
     shl ecx, 3
     add ecx, r13d
     mov r8, [LOCAL(G_COL)]
     mov [r8 + COLUMN.tint + rcx * 4], eax
     mov [r8 + COLUMN.tint + 256 + rcx * 4], edx
+    mov [r8 + COLUMN.tint + 512 + rcx * 4], r9d
     inc r13d
     cmp r13d, 8
     jb .ti_x
@@ -1851,6 +1866,22 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     ; shore band: sand, or gravel when moderately steep
     cmp r9d, [rel g_beach_high]
     jg .inland
+    ; own shore (swamps): the biome's ground, mud under the water
+    movzx r10d, byte [rcx + INFO_BIOME]
+    imul r10, r10, BIOME_size
+    lea rax, [rel g_biomes]
+    cmp dword [rax + r10 + BIOME.own_shore], 0
+    je .shore_band
+    cmp r9d, [rel g_sea_level]
+    jge .grass
+    mov eax, [rax + r10 + BIOME.pond_floor]
+    test eax, eax
+    jnz .shore_floor
+    mov eax, [rel g_b_mud]
+.shore_floor:
+    mov edx, eax
+    jmp .sf_store
+.shore_band:
     cmp r8d, [rel g_scree]
     jge .gravel_top
     ; the biome's shore block (red sand in badlands), else beach sand

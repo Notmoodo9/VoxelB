@@ -1,12 +1,79 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 10): 🎨 DESIGN — Steppe: DONE** (Windows CI green: run #38)
+**Milestone 10 (part 11): 🎨 DESIGN — Swamp: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 11: the next biome**. Candidates are swamp,
-dark forest, meadow, river, ice spikes (`design/BACKLOG.md`). About 9.5%
-of land near the origin is still "none" (small climate corners). It
-starts with its design interview.
+Next: **Milestone 10, part 12: the next biome**. Candidates are dark
+forest, meadow, river, ice spikes (`design/BACKLOG.md`). About 8% of land
+near the origin is still "none". It starts with its design interview.
+
+---
+
+## Milestone 10, part 11 — done (2026-10-10)
+
+### Design interview
+Four rounds plus approval: `design/biomes/swamp.md`.
+* A bayou in the warm, wet lowlands: tall cypresses with flared trunks,
+  flat layered moss-draped crowns and knees.
+* Half water, half land: shallow murky olive pools between muddy grassy
+  islands.
+* Lily pads (some flowering), cattails and reeds.
+* A witch hut, left for the structures milestone.
+
+### What was built
+* **Swamp** (`data/biomes/48_swamp.biome`), on ~4.6% of land near the
+  origin (wet lowlands only).
+* **Water colour per biome** (D68): a third tint layer (`tint = water`,
+  `water_color`, `water_reference`). The water keeps its brightness and
+  takes the biome's hue; every other biome keeps blue water.
+* **Terrain settings** (D68):
+  * `flatten` (the pool-and-island maze);
+  * `own_shore` (grass and mud shores, mud pool floors).
+* **Water plants**: a `water_plant` list. `lily_pad` and
+  `flowering_lily_pad` float on the water.
+* **Cypress** (new kind `cypress`): flared trunks, layered flat crowns
+  with `spanish_moss` strands, and knees. Logs can now stand in water.
+* **New blocks** (texgen): `spanish_moss`, `lily_pad`,
+  `flowering_lily_pad`, `cattail`, `reeds`.
+* **Tint fix for leaves, plants and water in every biome** (D68). The
+  cutout and translucent draw lists lost each section's world z, so those
+  faces sampled the biome colour map at the wrong place. Leaves and
+  plants in every biome now show their designed colours. The jungle
+  canopy, for one, is now its full emerald.
+
+### How to see it (seed 20261009)
+* Among the cypresses, over murky water with lily pads:
+  `voxelb.exe --pos 0 100 192 --look 200 -5`.
+* The swamp canopy and pools from above:
+  `voxelb.exe --pos 0 125 150 --look 180 -20`.
+
+### Bugs found and fixed while testing
+* The draw-list world-origin bug above, which made the swamp water stay
+  blue.
+* Strong red water factors turned the water's sparkles yellow. Fixed by
+  recolouring by brightness.
+* The first swamp climate took 9.4% of land (forests and jungles shrank).
+  Narrowed to the wettest lowlands: 4.6%.
+
+### Verified
+* Debug and release headless tests pass. The debug build ran in the
+  swamp with no asserts.
+* Screenshots:
+  * the swamp at water level and from above;
+  * the jungle canopy and a forest after the tint fix;
+  * blue sea water outside the swamp.
+
+### Known issues
+* The jungle's emerald now reads very bright, since its foliage colour
+  finally applies. It can be toned down in data if wanted.
+
+### Deferred
+* The witch hut is in BACKLOG for M23.
+* Fireflies and fog wait for M14.
+
+### Performance
+Unchanged: generation ~15 ms per column, meshing ~10–13 ms; 1.4 FPS on
+software GL among the cypresses.
 
 ---
 

@@ -1461,6 +1461,75 @@ def make_steppe(out):
     out["salt"] = rgba(img)
 
 
+def make_swamp(out):
+    yy, xx = np.mgrid[0:N, 0:N]
+    # spanish moss: grey-green wispy strands hanging down (plant sprite)
+    r = rng("spanish_moss")
+    mp = ramp("8a9a78", 5, spread=0.2)
+    img = np.zeros((N, N, 4))
+    for x0 in range(1, N, 2):
+        x = x0
+        L = int(r.integers(8, N + 1))
+        for y in range(L):
+            if r.random() < 0.2:
+                x = min(N - 1, max(0, x + int(r.choice([-1, 1]))))
+            if r.random() < 0.85:
+                img[y, x, :3] = mp[int(r.integers(1, 5))]; img[y, x, 3] = 1.0
+    out["spanish_moss"] = img
+    # lily pad: a round green pad with a notch and veins (plate shape, top)
+    def pad(name, flower):
+        r = rng(name)
+        lp = ramp("3a8a2a", 5, spread=0.2)
+        img = np.zeros((N, N, 4))
+        d = np.sqrt((xx - 7.5) ** 2 + (yy - 7.5) ** 2)
+        ang = np.arctan2(yy - 7.5, xx - 7.5)
+        mask = (d < 7.2) & ~((np.abs(ang - 0.6) < 0.32) & (d > 1.5))
+        img[mask, :3] = lp[2]
+        img[mask, 3] = 1.0
+        for a in range(6):
+            t = a * np.pi / 3 + 0.2
+            for k in range(1, 7):
+                x = int(round(7.5 + np.cos(t) * k)); y = int(round(7.5 + np.sin(t) * k))
+                if 0 <= x < N and 0 <= y < N and img[y, x, 3] > 0:
+                    img[y, x, :3] = lp[3]
+        rim = mask & (d > 6.2)
+        img[rim, :3] = lp[1]
+        if flower:
+            fp = ramp("f0e8f0" if r.random() < 0.5 else "f0a0c8", 4, spread=0.15)
+            for (dx, dy) in ((0, 0), (-1, 0), (1, 0), (0, -1), (0, 1), (-2, 0), (2, 0), (0, -2), (0, 2), (-1, -1), (1, 1), (1, -1), (-1, 1)):
+                img[8 + dy, 6 + dx, :3] = fp[2 if abs(dx) + abs(dy) > 1 else 3]; img[8 + dy, 6 + dx, 3] = 1.0
+            img[8, 6, :3] = hexrgb("ffd040")
+        return img
+    out["lily_pad"] = pad("lily_pad", False)
+    out["flowering_lily_pad"] = pad("flowering_lily_pad", True)
+    # cattail: tall leaves with a brown velvet head (2 tall)
+    gp = ramp("4a7a2a", 5, spread=0.2)
+    low = blades(rng("cattail_lower"), 10, N, N, gp, full=True, taper=False)
+    out["cattail_lower"] = low
+    up = np.zeros((N, N, 4))
+    for (x, top, head) in ((5, 2, True), (9, 4, True), (12, 7, False), (3, 8, False)):
+        for y in range(top, N):
+            up[y, x, :3] = gp[2]; up[y, x, 3] = 1.0
+        if head:
+            for y in range(top + 1, top + 6):
+                for dx in (0, 1):
+                    up[y, x + dx - 0, :3] = hexrgb(["6a4020", "7a4a26"][(y + dx) % 2]); up[y, x + dx, 3] = 1.0
+    out["cattail_upper"] = up
+    # reeds: thin pale-green stalks with tufted tips
+    r = rng("reeds")
+    rp = ramp("8aa04a", 4, spread=0.2)
+    img = np.zeros((N, N, 4))
+    for x0 in (2, 5, 7, 10, 13):
+        top = int(r.integers(1, 6))
+        for y in range(top, N):
+            img[y, x0, :3] = rp[1 + (y % 2)]; img[y, x0, 3] = 1.0
+        for dx in (-1, 1):
+            if 0 <= x0 + dx < N:
+                img[top, x0 + dx, :3] = hexrgb("c8b878"); img[top, x0 + dx, 3] = 1.0
+        img[top - 1 if top > 0 else 0, x0, :3] = hexrgb("c8b878"); img[top - 1 if top > 0 else 0, x0, 3] = 1.0
+    out["reeds"] = img
+
+
 def ladder_design(name, base):
     pal = ramp(base, 5, spread=0.15)
     img = np.zeros((N, N, 3)) + pal[1]
@@ -1974,6 +2043,7 @@ def build_all():
     make_tundra(out)
     make_badlands(out)
     make_steppe(out)
+    make_swamp(out)
     return out
 
 

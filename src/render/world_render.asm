@@ -38,7 +38,7 @@ extern timer_elapsed_us, world_column, vis_pair_bit
 
 %define QUAD_BUFFER_BYTES   (1 << 27)   ; 128 MB = gpu_alloc's 2^18 x 512 B
 %define MAX_PASS_ENTRIES    65536       ; per pass and frame (frame arena)
-%define ENTRY_SIZE          32          ; rel xyz, world xyz, SECT*
+%define ENTRY_SIZE          32          ; rel xyz (0), world xyz (12), SECT* (24)
 %define MAX_WALK            65536       ; sections the visibility walk visits
 %define WALK_SIZE           16
 struc WALK
@@ -84,7 +84,7 @@ alignb 4
 g_world_prog:       resd 1
 g_world_vao:        resd 1
 g_quad_buffer:      resd 1
-g_tint_tex:         resd 1              ; biome tint map (2D array, 2 layers)
+g_tint_tex:         resd 1              ; biome tint map (2D array, 3 layers)
 alignb 8
 g_world_visible:    resq 1
 g_world_drawn_quads: resq 1
@@ -98,8 +98,8 @@ g_trans_list:       resq 1
 g_trans_count:      resq 1
 alignb 16
 g_planes:           resd 5 * 4          ; normalised frustum planes (xyz, 0)
-g_vec_tmp:          resd 4
-g_vec_tmp2:         resd 4
+g_vec_tmp:          resd 3              ; rel xyz, then directly
+g_vec_tmp2:         resd 5              ;   world xyz: one draw entry
 
 section .text
 
@@ -134,7 +134,7 @@ PROC world_render_init, 0, rbx
     ; linear filtering blends neighbouring columns smoothly
     lea r8, [rel g_tint_tex]
     GL glCreateTextures, GL_TEXTURE_2D_ARRAY, 1, r8
-    mov qword [rsp + 40], 2             ; depth: 2 layers
+    mov qword [rsp + 40], 3             ; depth: 3 layers (grass, foliage, water)
     GL glTextureStorage3D, [rel g_tint_tex], 1, GL_RGBA8, TINT_SIZE, TINT_SIZE
     GL glTextureParameteri, [rel g_tint_tex], GL_TEXTURE_MIN_FILTER, GL_LINEAR
     GL glTextureParameteri, [rel g_tint_tex], GL_TEXTURE_MAG_FILTER, GL_LINEAR
@@ -259,7 +259,6 @@ xyz_origins:
     and eax, 0xFFFF
     cvtsi2ss xmm0, eax
     movss [rel g_vec_tmp2 + 8], xmm0
-    mov dword [rel g_vec_tmp + 12], 0
     ret
 
 ; -----------------------------------------------------------------------------
@@ -316,7 +315,7 @@ PROC tint_upload, 0, rbx
     mov [rsp + 80], rax                 ; pixels
     mov qword [rsp + 72], GL_UNSIGNED_BYTE
     mov qword [rsp + 64], GL_RGBA
-    mov qword [rsp + 56], 2             ; depth (layers)
+    mov qword [rsp + 56], 3             ; depth (layers)
     mov qword [rsp + 48], 8
     mov qword [rsp + 40], 8
     mov qword [rsp + 32], 0             ; z offset
@@ -346,7 +345,7 @@ PROC draw_range, 0, rbx, rsi, rdi, r12
     inc qword [rel g_world_draws]
     GL glProgramUniform3fv, rbx, U_ORIGIN_REL, 1, rsi
     GL glProgramUniform1ui, rbx, U_QUAD_BASE, rdi
-    lea r9, [rsi + 16]                  ; world xyz (after the rel xyz + pad)
+    lea r9, [rsi + 12]                  ; world xyz (right after the rel xyz)
     GL glProgramUniform3fv, rbx, U_ORIGIN_WORLD, 1, r9
     imul r8d, r12d, 6
     GL glDrawArrays, GL_TRIANGLES, 0, r8

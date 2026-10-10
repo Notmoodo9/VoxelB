@@ -28,6 +28,7 @@
 %define TREE_KAPOK      14              ; buttress fins, tall bare trunk, umbrella crown
 %define TREE_GROVE      15              ; a disc of thin stalks (bamboo grove)
 %define TREE_STONE_RING 16              ; standing stones evenly on a ring
+%define TREE_CYPRESS    17              ; flared trunk, flat layered crowns, knees
 
 ; per-chunk blend map: biome samples every 16 blocks from -64 to +96 around
 ; the chunk, blurred (tent filter, radius 32) into points from -32 to +64
@@ -110,6 +111,13 @@ struc BIOME
     .beach          resd 1              ; shore band block (0 = the world's beach sand)
     .dry_block      resd 1              ; dry hollows: floor block (salt), share of ponds
     .dry_share      resd 1
+    .water          resd 1              ; 0xRRGGBB water colour, and its factor
+    .wfac           resd 1
+    .flatten        resd 2              ; f32 target height, pull 0..1 (blended)
+    .own_shore      resd 1              ; 1: the shore band uses the biome's own ground
+    .nwplants       resd 1              ; water plants: block, chance (on the surface)
+    .wplant         resd BIOME_PLANTS
+    .wplant_ch      resd BIOME_PLANTS
 endstruc
 
 struc TREE
@@ -146,7 +154,7 @@ endstruc
 %ifndef BIOME_IMPL
 extern biomes_load, biome_climate, biome_pick, bmap_build, bmap_col, bmap_tint
 extern biome_at, biome_point, biome_dunes, biome_plateau, biome_mesa, biome_strata_wave
-extern g_strata, g_is_strata, bmap_dither
+extern g_strata, g_is_strata, bmap_dither, bmap_flatten
 extern g_biomes, g_biome_count, g_trees, g_tree_count
 %endif
 %endif

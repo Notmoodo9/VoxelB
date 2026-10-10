@@ -91,6 +91,7 @@ k_sway:         db "sway", 0
 k_tint:         db "tint", 0
 v_grass:        db "grass", 0
 v_foliage:      db "foliage", 0
+v_water:        db "water", 0
 v_none:         db "none", 0
 k_shape:        db "shape", 0
 k_upper_tex:    db "upper_textures", 0
@@ -810,7 +811,7 @@ PROC block_apply_one, 0, rbx, rsi, rdi, r12, r13
     mov [rax + rbx * 2], r12w
     RETURN
 
-.tint:                                  ; tint = grass|foliage|none [, faces...]
+.tint:                                  ; tint = grass|foliage|water|none [, faces...]
     mov rcx, rdi
     call cfg_next_token
     mov rdi, rdx                        ; rest: face names
@@ -827,6 +828,11 @@ PROC block_apply_one, 0, rbx, rsi, rdi, r12, r13
     jnz .tint_set
     mov r13d, BLOCKF_TINT_FOLIAGE
     lea rdx, [rel v_foliage]
+    INVOKE str_ieq, r12, rdx
+    test eax, eax
+    jnz .tint_set
+    mov r13d, BLOCKF_TINT_GRASS | BLOCKF_TINT_FOLIAGE   ; (both bits: water)
+    lea rdx, [rel v_water]
     INVOKE str_ieq, r12, rdx
     test eax, eax
     jz .bad

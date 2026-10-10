@@ -81,7 +81,7 @@ Defines a block, or changes one defined earlier (the later settings win).
 | `render` | `opaque` (default), `cutout`, `translucent` | `cutout`: alpha-tested, pixels are fully see-through or solid (leaves). `translucent`: blended (glass, ice); faces between two equal translucent blocks are hidden |
 | `light` | `r, g, b` (0–15 each) | coloured light the block emits (used from Milestone 13) |
 | `sway` | `0`/`1` | the block waves in the wind (leaves; plants bend from the ground) |
-| `tint` | `grass` / `foliage` / `none` [`, faces…`] | the faces (default all) take the biome's grass or foliage colour, blended across biome borders |
+| `tint` | `grass` / `foliage` / `water` / `none` [`, faces…`] | the faces (default all) take the biome's grass, foliage or water colour, blended across biome borders |
 | `shape` | see below (default `cube`) | a non-cube shape. **Must be the first setting of a new block** (in a template: the first line after `name`), because it reserves one block id per state |
 | `upper_textures` | like `textures` | door shapes only: textures of the upper half |
 
@@ -260,7 +260,7 @@ section and ore, so it is the same every time.
 Read in file-name order (`design/biomes/`). Trees must be defined before the
 biomes that use them. Records:
 
-`[climate]` — `grass_reference`, `foliage_reference` (RRGGBB): the average
+`[climate]` — `grass_reference`, `foliage_reference`, `water_reference` (RRGGBB): the average
 colour of the grass / oak leaf textures (a biome colour equal to these leaves
 the texture unchanged); `contrast` (climate noise spread, default 1).
 
@@ -272,7 +272,7 @@ Temperature and humidity are 0..1.
 
 | Key | Meaning |
 |---|---|
-| `kind` | `round` (trunk + round crown), `branching` (trunk, diagonal branches with leaf clusters, crown), `bush` (log stub + low leaf clump), `giant` (tapering flared trunk, arching roots, heavy branches with leaf clusters, crown), `fallen` (a log lying on level ground, length = `height`), `stump` (a short upright log), `cactus` (column of `height`, `branches` arms, `leaves` = flower on top with `chance`), `rock` (discs shrinking upward from `radius`, `height` tall; `leaves` = optional block on its upper half), `arch` (a half-ring of `radius` with legs in the ground), `fossil` (a half-buried spine `height` long with ribs, of `log`), `palm` (curved trunk of `height`, 8 drooping fronds of `radius`), `conifer` (trunk of `height`, tiers of `leaves` shrinking from `radius` to a tip), `acacia` (trunk of `height` splitting into 2 forks and 2–4 limbs, each ending in a flat leaf pad of `radius`), `baobab` (bottle trunk of `base_radius` bulging in the middle, `height` tall, `branches` stubby branches with leaf tufts of `radius`), `kapok` (jungle giant: `roots` buttress fins, a bare round trunk of `base_radius`, `height` tall, `branches` thick branches from 72–86% of the height ending in wide flat clusters of `radius`), `stone_ring` (`branches` standing stones of `log`, `height` tall and 1–2 wide, evenly on a ring of `radius`, `leaves` = their top block), `grove` (a disc of `radius` with a `log` stalk on a share `chance` of the columns, `height` tall, each with a `leaves` tuft on top: bamboo groves) |
+| `kind` | `round` (trunk + round crown), `branching` (trunk, diagonal branches with leaf clusters, crown), `bush` (log stub + low leaf clump), `giant` (tapering flared trunk, arching roots, heavy branches with leaf clusters, crown), `fallen` (a log lying on level ground, length = `height`), `stump` (a short upright log), `cactus` (column of `height`, `branches` arms, `leaves` = flower on top with `chance`), `rock` (discs shrinking upward from `radius`, `height` tall; `leaves` = optional block on its upper half), `arch` (a half-ring of `radius` with legs in the ground), `fossil` (a half-buried spine `height` long with ribs, of `log`), `palm` (curved trunk of `height`, 8 drooping fronds of `radius`), `conifer` (trunk of `height`, tiers of `leaves` shrinking from `radius` to a tip), `acacia` (trunk of `height` splitting into 2 forks and 2–4 limbs, each ending in a flat leaf pad of `radius`), `baobab` (bottle trunk of `base_radius` bulging in the middle, `height` tall, `branches` stubby branches with leaf tufts of `radius`), `kapok` (jungle giant: `roots` buttress fins, a bare round trunk of `base_radius`, `height` tall, `branches` thick branches from 72–86% of the height ending in wide flat clusters of `radius`), `stone_ring` (`branches` standing stones of `log`, `height` tall and 1–2 wide, evenly on a ring of `radius`, `leaves` = their top block), `cypress` (trunk flared to `base_radius` at the ground tapering over 3 blocks, `height` tall, 3 flat layered crowns of `radius`, `roots` knees poking out of the water), `grove` (a disc of `radius` with a `log` stalk on a share `chance` of the columns, `height` tall, each with a `leaves` tuft on top: bamboo groves) |
 | `log`, `leaves` | blocks |
 | `height` | trunk height range `a, b` |
 | `radius` | crown radius range |
@@ -315,6 +315,10 @@ Temperature and humidity are 0..1.
 | `steep_block = strata` | (and any tree `log = strata`) the band at that block's height |
 | `wash_block` | dry washes: winding beds (the dune field's crest lines) on low ground off the mesas |
 | `dry_ponds` | `block, share`: this share of the biome's ponds are dry hollows: a flat pan one below the rim, no water, `block` on top (salt flats) |
+| `water_color` | RRGGBB: the biome's water colour (a third tint layer; water keeps its texture's brightness and takes this hue). Default: `water_reference` (`[climate]`, the texture's own colour) |
+| `flatten` | `level, pull`: pulls the land towards `level` by `pull` (0..1, blended). With the small detail bumps, a level just above the sea makes a maze of pools and islands (swamps) |
+| `own_shore` | 1: the shore band uses the biome's own ground (top, patches) above the sea and its `pond_floor` (else mud) below it, instead of beach sand |
+| `water_plant` | `block, chance` (repeatable, up to 8): plants floating on the water surface of ponds and the sea over low ground (lily pads) |
 | `beach_block` | the shore band block (default the world's beach sand) |
 | `top_patch_low` | `block, level`: replaces the top block where the detail noise is below `level` (a second kind of patch, e.g. frozen dirt beside gravel) |
 | `dune_height` | dunes: the `dunes` noise × this is added to the height (blended across borders) |
