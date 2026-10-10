@@ -25,6 +25,8 @@
 %define TREE_CONIFER    11              ; tall trunk with tiers of needles to a tip
 %define TREE_ACACIA     12              ; forked trunk with flat leaf pads
 %define TREE_BAOBAB     13              ; fat bottle trunk, stubby branches
+%define TREE_KAPOK      14              ; buttress fins, tall bare trunk, umbrella crown
+%define TREE_GROVE      15              ; a disc of thin stalks (bamboo grove)
 
 ; per-chunk blend map: biome samples every 16 blocks from -64 to +96 around
 ; the chunk, blurred (tent filter, radius 32) into points from -32 to +64
@@ -104,6 +106,15 @@ struc TREE
     .base_r         resd 2              ; float trunk base radius range (giant)
     .roots          resd 2              ; int root count range (giant)
     .chance         resd 1              ; float: kind-specific chance (cactus flower, arms)
+    .vine           resd 1              ; trunk-side vine block (ladder shape), chance per side
+    .vine_ch        resd 1
+    .hang           resd 1              ; hanging strand block under leaves, chance per leaf
+    .hang_ch        resd 1
+    .fungus         resd 1              ; shelf fungus block on trunk sides, chance per side
+    .fungus_ch      resd 1
+    .pod            resd 1              ; pod block on trunk sides, chance per tree (1-3 pods)
+    .pod_ch         resd 1
+    .vine_len       resd 2              ; int length range of vines and strands
 endstruc
 
 struc BMAP

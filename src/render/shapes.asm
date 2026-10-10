@@ -72,6 +72,7 @@ b_pillar_base:  db 0, 0, 0, 16, 3, 16
 b_pillar_cap:   db 0, 13, 0, 16, 16, 16
 b_pane_post:    db 7, 0, 7, 9, 16, 9
 b_pane_arm:     db 7, 0, 0, 9, 16, 7
+b_stalk:        db 6, 0, 6, 10, 16, 10
 
 align 8
 shape_jump:     dq shapes_emit.s_none, shapes_emit.s_slab, shapes_emit.s_stairs
@@ -79,7 +80,7 @@ shape_jump:     dq shapes_emit.s_none, shapes_emit.s_slab, shapes_emit.s_stairs
                 dq shapes_emit.s_trapdoor, shapes_emit.s_ladder, shapes_emit.s_sign
                 dq shapes_emit.s_wall_sign, shapes_emit.s_plate, shapes_emit.s_wall
                 dq shapes_emit.s_pillar, shapes_emit.s_pane, shapes_emit.s_spike
-                dq shapes_emit.s_plant, shapes_emit.s_tall_plant
+                dq shapes_emit.s_plant, shapes_emit.s_tall_plant, shapes_emit.s_stalk
 
 section .text
 
@@ -529,6 +530,12 @@ PROC shapes_emit, S_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     inc ebx
     cmp ebx, 4
     jb .pane_dir
+    jmp .emit
+
+.s_stalk:
+    lea rcx, [rel b_stalk]
+    xor edx, edx
+    call add_box
     jmp .emit
 
 .s_tall_plant:

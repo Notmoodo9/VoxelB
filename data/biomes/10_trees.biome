@@ -211,3 +211,57 @@ kind   = rock
 log    = termite_mound
 radius = 1.2, 2.0
 height = 3, 6
+
+# --- jungle (design/biomes/jungle.md) ----------------------------------------
+#   vines = block, chance per trunk side (a run hanging from below the crown)
+#   hanging_vines = block, chance per leaf (a strand hanging to the ground)
+#   fungus = block, chance per trunk side;  pods = block, chance per tree
+#   vine_length = length range of vine runs and strands
+# mid-canopy jungle tree: crowns touch to close the canopy
+[tree jungle_tree]
+kind          = branching
+log           = jungle_log
+leaves        = jungle_leaves
+height        = 12, 20
+radius        = 3.5, 5.0
+branches      = 2, 4
+leaf_gaps     = 0.15
+vines         = vine, 0.45
+hanging_vines = hanging_vine, 0.025
+vine_length   = 3, 12
+fungus        = shelf_fungus, 0.06
+pods          = cocoa_pod, 0.25
+
+#   kapok: buttress fins (`roots`), a bare trunk of `base_radius`, `branches`
+#   thick branches ending in wide flat clusters of `radius`
+[tree kapok]
+kind          = kapok
+log           = jungle_log
+leaves        = jungle_leaves
+height        = 30, 45
+base_radius   = 1.0, 1.5
+roots         = 4, 6
+branches      = 4, 7
+radius        = 4.0, 6.0
+leaf_gaps     = 0.2
+vines         = vine, 0.6
+hanging_vines = hanging_vine, 0.02
+vine_length   = 4, 16
+fungus        = shelf_fungus, 0.35
+
+[tree jungle_bush]
+kind          = bush
+log           = jungle_log
+leaves        = jungle_leaves
+radius        = 1.5, 2.5
+leaf_gaps     = 0.25
+
+#   grove: a disc of `radius` with stalks (`log`) on a share `chance` of the
+#   columns, `height` tall, each with a tuft (`leaves`) on top
+[tree bamboo_grove]
+kind          = grove
+log           = bamboo
+leaves        = bamboo_leaves
+height        = 6, 14
+radius        = 7.5, 20
+chance        = 0.45

@@ -1,11 +1,84 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 6): 🎨 DESIGN — Savanna: DONE** (Windows CI green: run #30)
+**Milestone 10 (part 7): 🎨 DESIGN — Jungle: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 7: the next biome**. Candidates are badlands,
-jungle, swamp, dark forest, meadow, snowy tundra or river
-(`design/BACKLOG.md`). It starts with its design interview.
+Next: **Milestone 10, part 8: the next biome**. Candidates are badlands,
+swamp, dark forest, meadow, snowy tundra or river (`design/BACKLOG.md`).
+It starts with its design interview.
+
+---
+
+## Milestone 10, part 7 — done (2026-10-10)
+
+### Design interview
+Four rounds plus approval: `design/biomes/jungle.md`.
+* A hot, wet, very dense rainforest on rugged hills, in saturated emerald.
+* Three layers: rare kapok giants, a closed canopy of mid trees, and a
+  floor of bushes, ferns and tropical flowers.
+* Vines everywhere, shelf fungi, cocoa pods, melon patches, bamboo groves
+  and pools in the hollows.
+
+### What was built
+* **Jungle** (`data/biomes/55_jungle.biome`), on ~6% of land near the
+  origin, in the hot and wet climate that had no biome before.
+* **Kapok giants** (new kind `kapok`): buttress fins, a tall bare trunk, and
+  thick branches ending in a wide umbrella crown, 30–45 tall.
+* **Tree decorations from data** (D64): trunk vines, hanging strands, shelf
+  fungi and cocoa pods (`vines`, `hanging_vines`, `fungus`, `pods`,
+  `vine_length`).
+* **Bamboo groves** (new kind `grove`) and a new `stalk` shape.
+* **New blocks and textures:**
+  * `vine`, `hanging_vine`, `shelf_fungus`, `cocoa_pod`, `melon`;
+  * `bamboo`, `bamboo_leaves`;
+  * `heliconia` (2 tall), `orchid`, `bird_of_paradise`, `hibiscus`.
+* **Biome settings in use:**
+  * melon patches use the meadow feature (64-block cells);
+  * pools in the hollows use ponds with `pond_slope`;
+  * jungle leaves are foliage-tinted.
+
+### How to see it (seed 20261009)
+* The canopy with kapoks rising above it:
+  `voxelb.exe --pos -150 230 60 --look 250 -20`.
+* The jungle floor (vines, strands, fungi, pods):
+  `voxelb.exe --pos -150 128 60 --look 160 -8`.
+* Melon patch and flowers on a jungle hillside:
+  `voxelb.exe --pos -85 146 40 --look 0 -35`.
+* Bamboo groves are rare (about one per 300×300 blocks); the nearest place
+  inside the jungle is in the `--survey` output.
+
+### Bugs found and fixed while testing
+* The first climate box gave the jungle only 2% of land. It was widened
+  in steps to 6%.
+
+### Verified
+* Debug and release headless tests pass. The debug build ran in the
+  jungle with no asserts.
+* Screenshots:
+  * the canopy;
+  * the floor;
+  * kapoks and bamboo groves, with their weights raised for the test;
+  * flowers and melons, with trees switched off for the test.
+* A top-down view checked that the jungle colour blends smoothly into its
+  neighbours.
+
+### Known issues
+* The jungle is the heaviest biome so far:
+  * dense views draw 1.5–2.3M quads, 0.4–0.5 FPS on software GL;
+  * generation and meshing are each ~4 ms slower per column (the leaves,
+    vines and strands).
+  * The GPU-driven pipeline (M11) and LOD (M12) are the planned answer.
+* Buttress fins look a little stepped.
+
+### Deferred
+* Waterfalls wait for flowing water (M15).
+* Eating cocoa and melons waits for items (M18).
+* Jungle animals wait for the entity milestones.
+
+### Performance
+* Generation ~14–16 ms per column, meshing ~12.5–13.5 ms, in and around
+  the jungle.
+* Elsewhere unchanged (~10–11 and ~9 ms).
 
 ---
 

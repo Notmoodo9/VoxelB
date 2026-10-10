@@ -47,7 +47,8 @@
 %define SHAPE_SPIKE         14          ; bit 0: points down (base/middle/tip automatic)
 %define SHAPE_PLANT         15          ; two crossed planes (grass, flowers)
 %define SHAPE_TALL_PLANT    16          ; bit 0: upper half (upper_textures)
-%define SHAPE_COUNT         17
+%define SHAPE_STALK         17          ; a thin upright post that joins nothing (bamboo)
+%define SHAPE_COUNT         18
 ; facings: 0 north (-Z), 1 east (+X), 2 south (+Z), 3 west (-X)
 
 ; Neighbour sentinel for the mesher: a solid boundary (below the world).

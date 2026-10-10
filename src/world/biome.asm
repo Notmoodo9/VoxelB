@@ -145,6 +145,13 @@ k_b_pslope:     db "pond_slope", 0
 k_b_plateau:    db "plateau_height", 0
 v_acacia:       db "acacia", 0
 v_baobab:       db "baobab", 0
+v_kapok:        db "kapok", 0
+v_grove:        db "grove", 0
+k_t_vines:      db "vines", 0
+k_t_hang:       db "hanging_vines", 0
+k_t_fungus:     db "fungus", 0
+k_t_pods:       db "pods", 0
+k_t_vine_len:   db "vine_length", 0
 k_t_chance:     db "chance", 0
 v_cactus:       db "cactus", 0
 v_rock:         db "rock", 0
@@ -234,6 +241,11 @@ tree_settings:
     dq k_t_base_r,    T_RANGE_F,  TREE.base_r
     dq k_t_roots,     T_RANGE_I,  TREE.roots
     dq k_t_chance,    T_FLOAT,    TREE.chance
+    dq k_t_vines,     T_PATCH,    TREE.vine
+    dq k_t_hang,      T_PATCH,    TREE.hang
+    dq k_t_fungus,    T_PATCH,    TREE.fungus
+    dq k_t_pods,      T_PATCH,    TREE.pod
+    dq k_t_vine_len,  T_RANGE_I,  TREE.vine_len
     dq 0
 climate_settings:
     dq k_grass_ref,   T_COLOR,    g_grass_ref
@@ -242,8 +254,8 @@ climate_settings:
     dq 0
 kind_names:     dq v_round, v_branching, v_bush, v_giant, v_fallen, v_stump
                 dq v_cactus, v_rock, v_arch, v_fossil, v_palm, v_conifer
-                dq v_acacia, v_baobab
-%define KIND_COUNT 14
+                dq v_acacia, v_baobab, v_kapok, v_grove
+%define KIND_COUNT 16
 
 align 4
 c_one:          dd 1.0
@@ -751,6 +763,12 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     mov dword [r12 + TREE.roots], 4
     mov dword [r12 + TREE.roots + 4], 7
     mov dword [r12 + TREE.chance], 0x3F000000       ; 0.5
+    mov dword [r12 + TREE.vine], 0
+    mov dword [r12 + TREE.hang], 0
+    mov dword [r12 + TREE.fungus], 0
+    mov dword [r12 + TREE.pod], 0
+    mov dword [r12 + TREE.vine_len], 2
+    mov dword [r12 + TREE.vine_len + 4], 8
     inc dword [rel g_tree_count]
     mov dword [rel g_kind], K_TREE
     RETURN

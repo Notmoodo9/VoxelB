@@ -719,3 +719,32 @@ block for their upper half (mossy cobblestone boulders).
   * Plains, forest, birch grove, oasis, taiga and snowy taiga now show the
     grass and foliage colours from their design docs.
 * The `--survey` run now also logs the nearest plateau top.
+
+## D64 — Jungle: kapoks, trunk decorations, strands, groves (M10 part 7)
+* Trees can carry decorations, all set per tree in data:
+  * `vines`, `fungus` and `pods` go on the side faces of the trunk disc,
+    using a new helper `trunk_deco`;
+  * `hanging_vines` hang from leaves inside `blob`.
+  * Vines and pods use the `ladder` shape (state = the side the trunk is
+    on). Shelf fungi use the pressure-plate plate. Strands are crossed
+    planes.
+  * Every random draw depends only on the tree's seed, never on what is
+    already placed, so trees stay identical across sections and chunks.
+  * Strands stop at the column's ground from the heightmap. They are only
+    placed for columns inside the chunk; the rng is still consumed for the
+    others.
+* `kapok` kind:
+  * a round trunk (r² = base_r² + 0.5: a plus or 3×3);
+  * buttress fins: walls of logs falling linearly from 2·r+3 high to 1;
+  * 4–7 branches spread evenly over 16 directions, rising 0.5 per block;
+  * flat clusters (down 0.35, up 0.55);
+  * vines and fungi on the bare trunk between the fins and the branches.
+* `grove` kind: a whole bamboo grove is one tree candidate (radius up to
+  20, within TREE_REACH). Each stalk stands on its own column's ground and
+  gets shorter and sparser towards the edge. Groves are rare by weight in
+  the jungle's tree list.
+* New shape `stalk`: a 4/16 post that joins nothing (fences would grow
+  rails between packed bamboo).
+* MAX_CANDS went from 320 to 640: a dense jungle lists ~400 trees and
+  bushes per chunk.
+* Jungle leaves are now foliage-tinted (emerald 1FB52A in the jungle).

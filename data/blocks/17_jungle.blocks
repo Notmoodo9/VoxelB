@@ -1,0 +1,54 @@
+# Jungle (design/biomes/jungle.md)
+
+# vines down trunk sides: a flat panel against the trunk (ladder shape,
+# state = the side the trunk is on: 0 north, 1 east, 2 south, 3 west)
+[block vine]
+shape    = ladder
+textures = vine
+render   = cutout
+tint     = foliage
+
+# strands hanging from the underside of leaves
+[block hanging_vine]
+shape    = plant
+textures = hanging_vine
+render   = cutout
+sway     = 1
+tint     = foliage
+
+# bracket fungus on big trunks: a thin plate sticking out
+[block shelf_fungus]
+shape    = pressure_plate
+textures = shelf_fungus
+
+# cocoa pods on trunk sides (ladder shape like the vine)
+[block cocoa_pod]
+shape    = ladder
+textures = cocoa_pod
+render   = cutout
+
+[block melon]
+textures = side: melon_side, end: melon_top
+
+# bamboo: thin stalks with a leafy tuft on top
+[block bamboo]
+shape    = stalk
+textures = side: bamboo, end: bamboo_top
+
+[block bamboo_leaves]
+shape    = plant
+textures = bamboo_leaves
+render   = cutout
+sway     = 1
+
+# tropical flowers
+[block heliconia]
+shape          = tall_plant
+textures       = heliconia_lower
+upper_textures = heliconia_upper
+render         = cutout
+sway           = 1
+
+[family tropical_flowers]
+templates = plant
+members   = orchid, bird_of_paradise, hibiscus

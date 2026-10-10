@@ -1180,6 +1180,165 @@ def trapdoor_design(name, base, style):
     return np.concatenate([img, a[..., None]], axis=2)
 
 
+def make_jungle(out):
+    yy, xx = np.mgrid[0:N, 0:N]
+    # vine: leafy strands hanging down a trunk face (foliage-tinted, ladder shape)
+    r = rng("vine")
+    lp = ramp("389d24", 6, spread=0.24)
+    img = np.zeros((N, N, 4))
+    for sx in (1, 4, 7, 10, 13):
+        x = sx + int(r.integers(0, 2))
+        end = int(r.integers(8, N + 1))
+        for y in range(end):
+            x2 = min(N - 1, max(0, x + (1 if (y // 5) % 2 and r.random() < 0.5 else 0)))
+            img[y, x2, :3] = lp[1]; img[y, x2, 3] = 1.0
+            if r.random() < 0.55:
+                lx = min(N - 1, max(0, x2 + int(r.choice([-1, 1]))))
+                img[y, lx, :3] = lp[int(r.integers(2, 6))]; img[y, lx, 3] = 1.0
+    out["vine"] = img
+    # hanging vine: one strand with leaves down the middle (plant sprite)
+    r = rng("hanging_vine")
+    img = np.zeros((N, N, 4))
+    for strand, x0 in ((0, 6), (1, 9)):
+        x = x0
+        for y in range(N):
+            if r.random() < 0.15:
+                x = min(11, max(4, x + int(r.choice([-1, 1]))))
+            img[y, x, :3] = lp[1 + strand]; img[y, x, 3] = 1.0
+            if y % 3 == strand:
+                for dx in (-1, 1):
+                    if r.random() < 0.8:
+                        img[y, x + dx, :3] = lp[int(r.integers(3, 6))]; img[y, x + dx, 3] = 1.0
+    out["hanging_vine"] = img
+    # shelf fungus: a bracket with orange-tan growth rings (pressure-plate shape)
+    r = rng("shelf_fungus")
+    fp = ramp("c8803a", 6, spread=0.22, hue_shift=0.01)
+    d = np.sqrt(((xx - 7.5) / 7.5) ** 2 + ((yy - 15.0) / 13.0) ** 2)
+    ring = (d * 7).astype(int)
+    top = np.zeros((N, N, 3)) + fp[1]
+    for k in range(8):
+        top[ring == k] = fp[[5, 4, 3, 4, 2, 3, 1, 2][k]]
+    top += (r.random((N, N, 1)) - 0.5) * 0.06
+    out["shelf_fungus"] = rgba(np.clip(top, 0, 1))
+    # cocoa pod: ridged orange-brown pods hanging from short stems (ladder shape)
+    img = np.zeros((N, N, 4))
+    cp = ramp("c06a24", 5, spread=0.22)
+    for (cx, cy) in ((4, 7), (11, 10)):
+        for y in range(cy - 4, cy + 5):
+            for x in range(cx - 3, cx + 4):
+                e = ((x - cx) / 2.6) ** 2 + ((y - cy) / 4.2) ** 2
+                if e <= 1.0:
+                    c = cp[3 if x < cx else 2] if (x - cx) % 2 == 0 else cp[1]
+                    img[y, x, :3] = c; img[y, x, 3] = 1.0
+        for y in range(0, cy - 4):
+            img[y, cx, :3] = hexrgb("5a7a2a"); img[y, cx, 3] = 1.0
+    out["cocoa_pod"] = img
+    # melon: dark and light green stripes, a pale top with a stem
+    r = rng("melon")
+    mp = ramp("3a9a2a", 6, spread=0.2)
+    side = np.zeros((N, N, 3))
+    for x in range(N):
+        side[:, x] = mp[1 if (x // 2) % 2 else 3]
+    side += (r.random((N, N, 1)) - 0.5) * 0.08
+    out["melon_side"] = rgba(np.clip(side, 0, 1))
+    dd = np.sqrt((xx - 7.5) ** 2 + (yy - 7.5) ** 2)
+    top = np.zeros((N, N, 3))
+    top[:] = mp[2]
+    for a in range(8):
+        ang = a * np.pi / 4
+        for k in range(1, 9):
+            x = int(round(7.5 + np.cos(ang) * k)); y = int(round(7.5 + np.sin(ang) * k))
+            if 0 <= x < N and 0 <= y < N:
+                top[y, x] = mp[4]
+    top[dd < 2] = hexrgb("6a8a2a")
+    top[dd < 1] = hexrgb("4a5a1a")
+    out["melon_top"] = rgba(top)
+    # bamboo: a green stalk in the middle 4 columns with pale node rings
+    bp = ramp("6ab82a", 6, spread=0.2)
+    img = np.zeros((N, N, 3)) + bp[2]
+    for x in range(N):
+        img[:, x] = bp[[1, 2, 4, 3][x % 4]]
+    for y in (3, 11):
+        img[y] = hexrgb("c8d86a")
+        img[y + 1] = bp[0]
+    out["bamboo"] = rgba(img)
+    top = np.zeros((N, N, 3)) + bp[3]
+    top[(dd > 5) & (dd < 8)] = bp[1]
+    top[dd < 3] = hexrgb("c8d86a")
+    out["bamboo_top"] = rgba(top)
+    # bamboo leaves: a tuft of long narrow leaves (plant sprite on top of a stalk)
+    r = rng("bamboo_leaves")
+    img = np.zeros((N, N, 4))
+    for (ang, ln) in ((-2.7, 9), (-2.2, 10), (-1.8, 9), (-1.35, 10), (-0.9, 9), (-0.45, 10), (-3.0, 7), (0.0, 7)):
+        for k in range(ln):
+            x = int(round(7.5 + np.cos(ang) * k)); y = int(round(11 + np.sin(ang) * k + k * k * 0.07))
+            if 0 <= x < N and 0 <= y < N:
+                img[y, x, :3] = bp[2 + k * 3 // ln]; img[y, x, 3] = 1.0
+    for y in range(11, N):
+        img[y, 7, :3] = bp[1]; img[y, 7, 3] = 1.0; img[y, 8, :3] = bp[2]; img[y, 8, 3] = 1.0
+    out["bamboo_leaves"] = img
+    # heliconia: big paddle leaves below, red lobster-claw bracts with yellow tips above
+    r = rng("heliconia")
+    gp = ramp("2f9a2a", 6, spread=0.22)
+    low = np.zeros((N, N, 4))
+    for (bx, lean) in ((4, -1), (8, 0), (12, 1)):
+        for i in range(N):
+            y = N - 1 - i
+            x = bx + (lean * i) // 6
+            w = 2 if 4 < i < 14 else 0
+            for dx in range(-w, w + 1):
+                if 0 <= x + dx < N:
+                    low[y, x + dx, :3] = gp[2 + (dx == 0) + (i > 8)]; low[y, x + dx, 3] = 1.0
+    out["heliconia_lower"] = low
+    up = np.zeros((N, N, 4))
+    rp = ramp("e0242a", 4, spread=0.2)
+    for y in range(4, N):
+        up[y, 8, :3] = gp[2]; up[y, 8, 3] = 1.0
+    for k in range(5):
+        y = 5 + k * 2
+        side = -1 if k % 2 else 1
+        for j in range(4):
+            x = 8 + side * (j + 1)
+            yj = y + (j // 2)
+            up[yj, x, :3] = rp[2 if j < 3 else 1]; up[yj, x, 3] = 1.0
+        x = 8 + side * 4
+        up[y + 1, x, :3] = hexrgb("ffd030"); up[y + 1, x, 3] = 1.0
+    out["heliconia_upper"] = up
+    # orchid: arching stem with pink-purple blooms
+    img = np.zeros((N, N, 4))
+    op = ramp("d050d0", 4, spread=0.22)
+    for y in range(6, N):
+        img[y, 5 + (N - y) // 5, :3] = gp[2]; img[y, 5 + (N - y) // 5, 3] = 1.0
+    for (cx, cy) in ((7, 5), (10, 7), (12, 10)):
+        for (dx, dy) in ((0, 0), (-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1)):
+            img[cy + dy, cx + dx, :3] = op[2 if (dx, dy) != (0, 0) else 3]; img[cy + dy, cx + dx, 3] = 1.0
+        img[cy + 1, cx, :3] = hexrgb("ffe8ff")
+    for (lx, ly) in ((4, N - 2), (3, N - 3), (8, N - 2), (9, N - 3)):
+        img[ly, lx, :3] = gp[3]; img[ly, lx, 3] = 1.0
+    out["orchid"] = img
+    # bird of paradise: orange crest and a blue tongue on a beak-like bract
+    img = np.zeros((N, N, 4))
+    for y in range(7, N):
+        img[y, 7, :3] = gp[2]; img[y, 7, 3] = 1.0
+    for x in range(3, 12):
+        img[8 + (x - 3) // 4, x, :3] = hexrgb("3a6a3a"); img[8 + (x - 3) // 4, x, 3] = 1.0
+    for (x, y) in ((5, 7), (6, 6), (6, 5), (7, 4), (7, 6), (8, 5), (8, 3), (9, 4), (9, 6), (10, 5), (10, 3)):
+        img[y, x, :3] = hexrgb(["ff8a1a", "ffb030"][(x + y) % 2]); img[y, x, 3] = 1.0
+    for (x, y) in ((9, 7), (10, 7), (11, 8)):
+        img[y, x, :3] = hexrgb("3050e0"); img[y, x, 3] = 1.0
+    for (lx, ly) in ((5, N - 3), (9, N - 4), (4, N - 4), (10, N - 5)):
+        img[ly, lx, :3] = gp[3]; img[ly, lx, 3] = 1.0
+    out["bird_of_paradise"] = img
+    # hibiscus: one big open red bloom with a long yellow stamen
+    img = flower("hibiscus", "e82030", "ffd040", "cup")
+    for dx in range(-3, 4):
+        for dy in range(-3, 2):
+            if dx * dx + dy * dy <= 10 and img[5 + dy, 8 + dx, 3] == 0:
+                img[5 + dy, 8 + dx, :3] = ramp("e82030", 4)[1]; img[5 + dy, 8 + dx, 3] = 1.0
+    img[3, 9, :3] = hexrgb("ffd040"); img[2, 10, :3] = hexrgb("ffd040"); img[2, 10, 3] = 1.0
+    out["hibiscus"] = img
+
+
 def ladder_design(name, base):
     pal = ramp(base, 5, spread=0.15)
     img = np.zeros((N, N, 3)) + pal[1]
@@ -1689,6 +1848,7 @@ def build_all():
     make_desert(out)
     make_taiga(out)
     make_savanna(out)
+    make_jungle(out)
     return out
 
 

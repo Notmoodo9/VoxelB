@@ -5,7 +5,7 @@
 %define FLORA_INC
 
 %define MAX_PONDS       8
-%define MAX_CANDS       320
+%define MAX_CANDS       640
 %define TREE_REACH      20              ; blocks a tree may spread from its trunk
 
 struc POND                              ; a pond touching the chunk (local)

@@ -12,3 +12,7 @@ tint = foliage
 textures = flowering_oak_leaves
 render   = cutout
 sway     = 1
+
+# jungle (design/biomes/jungle.md)
+[block jungle_leaves]
+tint = foliage

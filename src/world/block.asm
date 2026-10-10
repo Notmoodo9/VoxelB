@@ -111,12 +111,13 @@ s_pane:         db "pane", 0
 s_spike:        db "spike", 0
 s_plant:        db "plant", 0
 s_tall_plant:   db "tall_plant", 0
+s_stalk:        db "stalk", 0
 s_axis:         db "axis", 0
 align 8
 shape_names:    dq s_cube, s_slab, s_stairs, s_fence, s_gate, s_door, s_trapdoor
                 dq s_ladder, s_sign, s_wall_sign, s_plate, s_wall, s_pillar, s_pane, s_spike
-                dq s_plant, s_tall_plant, s_axis
-shape_states:   db 1, 2, 8, 1, 8, 32, 16, 4, 4, 4, 2, 1, 1, 1, 2, 1, 2, 3
+                dq s_plant, s_tall_plant, s_stalk, s_axis
+shape_states:   db 1, 2, 8, 1, 8, 32, 16, 4, 4, 4, 2, 1, 1, 1, 2, 1, 2, 1, 3
 %define SHAPE_AXIS_NAME SHAPE_COUNT     ; "axis": cube-shaped log states (BLOCKF_AXIS)
 str_shape_late:     db "shape must be the first setting of a new block: ", 0
 k_templates:    db "templates", 0

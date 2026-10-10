@@ -1,0 +1,45 @@
+# Jungle (design/biomes/jungle.md): a hot, wet, very dense rainforest on
+# rugged hills in saturated emerald green: rare kapok giants over a closed
+# canopy, bushes, ferns and tropical flowers below, vines everywhere, shelf
+# fungi, cocoa pods, melon patches, bamboo groves and pools in the hollows.
+
+[biome jungle]
+temperature   = 0.55, 1.00
+humidity      = 0.50, 1.00
+height        = 100, 200
+hill_scale    = 1.4
+grass_color   = 2FD13F           # saturated emerald
+foliage_color = 1FB52A
+
+plant = fern, 0.12
+plant = short_grass, 0.10
+plant = tall_grass, 0.04
+
+# a closed canopy (a trunk every ~5 blocks), kapoks ~1 per 40 x 40,
+# bamboo groves every few hundred blocks
+tree         = jungle_tree, 4000
+tree         = kapok, 56
+tree         = bamboo_grove, 1
+tree_density = 0.045
+
+bush         = jungle_bush, 1
+bush_density = 0.03
+
+# tropical flowers scattered on the floor
+flowers       = heliconia, orchid, bird_of_paradise, hibiscus
+flower_chance = 0.015
+
+# melon patches (one candidate per 64 x 64 cell)
+meadow_cell    = 64
+meadow_chance  = 0.4
+meadow_radius  = 2, 3.5
+meadow_density = 0.6
+meadow_mixed   = 0
+meadow_flowers = melon
+
+# pools in the hollows between hills
+pond_chance = 0.06
+pond_radius = 2.5, 5
+pond_depth  = 2
+pond_floor  = mud
+pond_slope  = 4
