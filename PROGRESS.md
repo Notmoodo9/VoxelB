@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 16): 🎨 DESIGN — Ice spikes: DONE** (Windows CI: see below)
+**Milestone 10 (part 16): 🎨 DESIGN — Ice spikes: DONE** (Windows CI green: run #50)
 
 Next: **Milestone 10, part 17: the next biome**. Candidates are crystal
 caves (underground), glaciers, frozen ocean, meadow, river
