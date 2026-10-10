@@ -323,3 +323,37 @@ kind   = rock
 log    = strata
 radius = 1.2, 2.2
 height = 2, 3
+
+# --- steppe (design/biomes/steppe.md) ----------------------------------------
+#   lean: blocks east per block of height (a prevailing wind)
+[tree windswept_birch]
+kind      = round
+log       = birch_log
+leaves    = birch_leaves
+height    = 5, 8
+radius    = 1.8, 2.6
+leaf_gaps = 0.3
+lean      = 0.3
+
+[tree steppe_outcrop]
+kind   = rock
+log    = stone
+leaves = cobblestone
+radius = 2.0, 4.0
+height = 1, 3
+
+[tree menhir]
+kind   = rock
+log    = stone
+radius = 0.6, 0.9
+height = 3, 6
+
+#   stone_ring: `branches` stones on a ring of `radius`, `height` tall,
+#   `leaves` = the top block
+[tree stone_circle]
+kind     = stone_ring
+log      = stone
+leaves   = mossy_cobblestone
+radius   = 5, 8
+height   = 3, 5
+branches = 6, 10

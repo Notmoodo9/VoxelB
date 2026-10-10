@@ -272,7 +272,7 @@ Temperature and humidity are 0..1.
 
 | Key | Meaning |
 |---|---|
-| `kind` | `round` (trunk + round crown), `branching` (trunk, diagonal branches with leaf clusters, crown), `bush` (log stub + low leaf clump), `giant` (tapering flared trunk, arching roots, heavy branches with leaf clusters, crown), `fallen` (a log lying on level ground, length = `height`), `stump` (a short upright log), `cactus` (column of `height`, `branches` arms, `leaves` = flower on top with `chance`), `rock` (discs shrinking upward from `radius`, `height` tall; `leaves` = optional block on its upper half), `arch` (a half-ring of `radius` with legs in the ground), `fossil` (a half-buried spine `height` long with ribs, of `log`), `palm` (curved trunk of `height`, 8 drooping fronds of `radius`), `conifer` (trunk of `height`, tiers of `leaves` shrinking from `radius` to a tip), `acacia` (trunk of `height` splitting into 2 forks and 2–4 limbs, each ending in a flat leaf pad of `radius`), `baobab` (bottle trunk of `base_radius` bulging in the middle, `height` tall, `branches` stubby branches with leaf tufts of `radius`), `kapok` (jungle giant: `roots` buttress fins, a bare round trunk of `base_radius`, `height` tall, `branches` thick branches from 72–86% of the height ending in wide flat clusters of `radius`), `grove` (a disc of `radius` with a `log` stalk on a share `chance` of the columns, `height` tall, each with a `leaves` tuft on top: bamboo groves) |
+| `kind` | `round` (trunk + round crown), `branching` (trunk, diagonal branches with leaf clusters, crown), `bush` (log stub + low leaf clump), `giant` (tapering flared trunk, arching roots, heavy branches with leaf clusters, crown), `fallen` (a log lying on level ground, length = `height`), `stump` (a short upright log), `cactus` (column of `height`, `branches` arms, `leaves` = flower on top with `chance`), `rock` (discs shrinking upward from `radius`, `height` tall; `leaves` = optional block on its upper half), `arch` (a half-ring of `radius` with legs in the ground), `fossil` (a half-buried spine `height` long with ribs, of `log`), `palm` (curved trunk of `height`, 8 drooping fronds of `radius`), `conifer` (trunk of `height`, tiers of `leaves` shrinking from `radius` to a tip), `acacia` (trunk of `height` splitting into 2 forks and 2–4 limbs, each ending in a flat leaf pad of `radius`), `baobab` (bottle trunk of `base_radius` bulging in the middle, `height` tall, `branches` stubby branches with leaf tufts of `radius`), `kapok` (jungle giant: `roots` buttress fins, a bare round trunk of `base_radius`, `height` tall, `branches` thick branches from 72–86% of the height ending in wide flat clusters of `radius`), `stone_ring` (`branches` standing stones of `log`, `height` tall and 1–2 wide, evenly on a ring of `radius`, `leaves` = their top block), `grove` (a disc of `radius` with a `log` stalk on a share `chance` of the columns, `height` tall, each with a `leaves` tuft on top: bamboo groves) |
 | `log`, `leaves` | blocks |
 | `height` | trunk height range `a, b` |
 | `radius` | crown radius range |
@@ -284,6 +284,7 @@ Temperature and humidity are 0..1.
 | `vines` | `block, chance`: per trunk side, a run of this block (ladder shape) hanging down the trunk from below the crown |
 | `hanging_vines` | `block, chance`: per leaf, a strand of this block (plant shape) hanging down, stopping above the ground |
 | `log = strata` | rocks and arches in the band of the biome they stand in (striped hoodoos and arches) |
+| `lean` | round and branching trees: blocks east per block of height (wind-bent trunk and crown) |
 | `vine_length` | length range of vine runs and strands (default 2–8) |
 | `fungus` | `block, chance`: per trunk side, one of this block somewhere on the trunk (shelf fungi) |
 | `pods` | `block, chance`: per tree, 1–3 of this block (ladder shape) on the lower trunk (cocoa) |
@@ -313,6 +314,7 @@ Temperature and humidity are 0..1.
 | `strata`, `strata_thickness`, `strata_min_y` | striped rock: band blocks (up to 16, repeats weight a colour), band thickness range, lowest banded y. Bands are picked in seeded random order into a 128-block table, so cliffs line up; the `strata` noise shifts them a few blocks. Every block of the column from the second down to `strata_min_y` is banded |
 | `steep_block = strata` | (and any tree `log = strata`) the band at that block's height |
 | `wash_block` | dry washes: winding beds (the dune field's crest lines) on low ground off the mesas |
+| `dry_ponds` | `block, share`: this share of the biome's ponds are dry hollows: a flat pan one below the rim, no water, `block` on top (salt flats) |
 | `beach_block` | the shore band block (default the world's beach sand) |
 | `top_patch_low` | `block, level`: replaces the top block where the detail noise is below `level` (a second kind of patch, e.g. frozen dirt beside gravel) |
 | `dune_height` | dunes: the `dunes` noise × this is added to the height (blended across borders) |

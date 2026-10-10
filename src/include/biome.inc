@@ -27,6 +27,7 @@
 %define TREE_BAOBAB     13              ; fat bottle trunk, stubby branches
 %define TREE_KAPOK      14              ; buttress fins, tall bare trunk, umbrella crown
 %define TREE_GROVE      15              ; a disc of thin stalks (bamboo grove)
+%define TREE_STONE_RING 16              ; standing stones evenly on a ring
 
 ; per-chunk blend map: biome samples every 16 blocks from -64 to +96 around
 ; the chunk, blurred (tent filter, radius 32) into points from -32 to +64
@@ -107,6 +108,8 @@ struc BIOME
     .strata_min     resd 1              ; int: bands from this world y up
     .wash           resd 1              ; block of dry washes on low ground (0 = none)
     .beach          resd 1              ; shore band block (0 = the world's beach sand)
+    .dry_block      resd 1              ; dry hollows: floor block (salt), share of ponds
+    .dry_share      resd 1
 endstruc
 
 struc TREE
@@ -130,6 +133,7 @@ struc TREE
     .pod            resd 1              ; pod block on trunk sides, chance per tree (1-3 pods)
     .pod_ch         resd 1
     .vine_len       resd 2              ; int length range of vines and strands
+    .lean           resd 1              ; float: blocks east per block of height (wind)
 endstruc
 
 struc BMAP

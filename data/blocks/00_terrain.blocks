@@ -61,3 +61,6 @@ textures = side: spruce_needle_floor_side, top: spruce_needle_floor_top, bottom:
 [block dead_wood]
 shape    = axis
 textures = side: dead_wood, end: dead_wood_top
+
+# steppe salt flats (design/biomes/steppe.md)
+[block salt]

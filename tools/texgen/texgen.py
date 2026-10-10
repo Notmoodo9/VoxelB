@@ -1377,6 +1377,90 @@ def make_badlands(out):
     out["dead_wood_top"] = log_top("d8d0c0", "b0a898", rng("dead_wood_top"))
 
 
+def make_steppe(out):
+    # feather grass: tall silvery plumes arching over thin stems (not tinted)
+    r = rng("feather_grass")
+    sp = ramp("8a9a6a", 4, spread=0.2)
+    pp = ramp("e8e8dc", 4, spread=0.1)
+    low = np.zeros((N, N, 4))
+    for x0 in (2, 4, 6, 8, 10, 12, 14):
+        x = x0 + int(r.integers(-1, 2))
+        for y in range(N):
+            xx = min(N - 1, max(0, x + (1 if y < 4 and x0 > 8 else 0)))
+            low[y, xx, :3] = sp[1 + (y % 2)]
+            low[y, xx, 3] = 1.0
+    out["feather_grass_lower"] = low
+    up = np.zeros((N, N, 4))
+    for i, (x0, lean) in enumerate(((3, 1), (6, -1), (9, 1), (12, -1), (7, 1))):
+        for k in range(N - 1 - i % 2):
+            y = N - 1 - k
+            x = int(round(x0 + lean * (k * k) / 40.0))
+            if not 0 <= x < N:
+                break
+            if k < 5:
+                up[y, x, :3] = sp[2]; up[y, x, 3] = 1.0
+                continue
+            up[y, x, :3] = pp[1]; up[y, x, 3] = 1.0      # plume core
+            for dx in (-1, 1):                              # silky hairs
+                if 0 <= x + dx < N and r.random() < 0.7:
+                    up[y, x + dx, :3] = pp[3 if dx == lean else 2]; up[y, x + dx, 3] = 1.0
+    out["feather_grass_upper"] = up
+    # sagebrush: a low, rounded grey-green shrub
+    img = np.zeros((N, N, 4))
+    r = rng("sagebrush")
+    gp = ramp("8a9e80", 5, spread=0.2)
+    yy, xx = np.mgrid[0:N, 0:N]
+    d = np.sqrt(((xx - 7.5) / 7.0) ** 2 + ((yy - 11.0) / 5.5) ** 2)
+    mask = (d < 1.0) & (r.random((N, N)) < 0.8)
+    v = noise(r, 4, 2)
+    img[mask, :3] = shade(stretch(v)[mask] * 0.999, gp)
+    img[mask, 3] = 1.0
+    for x in (6, 8, 10):
+        for y in range(13, N):
+            img[y, x, :3] = hexrgb("6a5a40"); img[y, x, 3] = 1.0
+    out["sagebrush"] = img
+    # steppe flowers
+    def spike(name, color):
+        img = np.zeros((N, N, 4))
+        cp = ramp(color, 4, spread=0.22)
+        gp2 = ramp("5a8a3a", 4)
+        for y in range(5, N):
+            img[y, 8, :3] = gp2[2]; img[y, 8, 3] = 1.0
+        for y in range(2, 10):
+            for dx in ((-1, 1) if y % 2 else (0,)):
+                img[y, 8 + dx, :3] = cp[1 + y % 3]; img[y, 8 + dx, 3] = 1.0
+            img[y, 8, :3] = cp[2]; img[y, 8, 3] = 1.0
+        for (lx, ly) in ((7, N - 3), (9, N - 4), (6, N - 2), (10, N - 3)):
+            img[ly, lx, :3] = gp2[3]; img[ly, lx, 3] = 1.0
+        return img
+    out["blue_sage"] = spike("blue_sage", "5a6ae8")
+    img = np.zeros((N, N, 4))           # yarrow: flat-topped cluster of tiny yellow florets
+    yp = ramp("f0d040", 4, spread=0.2)
+    gp2 = ramp("5a8a3a", 4)
+    for x in (6, 8, 10):
+        for y in range(6, N):
+            img[y, x, :3] = gp2[2]; img[y, x, 3] = 1.0
+    r = rng("yarrow")
+    for x in range(3, 13):
+        for y in range(3, 6):
+            if r.random() < 0.8 and abs(x - 7.5) < 5.5 - (5 - y):
+                img[y, x, :3] = yp[int(r.integers(1, 4))]; img[y, x, 3] = 1.0
+    out["yarrow"] = img
+    out["pasqueflower"] = flower("pasqueflower", "b050d0", "ffd040", "tulip")
+    # salt crust: bright white with faint polygon cracks
+    r = rng("salt")
+    sp2 = ramp("f4f2ec", 4, spread=0.06)
+    v = 0.6 + 0.4 * noise(r, 4, 2)
+    img = shade(np.clip(v, 0, 0.999), sp2)
+    for _ in range(5):
+        x, y = r.integers(0, N, 2)
+        L = int(r.integers(3, 7))
+        dx, dy = [(1, 0), (0, 1), (1, 1), (1, -1)][r.integers(4)]
+        for k in range(L):
+            img[(y + dy * k) % N, (x + dx * k) % N] = hexrgb("d8d2c4")
+    out["salt"] = rgba(img)
+
+
 def ladder_design(name, base):
     pal = ramp(base, 5, spread=0.15)
     img = np.zeros((N, N, 3)) + pal[1]
@@ -1889,6 +1973,7 @@ def build_all():
     make_jungle(out)
     make_tundra(out)
     make_badlands(out)
+    make_steppe(out)
     return out
 
 

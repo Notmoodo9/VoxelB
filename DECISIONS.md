@@ -788,3 +788,18 @@ block for their upper half (mossy cobblestone boulders).
   16-block blend lattice. Weights for colours, heights and vegetation are
   unchanged.
 * `beach_block`: the shore band can be the biome's own block (red sand).
+
+## D67 — Steppe: dry hollows, lean, stone rings (M10 part 10)
+* Dry hollows reuse the pond machinery. A pond whose hash falls under the
+  biome's `dry_ponds` share is dug as a flat pan one block below its
+  lowest rim. Its columns get the level `POND_DRY` (−32767), not a water
+  level. Everything that checks "pond != POND_NONE" (no plants, no trees,
+  banks stay grassy) treats it like a pond; the water fill never matches
+  it; the surface pass puts the biome's dry block (salt) on top.
+* `lean`: the trunk of round and branching trees moves east by
+  `lean × height` blocks, and the crown follows: one prevailing wind
+  direction, the same everywhere.
+* `stone_ring`: stones are spaced over 16 directions (even for 6–10
+  stones, up to one direction of slack). Each stone draws its size from
+  the rng before its position is checked, so a ring is identical in every
+  chunk it touches.

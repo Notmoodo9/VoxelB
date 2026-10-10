@@ -1,0 +1,37 @@
+# Steppe (design/biomes/steppe.md): wide-open, gently rolling grassland in
+# the cool, dry temperate band: cool silver-green grass with golden tips,
+# tall silvery feather grass, patches of steppe wildflowers, low sagebrush,
+# rare lone wind-bent birches, low rocky outcrops, very rare stone circles
+# and menhirs, small ponds and white salt flats in the hollows.
+
+[biome steppe]
+temperature   = 0.36, 0.58
+humidity      = 0.00, 0.25
+height        = 98, 170
+hill_scale    = 0.6
+grass_color   = A8C46A           # cool sage with a golden hint
+foliage_color = 8AAA60
+
+plant = feather_grass, 0.12
+plant = short_grass, 0.15
+plant = sagebrush, 0.015
+
+flowers       = blue_sage, yarrow, pasqueflower
+flower_chance = 0.01
+
+# a lone wind-bent birch every few hundred blocks
+tree         = windswept_birch, 1
+tree_density = 0.00002
+
+# outcrops ~1 per 80 x 80, menhirs ~1 per 250 x 250, stone circles ~1 per 600 x 600
+bush         = steppe_outcrop, 56
+bush         = menhir, 6
+bush         = stone_circle, 1
+bush_density = 0.00025
+
+# rare small ponds; half the hollows are dry salt flats
+pond_chance = 0.15
+pond_radius = 2.5, 5
+pond_depth  = 2
+pond_slope  = 3
+dry_ponds   = salt, 0.5

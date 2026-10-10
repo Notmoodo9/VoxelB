@@ -1951,6 +1951,18 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     imul r10, r10, BIOME_size
     lea rax, [rel g_biomes]
     add r10, rax
+    cmp word [rcx + INFO_POND], POND_DRY
+    jne .pond_wet
+    ; a dry hollow: the biome's dry floor (salt flat)
+    mov eax, [r10 + BIOME.dry_block]
+    test eax, eax
+    jnz .sf_put
+    mov eax, [r10 + BIOME.top]
+    test eax, eax
+    jnz .sf_put
+    mov eax, [rel g_b_top]
+    jmp .sf_put
+.pond_wet:
     mov edx, [r10 + BIOME.filler]
     test edx, edx
     jnz .pond_fill

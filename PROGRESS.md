@@ -1,11 +1,61 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 9): 🎨 DESIGN — Badlands: DONE** (Windows CI green: run #36)
+**Milestone 10 (part 10): 🎨 DESIGN — Steppe: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 10: the next biome**. Candidates are swamp,
-dark forest, meadow, river, ice spikes, or a biome for the cool, dry gap
-(`design/BACKLOG.md`). It starts with its design interview.
+Next: **Milestone 10, part 11: the next biome**. Candidates are swamp,
+dark forest, meadow, river, ice spikes (`design/BACKLOG.md`). About 9.5%
+of land near the origin is still "none" (small climate corners). It
+starts with its design interview.
+
+---
+
+## Milestone 10, part 10 — done (2026-10-10)
+
+### Design interview
+Three rounds plus approval: `design/biomes/steppe.md`.
+* A wide-open, gently rolling grassland filling the cool, dry temperate
+  band, in cool silver-green and gold.
+* Tall silvery feather grass, steppe wildflowers, sagebrush, and rare
+  wind-bent birches.
+* Rocky outcrops, menhirs and very rare stone circles.
+* Small ponds and white salt flats in hollows.
+
+### What was built
+* **Steppe** (`data/biomes/47_steppe.biome`), on ~6.8% of land near the
+  origin. The "none" land is down from ~13% to ~9.5%.
+* **New blocks** (texgen):
+  * `feather_grass` (2 tall, silvery plumes) and `sagebrush`;
+  * flowers `blue_sage`, `yarrow`, `pasqueflower`;
+  * `salt`.
+* **Engine settings** (D67):
+  * `dry_ponds` (salt flats from the pond feature);
+  * tree `lean` (wind-bent trunks and crowns);
+  * a new kind `stone_ring` (stone circles).
+* **Trees** (all data): `windswept_birch`, `steppe_outcrop`, `menhir`,
+  `stone_circle`.
+
+### How to see it (seed 20261009)
+* Feather grass, a salt flat, an outcrop and a wind-bent birch:
+  `voxelb.exe --pos -470 112 -560 --look 200 -6`.
+* The steppe meeting the tundra from above:
+  `voxelb.exe --pos -448 300 -512 --look 0 -89`.
+* Stone circles are very rare (~1 per 600×600 blocks).
+
+### Verified
+* Debug and release headless tests pass. The debug build ran in the
+  steppe with no asserts.
+* Screenshots:
+  * the steppe at ground level and from above;
+  * a stone circle and a menhir, with their frequency raised for the test.
+
+### Known issues
+* Short grass tufts take the sage tint but read greener than the feather
+  grass.
+
+### Performance
+Unchanged: generation ~15–16 ms per column, meshing ~13 ms; 1.9 FPS on
+software GL over the steppe (feather grass is two quads per plant).
 
 ---
 

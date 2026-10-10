@@ -69,3 +69,15 @@ sway     = 1
 [family tundra_shrubs]
 templates = plant
 members   = dwarf_shrub, lingonberry_shrub
+
+# steppe (design/biomes/steppe.md)
+[block feather_grass]
+shape          = tall_plant
+textures       = feather_grass_lower
+upper_textures = feather_grass_upper
+render         = cutout
+sway           = 1
+
+[family steppe_plants]
+templates = plant
+members   = sagebrush, blue_sage, yarrow, pasqueflower

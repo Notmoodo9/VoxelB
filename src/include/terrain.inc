@@ -38,6 +38,7 @@ endstruc
 %define SF_STRATA       1               ; the column's rock is banded
 %define SF_WASH         2               ; a dry wash runs here
 %define POND_NONE       -32768
+%define POND_DRY        -32767          ; a dry hollow (salt flat): no water
 
 
 struc ORE                               ; one [ore] record (ores.cfg)

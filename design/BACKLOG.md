@@ -17,6 +17,7 @@ yet; each item gets its own doc in `design/` when we interview it.
 | done | Old-growth forest (rare pockets in forests) | M10 | `design/biomes/old_growth_forest.md` |
 | done | Birch grove (small pockets in forests) | M10 | `design/biomes/birch_grove.md` |
 | todo | Temperate biomes: dark forest, meadow, river | M10 | one biome at a time |
+| done | Steppe (the cool, dry gap) | M10 | `design/biomes/steppe.md` |
 | todo | Transition biomes (forest edge, desert scrubland, …) | M10 | from the biome system interview |
 | done | Desert + oasis | M10 | `design/biomes/desert.md` |
 | done | Savanna | M10 | `design/biomes/savanna.md` |

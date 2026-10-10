@@ -121,7 +121,7 @@ dirs:           dd 1.0, 0.0,  0.7071, 0.7071,  0.0, 1.0,  -0.7071, 0.7071
 align 8
 special_gen:    dq gen_giant, gen_fallen, gen_stump, gen_cactus, gen_rock
                 dq gen_arch, gen_fossil, gen_palm, gen_conifer
-                dq gen_acacia, gen_baobab, gen_kapok, gen_grove
+                dq gen_acacia, gen_baobab, gen_kapok, gen_grove, gen_stone_ring
 
 section .text
 
@@ -306,6 +306,7 @@ ellipse:
 %define FP_D        60                  ; density
 %define FP_RIMSQ    64                  ; f32 rim e
 %define FP_POND     72                  ; POND (24 bytes)
+%define FP_DRY      96                  ; 1 = a dry hollow (salt flat)
 %define FP_LOCALS   104
 PROC flora_ponds, FP_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov rbx, rcx
@@ -505,6 +506,19 @@ PROC flora_ponds, FP_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     cmp eax, [rel g_sea_level]
     jl .next_cell                       ; (at sea level next to the sea is fine)
     mov [LOCAL(FP_W)], eax
+    ; dry hollow? (a share of the biome's ponds: dry_ponds)
+    mov dword [LOCAL(FP_DRY)], 0
+    mov rcx, [LOCAL(FP_B)]
+    cmp dword [rcx + BIOME.dry_block], 0
+    je .wet
+    mov eax, [LOCAL(FP_H2)]
+    and eax, 0xFF
+    cvtsi2ss xmm0, eax
+    mulss xmm0, [rel c_inv255]
+    comiss xmm0, [rcx + BIOME.dry_share]
+    jae .wet
+    mov dword [LOCAL(FP_DRY)], 1
+.wet:
     ; pass 2: dig and set the water level inside the ellipse
     mov r13d, -8
 .p2_z:
@@ -533,9 +547,18 @@ PROC flora_ponds, FP_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mulss xmm1, xmm2
     cvttss2si ecx, xmm1
     inc ecx
+    cmp dword [LOCAL(FP_DRY)], 0
+    je .wet_depth
+    mov ecx, 1                          ; dry: a flat pan one below the rim
+.wet_depth:
     mov edx, [LOCAL(FP_W)]
     inc edx
     sub edx, ecx                        ; pond floor (first water block)
+    inc edx                             ; (dry: no water; floor = top)
+    cmp dword [LOCAL(FP_DRY)], 0
+    jne .dry_floor
+    dec edx
+.dry_floor:
     HM_INDEX r15d, edi
     mov rcx, [rbx + FCTX.heights]
     cmp edx, [rcx + rax * 4]
@@ -545,6 +568,13 @@ PROC flora_ponds, FP_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov rcx, [rbx + FCTX.pond]
     movsx edx, word [rcx + rax * 2]
     mov r8d, [LOCAL(FP_W)]
+    cmp dword [LOCAL(FP_DRY)], 0
+    je .p2_wet
+    cmp edx, POND_NONE                  ; dry: only where no water is
+    jne .p2_next
+    mov word [rcx + rax * 2], POND_DRY
+    jmp .p2_next
+.p2_wet:
     cmp edx, POND_NONE
     je .p2_set
     cmp edx, r8d
@@ -1497,7 +1527,10 @@ PROC gen_tree, GT_LOCALS, rbx, rsi, rdi, r12
     ; ---- trunk ----
     xor r12d, r12d
 .trunk:
-    mov ecx, [LOCAL(GT_X)]
+    cvtsi2ss xmm0, r12d                 ; wind lean: east by lean x height
+    mulss xmm0, [rsi + TREE.lean]
+    cvtss2si ecx, xmm0
+    add ecx, [LOCAL(GT_X)]
     mov edx, [LOCAL(GT_Y)]
     add edx, r12d
     mov r8d, [LOCAL(GT_Z)]
@@ -1599,8 +1632,13 @@ PROC gen_tree, GT_LOCALS, rbx, rsi, rdi, r12
     call blob
     jmp .branch
 .crown:
-    ; ---- crown around the top of the trunk ----
-    mov ecx, [LOCAL(GT_X)]
+    ; ---- crown around the top of the trunk (shifted by the lean) ----
+    mov eax, [LOCAL(GT_H)]
+    dec eax
+    cvtsi2ss xmm0, eax
+    mulss xmm0, [rsi + TREE.lean]
+    cvtss2si ecx, xmm0
+    add ecx, [LOCAL(GT_X)]
     mov edx, [LOCAL(GT_Y)]
     add edx, [LOCAL(GT_H)]
     dec edx
@@ -4326,3 +4364,134 @@ c_kp_dn:        dd 0.35                 ; kapok clusters: flat below,
 c_kp_up:        dd 0.55                 ;   domed above
 ; the 4 sides (dx, dz): north, east, south, west
 side_step:      db 0, -1,  1, 0,  0, 1,  -1, 0
+
+section .text
+; -----------------------------------------------------------------------------
+; gen_stone_ring — a stone circle (design/biomes/steppe.md): TREE.branches
+; stones evenly spaced (16 directions) on a ring of TREE.radius, each
+; TREE.height tall and 1 or 2 blocks wide (TREE.log, the top block
+; TREE.leaves if set), standing on its own column's ground.
+;   in:  rbx = FCTX*, edi = rng state, ecx = x, edx = y, r8d = z, r9 = TREE*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define GS_X        0
+%define GS_Z        4
+%define GS_R        8                   ; f32 radius
+%define GS_N        12
+%define GS_I        16
+%define GS_D0       20
+%define GS_H        24
+%define GS_W        28                  ; second block: 0 none, 1 +x, 2 +z
+%define GS_SX       32
+%define GS_SZ       36
+%define GS_K        40
+%define GS_G        44
+%define GS_B        48                  ; block index in the stone
+%define GS_LOCALS   64
+PROC gen_stone_ring, GS_LOCALS, rsi, r12, r13
+    mov rsi, r9
+    mov [LOCAL(GS_X)], ecx
+    mov [LOCAL(GS_Z)], r8d
+    call rng
+    movss xmm1, [rsi + TREE.radius + 4]
+    subss xmm1, [rsi + TREE.radius]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.radius]
+    movss [LOCAL(GS_R)], xmm1
+    mov ecx, [rsi + TREE.branches]
+    mov edx, [rsi + TREE.branches + 4]
+    call rand_int
+    mov [LOCAL(GS_N)], eax
+    xor ecx, ecx
+    mov edx, 15
+    call rand_int
+    mov [LOCAL(GS_D0)], eax
+    mov dword [LOCAL(GS_I)], 0
+.stone:
+    mov eax, [LOCAL(GS_I)]
+    cmp eax, [LOCAL(GS_N)]
+    jge .done
+    ; size first (the same rng use wherever the stone lands)
+    mov ecx, [rsi + TREE.height]
+    mov edx, [rsi + TREE.height + 4]
+    call rand_int
+    mov [LOCAL(GS_H)], eax
+    xor ecx, ecx
+    mov edx, 2
+    call rand_int
+    mov [LOCAL(GS_W)], eax
+    ; position on the ring
+    mov eax, [LOCAL(GS_I)]
+    shl eax, 4
+    cdq
+    idiv dword [LOCAL(GS_N)]
+    add eax, [LOCAL(GS_D0)]
+    and eax, 15
+    lea rcx, [rel dirs16]
+    movss xmm0, [rcx + rax * 8]
+    mulss xmm0, [LOCAL(GS_R)]
+    cvtss2si edx, xmm0
+    add edx, [LOCAL(GS_X)]
+    mov [LOCAL(GS_SX)], edx
+    movss xmm0, [rcx + rax * 8 + 4]
+    mulss xmm0, [LOCAL(GS_R)]
+    cvtss2si edx, xmm0
+    add edx, [LOCAL(GS_Z)]
+    mov [LOCAL(GS_SZ)], edx
+    ; one or two columns
+    xor r12d, r12d                      ; column 0 / 1
+.col:
+    mov r13d, [LOCAL(GS_SX)]
+    mov eax, [LOCAL(GS_SZ)]
+    test r12d, r12d
+    jz .col_pos
+    cmp dword [LOCAL(GS_W)], 0
+    je .next_stone
+    cmp dword [LOCAL(GS_W)], 1
+    jne .col_z
+    inc r13d
+    jmp .col_pos
+.col_z:
+    inc eax
+.col_pos:
+    mov [LOCAL(GS_K)], eax              ; (z of this column)
+    cmp r13d, 31
+    ja .col_next                        ; (the heightmap: inside only)
+    cmp eax, 31
+    ja .col_next
+    HM_INDEX r13d, eax
+    mov rcx, [rbx + FCTX.heights]
+    mov ecx, [rcx + rax * 4]
+    dec ecx                             ; one into the ground
+    mov [LOCAL(GS_G)], ecx
+    xor eax, eax
+.up:
+    mov [LOCAL(GS_B)], eax
+    mov ecx, r13d
+    mov edx, [LOCAL(GS_G)]
+    add edx, eax
+    mov r8d, [LOCAL(GS_K)]
+    mov r9d, [rsi + TREE.log]
+    inc eax
+    cmp eax, [LOCAL(GS_H)]
+    jle .put
+    mov r10d, [rsi + TREE.leaves]       ; the top block (mossy), if set
+    test r10d, r10d
+    cmovnz r9d, r10d
+.put:
+    mov r10d, PUT_SOLID
+    call put_block
+    mov eax, [LOCAL(GS_B)]
+    inc eax
+    cmp eax, [LOCAL(GS_H)]
+    jle .up
+.col_next:
+    inc r12d
+    cmp r12d, 2
+    jb .col
+.next_stone:
+    inc dword [LOCAL(GS_I)]
+    jmp .stone
+.done:
+    RETURN
+ENDPROC

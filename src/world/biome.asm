@@ -159,6 +159,9 @@ v_acacia:       db "acacia", 0
 v_baobab:       db "baobab", 0
 v_kapok:        db "kapok", 0
 v_grove:        db "grove", 0
+v_stone_ring:   db "stone_ring", 0
+k_t_lean:       db "lean", 0
+k_b_dry:        db "dry_ponds", 0
 k_t_vines:      db "vines", 0
 k_t_hang:       db "hanging_vines", 0
 k_t_fungus:     db "fungus", 0
@@ -249,6 +252,7 @@ biome_settings:
     dq k_b_strata_min, T_INT,     BIOME.strata_min
     dq k_b_wash,      T_BLOCK,    BIOME.wash
     dq k_b_beach,     T_BLOCK,    BIOME.beach
+    dq k_b_dry,       T_PATCH,    BIOME.dry_block
     dq 0
 tree_settings:
     dq k_t_kind,      T_KIND,     TREE.kind
@@ -266,6 +270,7 @@ tree_settings:
     dq k_t_fungus,    T_PATCH,    TREE.fungus
     dq k_t_pods,      T_PATCH,    TREE.pod
     dq k_t_vine_len,  T_RANGE_I,  TREE.vine_len
+    dq k_t_lean,      T_FLOAT,    TREE.lean
     dq 0
 climate_settings:
     dq k_grass_ref,   T_COLOR,    g_grass_ref
@@ -274,8 +279,8 @@ climate_settings:
     dq 0
 kind_names:     dq v_round, v_branching, v_bush, v_giant, v_fallen, v_stump
                 dq v_cactus, v_rock, v_arch, v_fossil, v_palm, v_conifer
-                dq v_acacia, v_baobab, v_kapok, v_grove
-%define KIND_COUNT 16
+                dq v_acacia, v_baobab, v_kapok, v_grove, v_stone_ring
+%define KIND_COUNT 17
 
 align 4
 c_one:          dd 1.0
@@ -810,6 +815,7 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     mov dword [r12 + TREE.pod], 0
     mov dword [r12 + TREE.vine_len], 2
     mov dword [r12 + TREE.vine_len + 4], 8
+    mov dword [r12 + TREE.lean], 0
     inc dword [rel g_tree_count]
     mov dword [rel g_kind], K_TREE
     RETURN
