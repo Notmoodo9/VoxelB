@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 14): 🎨 DESIGN — Sky islands: DONE** (Windows CI: see below)
+**Milestone 10 (part 14): 🎨 DESIGN — Sky islands: DONE** (Windows CI green: run #46)
 
 Next: **Milestone 10, part 15: the next biome**. Candidates are mushroom
 fields, crystal caves, ice spikes, meadow, river (`design/BACKLOG.md`). It
