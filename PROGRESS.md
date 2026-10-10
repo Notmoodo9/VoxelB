@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 10): 🎨 DESIGN — Steppe: DONE** (Windows CI: see below)
+**Milestone 10 (part 10): 🎨 DESIGN — Steppe: DONE** (Windows CI green: run #38)
 
 Next: **Milestone 10, part 11: the next biome**. Candidates are swamp,
 dark forest, meadow, river, ice spikes (`design/BACKLOG.md`). About 9.5%
