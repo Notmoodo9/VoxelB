@@ -6,7 +6,7 @@
 %define BIOME_INC
 
 %define MAX_BIOMES      32              ; including 0 = "none" (no biome yet)
-%define MAX_TREES       32
+%define MAX_TREES       64
 %define BIOME_PLANTS    8
 %define BIOME_FLOWERS   16
 %define BIOME_TREES     8
@@ -92,6 +92,9 @@ struc BIOME
     .steep          resd 1              ; block on steep slopes (0 = stone)
     .pond_slope     resd 1              ; int: ground height range a pond may cut into
     .plateau_h      resd 1              ; float: plateau height (blended)
+    .patch_low      resd 1              ; top patch where the detail noise is below a level
+    .patch_low_lvl  resd 1
+    .pond_top       resd 1              ; block for a pond's top water layer (0 = water; ice)
 endstruc
 
 struc TREE

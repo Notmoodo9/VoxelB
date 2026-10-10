@@ -748,3 +748,14 @@ block for their upper half (mossy cobblestone boulders).
 * MAX_CANDS went from 320 to 640: a dense jungle lists ~400 trees and
   bushes per chunk.
 * Jungle leaves are now foliage-tinted (emerald 1FB52A in the jungle).
+
+## D65 — Snowy tundra: low patches, frozen ponds, more trees (M10 part 8)
+* `top_patch_low` uses the same detail noise as `top_patch`, from its
+  other end, so two patch kinds (gravel and frozen dirt) never overlap and
+  share no new noise field.
+* `pond_top`: the top layer of pond water (y = the pond level) becomes the
+  biome's block. It is checked per column from INFO_BIOME where the
+  terrain fills water. Frozen ponds keep water under the ice.
+* Snow caps on boulders reuse the rock's upper-half block. Snow drifts
+  are low, wide snow rocks.
+* MAX_TREES went from 32 to 64 (the tree registry was full).

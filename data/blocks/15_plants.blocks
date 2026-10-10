@@ -64,3 +64,8 @@ shape    = plant
 textures = berry_bush
 render   = cutout
 sway     = 1
+
+# snowy tundra (design/biomes/snowy_tundra.md)
+[family tundra_shrubs]
+templates = plant
+members   = dwarf_shrub, lingonberry_shrub

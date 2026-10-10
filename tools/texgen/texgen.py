@@ -1339,6 +1339,37 @@ def make_jungle(out):
     out["hibiscus"] = img
 
 
+def make_tundra(out):
+    # dwarf shrub: low, scraggly brown twigs fanning out of the ground
+    def twigs(name, berries):
+        r = rng(name)
+        img = np.zeros((N, N, 4))
+        bp = ramp("7a5234", 4, spread=0.22)
+
+        def branch(x, y, dx, n, depth):
+            for i in range(n):
+                if 0 <= x < N and 0 <= y < N:
+                    img[y, x, :3] = bp[1 + (i + depth) % 3]
+                    img[y, x, 3] = 1.0
+                y -= 1
+                if i % 2 == 0:
+                    x += dx
+                if depth < 2 and i == n // 2:
+                    branch(x, y, -dx if r.random() < 0.5 else dx, max(2, n - 3), depth + 1)
+        for (x0, dx, n) in ((4, -1, 6), (6, -1, 8), (8, 0, 9), (9, 1, 8), (11, 1, 6)):
+            branch(x0, N - 1, dx, n, 0)
+        if berries:
+            for (x, y) in ((3, 10), (7, 9), (10, 8), (12, 11), (6, 12), (9, 12), (5, 8)):
+                img[y, x, :3] = hexrgb("e01c2c"); img[y, x, 3] = 1.0
+                if x + 1 < N and img[y, x + 1, 3] == 0:
+                    img[y, x + 1, :3] = hexrgb("9a0c1a"); img[y, x + 1, 3] = 1.0
+            for (x, y) in ((4, 11), (8, 10), (11, 9), (10, 12)):
+                img[y, x, :3] = hexrgb("3a6a2a"); img[y, x, 3] = 1.0
+        return img
+    out["dwarf_shrub"] = twigs("dwarf_shrub", False)
+    out["lingonberry_shrub"] = twigs("lingonberry_shrub", True)
+
+
 def ladder_design(name, base):
     pal = ramp(base, 5, spread=0.15)
     img = np.zeros((N, N, 3)) + pal[1]
@@ -1849,6 +1880,7 @@ def build_all():
     make_taiga(out)
     make_savanna(out)
     make_jungle(out)
+    make_tundra(out)
     return out
 
 

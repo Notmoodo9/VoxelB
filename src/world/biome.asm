@@ -137,6 +137,8 @@ k_b_ring_ch:    db "ring_chance", 0
 k_b_ring_r:     db "ring_radius", 0
 k_b_ring:       db "ring_plants", 0
 k_b_patch:      db "top_patch", 0
+k_b_patch_low:  db "top_patch_low", 0
+k_b_pond_top:   db "pond_top", 0
 k_b_mcell:      db "meadow_cell", 0
 k_b_mflowers:   db "meadow_flowers", 0
 k_b_dune:       db "dune_height", 0
@@ -229,6 +231,8 @@ biome_settings:
     dq k_b_steep,     T_BLOCK,    BIOME.steep
     dq k_b_pslope,    T_INT,      BIOME.pond_slope
     dq k_b_plateau,   T_FLOAT,    BIOME.plateau_h
+    dq k_b_patch_low, T_PATCH,    BIOME.patch_low
+    dq k_b_pond_top,  T_BLOCK,    BIOME.pond_top
     dq 0
 tree_settings:
     dq k_t_kind,      T_KIND,     TREE.kind

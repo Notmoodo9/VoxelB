@@ -300,13 +300,14 @@ Temperature and humidity are 0..1.
 | `meadow_chance`, `meadow_radius`, `meadow_density`, `meadow_mixed` | chance per 512×512 cell of a flower meadow; radius range; flower share inside; share of mixed (rainbow) meadows, the others are one colour |
 | `tree`, `tree_density` | `tree name, weight` (repeat); trees per block² |
 | `bush`, `bush_density` | the same for bushes |
-| `pond_chance`, `pond_radius`, `pond_depth`, `pond_floor` | chance per 64×64 cell; radius range (max 6); deepest water; floor block; `pond_slope`: how uneven the ground may be (default 3) |
+| `pond_chance`, `pond_radius`, `pond_depth`, `pond_floor` | chance per 64×64 cell; radius range (max 6); deepest water; floor block; `pond_slope`: how uneven the ground may be (default 3); `pond_top`: block for the top water layer (ice: frozen ponds) |
 | `weirdness`, `priority` | rare pockets: a weirdness range; where several boxes match, the highest priority wins (old-growth inside forest) |
 | `litter_block`, `litter_radius`, `litter_chance` | ground block near tree trunks (leaf litter), radius, share |
 | `shade_plant` | `block, chance` on litter (ferns, mushrooms) |
 | `clearing_chance`, `clearing_radius`, `clearing_flower_chance` | treeless clearings: chance per 160×160 cell, radius range, flower share |
 | `ring_chance`, `ring_radius`, `ring_plants` | mushroom rings: chance per 128×128 cell, radius range, blocks |
 | `top_patch` | `block, level`: replaces the top block where the detail noise is above `level` (moss) |
+| `top_patch_low` | `block, level`: replaces the top block where the detail noise is below `level` (a second kind of patch, e.g. frozen dirt beside gravel) |
 | `dune_height` | dunes: the `dunes` noise × this is added to the height (blended across borders) |
 | `plateau_height` | plateaus: where the `plateaus` noise is high, this many blocks are added to the land (a steep ramp to a flat top; blended across borders) |
 | `steep_block` | top block on steep slopes (default stone) |

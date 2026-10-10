@@ -1790,6 +1790,16 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     jbe .no_patch
     mov eax, [r10 + BIOME.patch]
 .no_patch:
+    ; low patches (frozen dirt): where the detail noise is below the level
+    cmp dword [r10 + BIOME.patch_low], 0
+    je .no_patch_low
+    movsx edx, byte [rcx + INFO_SNOW]
+    cvtsi2ss xmm0, edx
+    divss xmm0, [rel g_snow_var]
+    comiss xmm0, [r10 + BIOME.patch_low_lvl]
+    jae .no_patch_low
+    mov eax, [r10 + BIOME.patch_low]
+.no_patch_low:
     mov edx, [r10 + BIOME.filler]
     test edx, edx
     jnz .sf_store
@@ -1984,8 +1994,19 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     jle .put
     movsx ecx, word [r15 + INFO_POND]   ; pond water
     cmp edi, ecx
-    jle .put
+    jl .put
+    je .pond_top
     xor eax, eax
+    jmp .put
+.pond_top:
+    ; the top layer of a pond: the biome's pond_top (ice), if it sets one
+    movzx ecx, byte [r15 + INFO_BIOME]
+    imul ecx, ecx, BIOME_size
+    lea rax, [rel g_biomes]
+    mov ecx, [rax + rcx + BIOME.pond_top]
+    mov eax, [rel g_b_water]
+    test ecx, ecx
+    cmovnz eax, ecx
     jmp .put
 .solid:
     cmp edi, r14d

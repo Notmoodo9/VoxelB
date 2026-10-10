@@ -1,11 +1,64 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 7): 🎨 DESIGN — Jungle: DONE** (Windows CI green: run #32)
+**Milestone 10 (part 8): 🎨 DESIGN — Snowy tundra: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 8: the next biome**. Candidates are badlands,
-swamp, dark forest, meadow, snowy tundra or river (`design/BACKLOG.md`).
-It starts with its design interview.
+Next: **Milestone 10, part 9: the next biome**. Candidates are badlands,
+swamp, dark forest, meadow, river, ice spikes (`design/BACKLOG.md`). It
+starts with its design interview.
+
+---
+
+## Milestone 10, part 8 — done (2026-10-10)
+
+### Design interview
+Three rounds plus approval: `design/biomes/snowy_tundra.md`.
+* Large, bright, wind-swept snowy plains, fully snow-covered, with small
+  bare patches of gravel and frozen dirt.
+* Twiggy dwarf shrubs (some with red berries) and very rare stunted
+  snowy spruces.
+* Snow-capped boulders, snow drifts and small frozen ponds.
+
+### What was built
+* **Snowy tundra** (`data/biomes/52_snowy_tundra.biome`), on ~8.6% of
+  land near the origin, in the cold, dry climate. The undesigned "none"
+  land is down to ~13%.
+* **Biome settings** (D65):
+  * `top_patch_low`: a second patch kind where the detail noise is low;
+  * `pond_top`: frozen ponds with an ice top over water.
+* **New blocks**: `dwarf_shrub`, `lingonberry_shrub` (texgen).
+* **Trees** (all data): `stunted_spruce`, `tundra_boulder`,
+  `big_tundra_boulder` (snow caps) and `snow_drift`. MAX_TREES went from
+  32 to 64.
+
+### How to see it (seed 20261009)
+* The tundra with frozen ponds, gravel and frozen-dirt patches, boulders
+  and spruces: `voxelb.exe --pos 53 175 -285 --look 0 -50`.
+* Out over the tundra towards a mountain and the coast:
+  `voxelb.exe --pos 128 135 -128 --look 30 -12`.
+
+### Bugs found and fixed while testing
+* The tree registry was full (32): the new trees were dropped with a
+  warning. It now holds 64.
+* The first climate box gave 7.1% of land. Widened to 8.6%.
+* The shrubs were too dense for a "full snow" look. Halved.
+
+### Verified
+* Debug and release headless tests pass. The debug build ran in the
+  tundra with no asserts.
+* Screenshots:
+  * the tundra from above and at an angle;
+  * frozen ponds, both patch kinds, boulders, spruces and shrubs.
+
+### Known issues
+* Snow drifts are subtle (white on white) until lighting and shadows come
+  in M13–M14.
+* The edge between snow and grass biomes is a sharp line (as between
+  taiga and snowy taiga).
+
+### Performance
+Unchanged: generation ~16 ms per column, meshing ~14 ms with the jungle
+and taiga in range. 4 FPS on software GL over the tundra (~300k quads).
 
 ---
 

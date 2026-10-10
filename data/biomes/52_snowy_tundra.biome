@@ -1,0 +1,36 @@
+# Snowy tundra (design/biomes/snowy_tundra.md): large, bright, wind-swept
+# snowy plains in the cold, dry climate: full snow cover with small bare
+# patches of gravel and frozen dirt, dwarf shrubs with red berries, very
+# rare stunted spruces, snow-capped boulders, snow drifts and small
+# frozen ponds.
+
+[biome snowy_tundra]
+temperature = 0.00, 0.38
+humidity    = 0.00, 0.42
+height      = 98, 150
+hill_scale  = 0.3
+top_block   = snow
+
+# bare patches where the detail noise is high (gravel) or low (frozen dirt)
+top_patch     = gravel, 0.5
+top_patch_low = coarse_dirt, -0.5
+
+plant = dwarf_shrub, 0.02
+plant = lingonberry_shrub, 0.008
+
+# stunted spruces ~1 per 70 x 70
+tree         = stunted_spruce, 1
+tree_density = 0.0002
+
+# boulders ~1 per 50 x 50 (rare big ones), snow drifts ~1 per 35 x 35
+bush         = tundra_boulder, 8
+bush         = big_tundra_boulder, 1
+bush         = snow_drift, 16
+bush_density = 0.0021
+
+# small frozen ponds (~1 per 100 x 100)
+pond_chance = 0.4
+pond_radius = 1.5, 3.5
+pond_depth  = 2
+pond_floor  = gravel
+pond_top    = ice
