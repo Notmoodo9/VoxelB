@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 9): 🎨 DESIGN — Badlands: DONE** (Windows CI: see below)
+**Milestone 10 (part 9): 🎨 DESIGN — Badlands: DONE** (Windows CI green: run #36)
 
 Next: **Milestone 10, part 10: the next biome**. Candidates are swamp,
 dark forest, meadow, river, ice spikes, or a biome for the cool, dry gap
