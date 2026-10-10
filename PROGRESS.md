@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 17): 🎨 DESIGN — Meadow: DONE** (Windows CI: see below)
+**Milestone 10 (part 17): 🎨 DESIGN — Meadow: DONE** (Windows CI green: run #52)
 
 Next: **Milestone 10, part 18: the next biome**. Candidates are crystal
 caves (underground), glaciers, frozen ocean, river (`design/BACKLOG.md`).
