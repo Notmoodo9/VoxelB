@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 15): 🎨 DESIGN — Mushroom fields: DONE** (Windows CI: see below)
+**Milestone 10 (part 15): 🎨 DESIGN — Mushroom fields: DONE** (Windows CI green: run #48)
 
 Next: **Milestone 10, part 16: the next biome**. Candidates are crystal
 caves (the first underground biome), ice spikes, meadow, river, glaciers,
