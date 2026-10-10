@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 12): 🎨 DESIGN — Dark forest: DONE** (Windows CI: see below)
+**Milestone 10 (part 12): 🎨 DESIGN — Dark forest: DONE** (Windows CI green: run #42)
 
 Next: **Milestone 10, part 13: the next biome**. Candidates are meadow,
 river, ice spikes, or the remaining cold biomes (`design/BACKLOG.md`). It
