@@ -23,7 +23,7 @@ endstruc
 %define HM              (32 + 2 * HB)
 
 ; per-column info of the 32 x 32 interior (terrain_gen_column)
-%define INFO_SIZE       20
+%define INFO_SIZE       24
 %define INFO_A          0               ; f32 overhang amplitude
 %define INFO_TOP        4               ; u16 top block
 %define INFO_FILL       6               ; u16 filler block
@@ -37,6 +37,8 @@ endstruc
 %define INFO_SFLAG      17              ; u8: SF_STRATA, SF_WASH
 %define SF_STRATA       1               ; the column's rock is banded
 %define SF_WASH         2               ; a dry wash runs here
+%define INFO_ISLE_TOP   20              ; i16 floating island: top block y (POND_NONE)
+%define INFO_ISLE_BOT   22              ; i16 its lowest block
 %define POND_NONE       -32768
 %define POND_DRY        -32767          ; a dry hollow (salt flat): no water
 

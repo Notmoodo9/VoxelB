@@ -1,11 +1,59 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 13): 🎨 DESIGN — Glowing forest: DONE** (Windows CI green: run #44)
+**Milestone 10 (part 14): 🎨 DESIGN — Sky islands: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 14: the next biome**. Candidates are mushroom
-fields, crystal caves, floating islands, ice spikes, meadow, river
-(`design/BACKLOG.md`). It starts with its design interview.
+Next: **Milestone 10, part 15: the next biome**. Candidates are mushroom
+fields, crystal caves, ice spikes, meadow, river (`design/BACKLOG.md`). It
+starts with its design interview.
+
+---
+
+## Milestone 10, part 14 — done (2026-10-11)
+
+### Design interview
+Three rounds: `design/biomes/sky_islands.md`.
+* A rare lush flower-meadow region with an archipelago of floating
+  islands (Y 200–320, 10–50 wide).
+* Meadow tops with trees; inverted-cone stone undersides with exposed
+  ores and crystals; hanging roots.
+* Waterfalls later.
+
+### What was built
+* **Sky islands** (`data/biomes/21_sky_islands.biome`), ~2.8% of land
+  near the origin (plains climate, rarity 0.72–1.00).
+* **Floating islands** (D71), a new terrain feature from data:
+  * `island_chance`, `island_radius`, `island_height`;
+  * `island_ore` (ores and crystals in the stone);
+  * `island_roots` (a new `hanging_roots` block).
+* Islands get trees, plants and flowers on top from their biome.
+* **Survey**: logs the nearest floating island.
+
+### How to see it (seed 20261009)
+* The nearest pocket, by a mountain: `voxelb.exe --pos -640 250 -390 --look 0 -4`.
+* Looking up from its meadow: `voxelb.exe --pos -640 170 -480 --look 0 20`.
+* That pocket is narrow, so its islands are few and small. The full
+  archipelago (screenshotted with the biome over all plains for the test)
+  shows in the wider regions further out.
+
+### Verified
+* Debug and release headless tests pass. The debug build ran at the sky
+  islands with no asserts.
+* Screenshots:
+  * an island seen from below (stone underside, blue crystal, roots);
+  * the archipelago at island height, with layers of islands, trees and
+    roots (test placement);
+  * the real pocket from above and from the side.
+
+### Known issues
+* Islands thin out towards a region's edges (their chance follows the
+  vegetation density), so narrow pockets have few islands.
+* No waterfalls yet (M15).
+
+### Performance
+* Island columns fill a few more sections block by block. Generation
+  ~13 ms per column, meshing ~10 ms, unchanged within noise.
+* 3 FPS on software GL at the pocket.
 
 ---
 

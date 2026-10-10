@@ -30,10 +30,10 @@
 %include "biome.inc"
 %include "flora.inc"
 
-global flora_ponds, flora_prepare, flora_section, flora_survey
+global flora_ponds, flora_prepare, flora_section, flora_survey, flora_islands
 
 extern g_world_seed, g_sea_level, g_beach_high, g_b_top, g_b_water
-extern terrain_sample, log_xz
+extern terrain_sample, log_xz, g_snow_var
 
 %define POND_CELL       64
 %define POND_SPAN       (POND_CELL * 3 / 4)   ; centre range inside a cell
@@ -943,6 +943,8 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov eax, [LOCAL(FR_CZ)]
     cmp eax, [LOCAL(FR_CZ1)]
     jle .cz
+    ; trees on the floating islands (flora_islands listed them)
+    call isle_trees
     RETURN
 ENDPROC
 
@@ -2399,6 +2401,11 @@ PROC flora_section, FS_LOCALS, rbx, rsi, rdi, r12, r13
     inc r12d
     cmp r12d, 32
     jb .pz
+    ; ---- plants and root strands of the floating islands ----
+    cmp dword [rbx + FCTX.nisle], 0
+    je .no_isles
+    call isle_flora
+.no_isles:
     ; ---- trees reaching this section ----
     xor r12d, r12d
 .tree:
@@ -2725,6 +2732,72 @@ PROC flora_survey, SVF_LOCALS, rbx, rsi, rdi, r12, r13
     mov r8d, [LOCAL(SVF_QZ)]
     call log_xz
 .no_plateau:
+    ; ---- nearest floating island: cells within +-40 (~2 km) ----
+    mov dword [LOCAL(SVF_QD)], 0x7FFFFFFF
+    mov r12d, -40
+.iz:
+    mov r13d, -40
+.ix:
+    mov ecx, r13d
+    mov edx, r12d
+    mov r8d, 0x4953                     ; "IS" (as isle_cell)
+    xor r9d, r9d
+    call hash4
+    mov [LOCAL(SVF_HASH)], eax
+    and eax, 0xFF
+    shl eax, 5
+    shr eax, 8
+    add eax, 8
+    imul ecx, r13d, ISLE_CELL
+    add eax, ecx
+    mov [LOCAL(SVF_X)], eax
+    mov eax, [LOCAL(SVF_HASH)]
+    shr eax, 8
+    and eax, 0xFF
+    shl eax, 5
+    shr eax, 8
+    add eax, 8
+    imul ecx, r12d, ISLE_CELL
+    add eax, ecx
+    mov [LOCAL(SVF_Z)], eax
+    mov eax, [LOCAL(SVF_X)]
+    imul eax, eax
+    mov ecx, [LOCAL(SVF_Z)]
+    imul ecx, ecx
+    add eax, ecx
+    cmp eax, [LOCAL(SVF_QD)]
+    jae .inext
+    mov [LOCAL(SVF_GZ)], eax
+    call sample_biome
+    imul rax, rax, BIOME_size
+    lea rcx, [rel g_biomes]
+    lea rbx, [rax + rcx]
+    xorps xmm1, xmm1
+    comiss xmm1, [rbx + BIOME.isle_ch]
+    jae .inext
+    FRAC16 word [LOCAL(SVF_HASH) + 2]
+    comiss xmm0, [rbx + BIOME.isle_ch]
+    jae .inext
+    mov eax, [LOCAL(SVF_GZ)]
+    mov [LOCAL(SVF_QD)], eax
+    mov eax, [LOCAL(SVF_X)]
+    mov [LOCAL(SVF_QX)], eax
+    mov eax, [LOCAL(SVF_Z)]
+    mov [LOCAL(SVF_QZ)], eax
+.inext:
+    inc r13d
+    cmp r13d, 40
+    jle .ix
+    inc r12d
+    cmp r12d, 40
+    jle .iz
+    cmp dword [LOCAL(SVF_QD)], 0x7FFFFFFF
+    je .no_isle
+    lea rcx, [rel s_sv_isle]
+    mov edx, [LOCAL(SVF_QX)]
+    mov r8d, [LOCAL(SVF_QZ)]
+    call log_xz
+.no_isle:
     RETURN
 
 ; sample_biome — biome (no blending) and height at [SVF_X], [SVF_Z]
@@ -2752,6 +2825,7 @@ s_sv_near:      db "survey:   nearest place well inside at", 0
 s_sv_meadow:    db "survey: nearest flower meadow centre at", 0
 s_sv_pond:      db "survey: nearest pond centre at", 0
 s_sv_plateau:   db "survey: nearest plateau top at", 0
+s_sv_isle:      db "survey: nearest floating island at", 0
 c_sv_plat:      dd 0.95
 
 section .text
@@ -5095,3 +5169,530 @@ c_gn_bspan:     dd 0.30                 ;   85% of the height
 c_gn_rise:      dd 0.4
 c_gn_dn:        dd 0.55
 c_gn_up:        dd 0.65
+
+section .text
+; -----------------------------------------------------------------------------
+; isle_cell — the floating island candidate of a 48 x 48 cell (design/biomes/
+; sky_islands.md): exists where the blended biome at its centre sets
+; island_chance (x density). Deterministic from the cell alone.
+;   in:  rbx = FCTX*, ecx = cell x, edx = cell z, r9 = ISLE* (filled)
+;   out: eax = 1 if the island exists
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC isle_cell, 16, rsi, rdi, r12
+    mov r12, r9
+    mov esi, ecx
+    mov edi, edx
+    mov [r12 + ISLE.cellx], esi
+    mov [r12 + ISLE.cellz], edi
+    mov r8d, 0x4953                     ; "IS"
+    xor r9d, r9d
+    call hash4
+    mov [r12 + ISLE.h], eax
+    ; centre: 8 .. 40 inside the cell
+    mov ecx, eax
+    and ecx, 0xFF
+    shl ecx, 5
+    shr ecx, 8
+    add ecx, 8
+    imul edx, esi, ISLE_CELL
+    add ecx, edx
+    mov edx, [rbx + FCTX.cx]
+    shl edx, 5
+    sub ecx, edx
+    mov [r12 + ISLE.x], ecx
+    mov ecx, [r12 + ISLE.h]
+    shr ecx, 8
+    and ecx, 0xFF
+    shl ecx, 5
+    shr ecx, 8
+    add ecx, 8
+    imul edx, edi, ISLE_CELL
+    add ecx, edx
+    mov edx, [rbx + FCTX.cz]
+    shl edx, 5
+    sub ecx, edx
+    mov [r12 + ISLE.z], ecx
+    ; the blend map covers -32 .. 63 around the chunk
+    mov eax, [r12 + ISLE.x]
+    add eax, 32
+    cmp eax, 95
+    ja .no
+    mov eax, [r12 + ISLE.z]
+    add eax, 32
+    cmp eax, 95
+    ja .no
+    mov rcx, [rbx + FCTX.bmap]
+    mov edx, [r12 + ISLE.x]
+    mov r8d, [r12 + ISLE.z]
+    call bmap_col
+    imul rax, rax, BIOME_size
+    lea rcx, [rel g_biomes]
+    add rax, rcx
+    mov [r12 + ISLE.b], rax
+    movss xmm1, [rax + BIOME.isle_ch]
+    mulss xmm1, xmm0
+    FRAC16 word [r12 + ISLE.h + 2]
+    comiss xmm0, xmm1
+    jae .no
+    ; radius (small ones common: u^2) and height
+    mov ecx, esi
+    mov edx, edi
+    mov r8d, 0x4948                     ; "IH"
+    xor r9d, r9d
+    call hash4
+    mov [LOCAL(0)], eax
+    FRAC16 word [LOCAL(0)]
+    mulss xmm0, xmm0
+    mov rax, [r12 + ISLE.b]
+    movss xmm1, [rax + BIOME.isle_r + 4]
+    subss xmm1, [rax + BIOME.isle_r]
+    mulss xmm1, xmm0
+    addss xmm1, [rax + BIOME.isle_r]
+    minss xmm1, [rel c_isle_rmax]
+    maxss xmm1, [rel c_one]
+    movss [r12 + ISLE.r], xmm1
+    mov eax, [LOCAL(0)]
+    shr eax, 16
+    mov rcx, [r12 + ISLE.b]
+    mov r8d, [rcx + BIOME.isle_y + 4]
+    sub r8d, [rcx + BIOME.isle_y]
+    inc r8d
+    xor edx, edx
+    div r8d
+    add edx, [rcx + BIOME.isle_y]
+    mov [r12 + ISLE.yc], edx
+    mov eax, 1
+    RETURN
+.no:
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; isle_shape — the island's extent in one column: a low dome on top and an
+; inverted cone below (deepest at the centre), the rim wobbling with the
+; column's detail noise.
+;   in:  rbx = FCTX*, rsi = ISLE*, ecx = x, edx = z (chunk-local),
+;        xmm2 = detail (-1 .. 1, 0 for none)
+;   out: eax = 1 if inside, r8d = top block y, r9d = lowest block y
+;   clobbers: rax, rcx, rdx, r8-r11, xmm0-xmm4
+; -----------------------------------------------------------------------------
+isle_shape:
+    mov r10d, ecx
+    mov r11d, edx
+    sub ecx, [rsi + ISLE.x]
+    sub edx, [rsi + ISLE.z]
+    imul ecx, ecx
+    imul edx, edx
+    add ecx, edx
+    cvtsi2ss xmm0, ecx
+    sqrtss xmm0, xmm0                   ; d
+    mulss xmm2, [rel c_isle_wob]
+    addss xmm2, [rel c_one]
+    mulss xmm2, [rsi + ISLE.r]          ; wobbling radius
+    divss xmm0, xmm2                    ; t
+    comiss xmm0, [rel c_one]
+    jae .out
+    ; top = yc + 2.5 (1 - t^2)
+    movss xmm1, xmm0
+    mulss xmm1, xmm0
+    movss xmm3, [rel c_one]
+    subss xmm3, xmm1
+    mulss xmm3, [rel c_isle_dome]
+    cvttss2si r8d, xmm3
+    add r8d, [rsi + ISLE.yc]
+    ; bottom = yc - 1 - 0.9 r (1 - t)^1.5, ragged by one block
+    movss xmm3, [rel c_one]
+    subss xmm3, xmm0
+    sqrtss xmm4, xmm3
+    mulss xmm3, xmm4
+    mulss xmm3, [rsi + ISLE.r]
+    mulss xmm3, [rel c_isle_depth]
+    cvttss2si r9d, xmm3
+    neg r9d
+    add r9d, [rsi + ISLE.yc]
+    dec r9d
+    mov eax, r10d
+    imul eax, eax, 0x9E3779B1
+    imul edx, r11d, 0x85EBCA6B
+    xor eax, edx
+    shr eax, 31
+    sub r9d, eax
+    mov eax, 1
+    ret
+.out:
+    xor eax, eax
+    ret
+
+; -----------------------------------------------------------------------------
+; flora_islands — list the floating islands near the chunk (centres within
+; ISLE_MAX_R + TREE_REACH of it, for their trees too) and record each
+; interior column's island extent (INFO_ISLE_TOP / BOT; the highest island
+; wins where two overlap).
+;   in:  rcx = FCTX*      out: eax = highest island top (or -100000)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define FI_C0X      0
+%define FI_C1X      4
+%define FI_C0Z      8
+%define FI_C1Z      12
+%define FI_CX       16
+%define FI_CZ       20
+%define FI_MAX      24
+%define FI_I        28
+%define FI_LOCALS   32
+PROC flora_islands, FI_LOCALS, rbx, rsi, rdi, r12, r13
+    mov rbx, rcx
+    mov dword [rbx + FCTX.nisle], 0
+    mov dword [LOCAL(FI_MAX)], -100000
+    ; no island anywhere near unless some biome has them
+    mov rax, [rbx + FCTX.info]
+    xor ecx, ecx
+.clear:
+    mov word [rax + INFO_ISLE_TOP], POND_NONE
+    mov word [rax + INFO_ISLE_BOT], POND_NONE
+    add rax, INFO_SIZE
+    inc ecx
+    cmp ecx, 1024
+    jb .clear
+    ; cells whose centres (8..40) can reach the chunk plus tree reach
+    mov eax, [rbx + FCTX.cx]
+    shl eax, 5
+    sub eax, ISLE_MAX_R + TREE_REACH + 40
+    mov ecx, ISLE_CELL
+    call floordiv
+    mov [LOCAL(FI_C0X)], eax
+    mov eax, [rbx + FCTX.cx]
+    shl eax, 5
+    add eax, 31 + ISLE_MAX_R + TREE_REACH - 8
+    mov ecx, ISLE_CELL
+    call floordiv
+    mov [LOCAL(FI_C1X)], eax
+    mov eax, [rbx + FCTX.cz]
+    shl eax, 5
+    sub eax, ISLE_MAX_R + TREE_REACH + 40
+    mov ecx, ISLE_CELL
+    call floordiv
+    mov [LOCAL(FI_C0Z)], eax
+    mov [LOCAL(FI_CZ)], eax
+    mov eax, [rbx + FCTX.cz]
+    shl eax, 5
+    add eax, 31 + ISLE_MAX_R + TREE_REACH - 8
+    mov ecx, ISLE_CELL
+    call floordiv
+    mov [LOCAL(FI_C1Z)], eax
+.cz:
+    mov eax, [LOCAL(FI_C0X)]
+    mov [LOCAL(FI_CX)], eax
+.cx:
+    mov eax, [rbx + FCTX.nisle]
+    cmp eax, MAX_ISLES
+    jae .list_done
+    imul r9, rax, ISLE_size
+    lea r9, [rbx + FCTX.isles + r9]
+    mov ecx, [LOCAL(FI_CX)]
+    mov edx, [LOCAL(FI_CZ)]
+    call isle_cell
+    test eax, eax
+    jz .cnext
+    inc dword [rbx + FCTX.nisle]
+.cnext:
+    inc dword [LOCAL(FI_CX)]
+    mov eax, [LOCAL(FI_CX)]
+    cmp eax, [LOCAL(FI_C1X)]
+    jle .cx
+    inc dword [LOCAL(FI_CZ)]
+    mov eax, [LOCAL(FI_CZ)]
+    cmp eax, [LOCAL(FI_C1Z)]
+    jle .cz
+.list_done:
+    cmp dword [rbx + FCTX.nisle], 0
+    je .done
+    ; ---- each interior column ----
+    xor r12d, r12d                      ; z
+.z:
+    xor r13d, r13d                      ; x
+.x:
+    mov eax, r12d
+    shl eax, 5
+    add eax, r13d
+    imul rdi, rax, INFO_SIZE
+    add rdi, [rbx + FCTX.info]
+    mov dword [LOCAL(FI_I)], 0
+.isle:
+    mov eax, [LOCAL(FI_I)]
+    cmp eax, [rbx + FCTX.nisle]
+    jae .xnext
+    imul rsi, rax, ISLE_size
+    lea rsi, [rbx + FCTX.isles + rsi]
+    movsx eax, byte [rdi + INFO_SNOW]   ; detail (as snow line jitter)
+    cvtsi2ss xmm2, eax
+    divss xmm2, [rel g_snow_var]
+    mov ecx, r13d
+    mov edx, r12d
+    call isle_shape
+    test eax, eax
+    jz .inext
+    movsx eax, word [rdi + INFO_ISLE_TOP]
+    cmp r8d, eax
+    jle .inext                          ; (a higher island already)
+    mov [rdi + INFO_ISLE_TOP], r8w
+    mov [rdi + INFO_ISLE_BOT], r9w
+    cmp r8d, [LOCAL(FI_MAX)]
+    jle .inext
+    mov [LOCAL(FI_MAX)], r8d
+.inext:
+    inc dword [LOCAL(FI_I)]
+    jmp .isle
+.xnext:
+    inc r13d
+    cmp r13d, 32
+    jb .x
+    inc r12d
+    cmp r12d, 32
+    jb .z
+.done:
+    mov eax, [LOCAL(FI_MAX)]
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; isle_trees — tree candidates on the floating islands near the chunk: each
+; island gets 0 .. r/7 trees from its biome's tree list, within half its
+; radius of the centre (standing on the dome top there).
+;   in:  rbx = FCTX*      clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define IT_I        0
+%define IT_K        4
+%define IT_N        8
+%define IT_H        12
+%define IT_X        16
+%define IT_Z        20
+%define IT_LOCALS   32
+PROC isle_trees, IT_LOCALS, rsi, rdi, r12
+    mov dword [LOCAL(IT_I)], 0
+.isle:
+    mov eax, [LOCAL(IT_I)]
+    cmp eax, [rbx + FCTX.nisle]
+    jae .done
+    imul rsi, rax, ISLE_size
+    lea rsi, [rbx + FCTX.isles + rsi]
+    movss xmm0, [rsi + ISLE.r]
+    cvttss2si eax, xmm0
+    xor edx, edx
+    mov ecx, 7
+    div ecx
+    inc eax                             ; 0 .. r / 7 trees
+    mov ecx, eax
+    mov eax, [rsi + ISLE.h]
+    shr eax, 24
+    xor edx, edx
+    div ecx
+    mov [LOCAL(IT_N)], edx
+    mov dword [LOCAL(IT_K)], 0
+.tree:
+    mov eax, [LOCAL(IT_K)]
+    cmp eax, [LOCAL(IT_N)]
+    jge .inext
+    mov ecx, [rsi + ISLE.cellx]
+    mov edx, [rsi + ISLE.cellz]
+    mov r8d, 0x4954                     ; "IT"
+    mov r9d, [LOCAL(IT_K)]
+    call hash4
+    mov [LOCAL(IT_H)], eax
+    ; offset: (-0.5 .. 0.5) r on each axis
+    movzx eax, byte [LOCAL(IT_H)]
+    cvtsi2ss xmm0, eax
+    mulss xmm0, [rel c_inv255]
+    subss xmm0, [rel c_half]
+    mulss xmm0, [rsi + ISLE.r]
+    cvtss2si eax, xmm0
+    add eax, [rsi + ISLE.x]
+    mov [LOCAL(IT_X)], eax
+    movzx eax, byte [LOCAL(IT_H) + 1]
+    cvtsi2ss xmm0, eax
+    mulss xmm0, [rel c_inv255]
+    subss xmm0, [rel c_half]
+    mulss xmm0, [rsi + ISLE.r]
+    cvtss2si eax, xmm0
+    add eax, [rsi + ISLE.z]
+    mov [LOCAL(IT_Z)], eax
+    ; within reach of the chunk?
+    mov eax, [LOCAL(IT_X)]
+    add eax, TREE_REACH
+    cmp eax, 31 + 2 * TREE_REACH
+    ja .tnext
+    mov eax, [LOCAL(IT_Z)]
+    add eax, TREE_REACH
+    cmp eax, 31 + 2 * TREE_REACH
+    ja .tnext
+    mov eax, [rbx + FCTX.ncand]
+    cmp eax, MAX_CANDS
+    jae .done
+    ; which tree
+    FRAC16 word [LOCAL(IT_H) + 2]
+    mov rcx, [rsi + ISLE.b]
+    add rcx, BIOME.ntrees
+    call pick_weighted
+    cmp eax, -1
+    je .tnext
+    mov r12d, eax
+    mov eax, [rbx + FCTX.ncand]
+    imul rdi, rax, CAND_size
+    lea rdi, [rbx + FCTX.cand + rdi]
+    mov eax, [LOCAL(IT_X)]
+    mov [rdi + CAND.x], eax
+    mov eax, [LOCAL(IT_Z)]
+    mov [rdi + CAND.z], eax
+    mov [rdi + CAND.tree], r12d
+    mov eax, [LOCAL(IT_H)]
+    mov [rdi + CAND.seed], eax
+    ; ground: the dome top here (no rim wobble this close to the centre)
+    mov ecx, [LOCAL(IT_X)]
+    mov edx, [LOCAL(IT_Z)]
+    xorps xmm2, xmm2
+    call isle_shape
+    test eax, eax
+    jz .tnext
+    inc r8d
+    mov [rdi + CAND.y], r8d
+    imul rax, r12, TREE_size
+    lea rcx, [rel g_trees]
+    add rax, rcx
+    cvttss2si ecx, [rax + TREE.radius + 4]
+    add ecx, [rax + TREE.height + 4]
+    lea ecx, [r8d + ecx + 8]
+    mov [rdi + CAND.ytop], ecx
+    cmp ecx, [rbx + FCTX.top]
+    jle .counted
+    mov [rbx + FCTX.top], ecx
+.counted:
+    inc dword [rbx + FCTX.ncand]
+.tnext:
+    inc dword [LOCAL(IT_K)]
+    jmp .tree
+.inext:
+    inc dword [LOCAL(IT_I)]
+    jmp .isle
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; isle_flora — plants on the island tops and root strands under them, in
+; the section being filled.   in: rbx = FCTX*   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define IF_X        0
+%define IF_Z        4
+%define IF_ID       8
+%define IF_B        16
+%define IF_N        24
+%define IF_Y        28
+%define IF_LOCALS   32
+PROC isle_flora, IF_LOCALS, rsi, rdi, r12, r13
+    xor r12d, r12d
+.z:
+    xor r13d, r13d
+.x:
+    mov eax, r12d
+    shl eax, 5
+    add eax, r13d
+    imul rsi, rax, INFO_SIZE
+    add rsi, [rbx + FCTX.info]
+    movsx edi, word [rsi + INFO_ISLE_TOP]
+    cmp edi, POND_NONE
+    je .next
+    movzx eax, byte [rsi + INFO_BIOME]
+    imul rax, rax, BIOME_size
+    lea rcx, [rel g_biomes]
+    add rax, rcx
+    mov [LOCAL(IF_B)], rax
+    ; ---- a plant on top (y = top + 1) ----
+    inc edi
+    mov eax, edi
+    sub eax, [rbx + FCTX.y0]
+    inc eax
+    cmp eax, 32
+    ja .roots
+    mov ecx, [rbx + FCTX.cx]
+    shl ecx, 5
+    add ecx, r13d
+    mov edx, [rbx + FCTX.cz]
+    shl edx, 5
+    add edx, r12d
+    mov r8, [LOCAL(IF_B)]
+    movss xmm0, [rel c_one]
+    call decide_plant
+    test eax, eax
+    jz .roots
+    mov [LOCAL(IF_ID)], eax
+    mov ecx, r13d
+    mov edx, edi
+    mov r8d, r12d
+    mov r9d, eax
+    mov r10d, PUT_PLANT
+    call put_block
+    mov eax, [LOCAL(IF_ID)]
+    lea rcx, [rel g_block_shape]
+    cmp byte [rcx + rax], SHAPE_TALL_PLANT
+    jne .roots
+    mov ecx, r13d
+    lea edx, [edi + 1]
+    mov r8d, r12d
+    mov r9d, [LOCAL(IF_ID)]
+    inc r9d
+    mov r10d, PUT_PLANT
+    call put_block
+.roots:
+    ; ---- a root strand hanging from the underside ----
+    mov rax, [LOCAL(IF_B)]
+    cmp dword [rax + BIOME.isle_roots], 0
+    je .next
+    mov ecx, [rbx + FCTX.cx]
+    shl ecx, 5
+    add ecx, r13d
+    mov edx, [rbx + FCTX.cz]
+    shl edx, 5
+    add edx, r12d
+    mov r8d, 0x4952                     ; "IR"
+    xor r9d, r9d
+    call hash4
+    mov [LOCAL(IF_N)], eax
+    FRAC16 word [LOCAL(IF_N)]
+    mov rax, [LOCAL(IF_B)]
+    comiss xmm0, [rax + BIOME.isle_roots_ch]
+    jae .next
+    movzx eax, byte [LOCAL(IF_N) + 2]
+    and eax, 3
+    add eax, 2                          ; 2 .. 5 long
+    mov [LOCAL(IF_N)], eax
+    movsx eax, word [rsi + INFO_ISLE_BOT]
+    mov [LOCAL(IF_Y)], eax
+.strand:
+    dec dword [LOCAL(IF_Y)]
+    mov ecx, r13d
+    mov edx, [LOCAL(IF_Y)]
+    mov r8d, r12d
+    mov rax, [LOCAL(IF_B)]
+    mov r9d, [rax + BIOME.isle_roots]
+    mov r10d, PUT_PLANT
+    call put_block
+    dec dword [LOCAL(IF_N)]
+    jg .strand
+.next:
+    inc r13d
+    cmp r13d, 32
+    jb .x
+    inc r12d
+    cmp r12d, 32
+    jb .z
+    RETURN
+ENDPROC
+
+section .rdata
+align 4
+c_isle_rmax:    dd 25.0
+c_isle_wob:     dd 0.15                 ; rim wobble with the detail noise
+c_isle_dome:    dd 2.5                  ; top dome height
+c_isle_depth:   dd 0.9                  ; cone depth / radius

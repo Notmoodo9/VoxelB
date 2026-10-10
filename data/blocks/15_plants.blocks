@@ -124,3 +124,10 @@ render   = cutout
 [family glow_plants]
 templates = plant
 members   = glow_bellflower, star_bloom, glow_fern
+
+# sky islands (design/biomes/sky_islands.md): roots hanging under islands
+[block hanging_roots]
+shape    = plant
+textures = hanging_roots
+render   = cutout
+sway     = 1

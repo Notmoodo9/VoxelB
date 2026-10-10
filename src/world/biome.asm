@@ -109,6 +109,11 @@ k_b_flatten:    db "flatten", 0
 k_b_own_shore:  db "own_shore", 0
 k_b_wplant:     db "water_plant", 0
 k_b_rarity:     db "rarity", 0
+k_b_isle_ch:    db "island_chance", 0
+k_b_isle_r:     db "island_radius", 0
+k_b_isle_y:     db "island_height", 0
+k_b_isle_ore:   db "island_ore", 0
+k_b_isle_roots: db "island_roots", 0
 k_contrast:     db "contrast", 0
 ; biome keys
 k_b_temp:       db "temperature", 0
@@ -222,6 +227,11 @@ biome_settings:
     dq k_b_own_shore, T_INT,      BIOME.own_shore
     dq k_b_wplant,    T_PLANT,    BIOME.nwplants
     dq k_b_rarity,    T_RANGE_F,  BIOME.rarity
+    dq k_b_isle_ch,   T_FLOAT,    BIOME.isle_ch
+    dq k_b_isle_r,    T_RANGE_F,  BIOME.isle_r
+    dq k_b_isle_y,    T_RANGE_I,  BIOME.isle_y
+    dq k_b_isle_ore,  T_PLANT,    BIOME.nisle_ore
+    dq k_b_isle_roots, T_PATCH,   BIOME.isle_roots
     dq k_b_top,       T_BLOCK,    BIOME.top
     dq k_b_filler,    T_BLOCK,    BIOME.filler
     dq k_b_plant,     T_PLANT,    BIOME.nplants

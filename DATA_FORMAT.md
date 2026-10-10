@@ -316,6 +316,10 @@ Temperature and humidity are 0..1.
 | `wash_block` | dry washes: winding beds (the dune field's crest lines) on low ground off the mesas |
 | `dry_ponds` | `block, share`: this share of the biome's ponds are dry hollows: a flat pan one below the rim, no water, `block` on top (salt flats) |
 | `rarity` | `lo, hi`: the biome only where the `rarity` field (0..1, independent of temperature, humidity and weirdness) is in this range: rare pockets that overlap any weirdness band (default 0–1) |
+| `island_chance` | floating islands: chance per 48×48 cell (× the vegetation density at the island's centre) |
+| `island_radius`, `island_height` | island radius range (max 25) and centre height range (Y) |
+| `island_ore` | `block, chance` (repeatable, up to 8): blocks in the islands' stone (ores, crystals) |
+| `island_roots` | `block, chance`: strands (2–5 long) hanging under the islands, chance per column |
 | `water_color` | RRGGBB: the biome's water colour (a third tint layer; water keeps its texture's brightness and takes this hue). Default: `water_reference` (`[climate]`, the texture's own colour) |
 | `flatten` | `level, pull`: pulls the land towards `level` by `pull` (0..1, blended). With the small detail bumps, a level just above the sea makes a maze of pools and islands (swamps) |
 | `own_shore` | 1: the shore band uses the biome's own ground (top, patches) above the sea and its `pond_floor` (else mud) below it, instead of beach sand |

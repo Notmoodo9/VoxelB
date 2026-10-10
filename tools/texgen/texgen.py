@@ -1604,6 +1604,24 @@ def make_glowing_forest(out):
     out["glow_moss_glow"] = glow_layer(specks.astype(float), "7af8e8", 0.9)
 
 
+def make_sky_islands(out):
+    # hanging roots: brown root strands with thin rootlets (plant sprite)
+    r = rng("hanging_roots")
+    rp = ramp("7a5230", 5, spread=0.22)
+    img = np.zeros((N, N, 4))
+    for x0 in (3, 7, 10, 13):
+        x = x0
+        L = int(r.integers(10, N + 1))
+        for y in range(L):
+            if r.random() < 0.18:
+                x = min(N - 1, max(0, x + int(r.choice([-1, 1]))))
+            img[y, x, :3] = rp[1 + (y % 3)]; img[y, x, 3] = 1.0
+            if r.random() < 0.25:
+                xx = min(N - 1, max(0, x + int(r.choice([-1, 1]))))
+                img[y, xx, :3] = rp[3]; img[y, xx, 3] = 1.0
+    out["hanging_roots"] = img
+
+
 def ladder_design(name, base):
     pal = ramp(base, 5, spread=0.15)
     img = np.zeros((N, N, 3)) + pal[1]
@@ -2120,6 +2138,7 @@ def build_all():
     make_swamp(out)
     make_dark_forest(out)
     make_glowing_forest(out)
+    make_sky_islands(out)
     return out
 
 

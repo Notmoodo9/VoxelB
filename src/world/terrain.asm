@@ -47,7 +47,7 @@
 %include "flora.inc"
 
 global terrain_load, terrain_gen_column, terrain_sample, terrain_find_spawn, log_xz
-global terrain_survey
+global terrain_survey, g_snow_var
 global g_world_seed, g_sea_level, g_beach_high, g_b_top, g_b_fill, g_snow_line
 global g_noise, g_splines, g_ores, g_ore_count, spline_eval
 global g_tunnel_w, g_pass_w, g_crust, g_entr_thr, g_sky_thr, g_sky_depth, g_sky_open
@@ -107,6 +107,7 @@ endstruc
 %define MAX_ORES        32
 
 section .rdata
+c_inv65536t:    dd 0.0000152587890625
 c_dither:       dd 1.5                  ; biome borders: ragged within this weight gap
 c_wash_mesa:    dd 0.02                 ; washes: off the mesas
 c_wash_crest:   dd 0.86                 ;   on the dune crest lines
@@ -1375,7 +1376,8 @@ underground:
 %define G_PLAT      (G_FCTX + 32)              ; f32 blended plateau height
 %define G_MESA      (G_FCTX + 36)              ; f32 blended mesa height
 %define G_TMP       (G_FCTX + 40)              ; scratch qword
-%define G_LOCALS    (96 + TSAMPLE_size + 80)
+%define G_ISLE      (G_FCTX + 48)              ; highest floating island top
+%define G_LOCALS    (96 + TSAMPLE_size + 96)
 %define CG          (HM / 4 + 1)               ; coarse grid side (every 4 blocks)
 PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [LOCAL(G_COL)], rcx
@@ -1779,6 +1781,11 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     cmp r12d, 32
     jb .bi_z
 
+    ; ---- floating islands (per-column extents) ----------------------------------
+    mov rcx, [LOCAL(G_FCTX)]
+    call flora_islands
+    mov [LOCAL(G_ISLE)], eax
+
     ; ---- biome colours for the tint map (8 x 8 per layer) ----------------------
     xor r12d, r12d
 .ti_z:
@@ -2028,6 +2035,12 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     jge .topf
     mov eax, ecx
 .topf:
+    mov ecx, [LOCAL(G_ISLE)]
+    add ecx, 3                          ; (island plants)
+    cmp eax, ecx
+    jge .topf2
+    mov eax, ecx
+.topf2:
     mov [LOCAL(G_TOPF)], eax
 
     ; ---- sections ------------------------------------------------------------------------
@@ -2138,6 +2151,75 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     cmp edi, r14d
     jl .solid
 .not_solid:
+    ; a floating island here?
+    movsx ecx, word [r15 + INFO_ISLE_TOP]
+    cmp edi, ecx
+    jg .no_isle
+    movsx edx, word [r15 + INFO_ISLE_BOT]
+    cmp edi, edx
+    jl .no_isle
+    sub ecx, edi                        ; depth below the island top
+    movzx edx, byte [r15 + INFO_BIOME]
+    imul rdx, rdx, BIOME_size
+    lea rax, [rel g_biomes]
+    add rdx, rax
+    test ecx, ecx
+    jnz .isle_low
+    mov eax, [rdx + BIOME.top]          ; the top: the biome's top block
+    test eax, eax
+    jnz .put
+    mov eax, [rel g_b_top]
+    jmp .put
+.isle_low:
+    cmp ecx, 3
+    jg .isle_stone
+    mov eax, [rdx + BIOME.filler]
+    test eax, eax
+    jnz .put
+    mov eax, [rel g_b_fill]
+    jmp .put
+.isle_stone:
+    ; stone, with the biome's island ores (exposed in the underside)
+    mov [LOCAL(G_TMP)], rdx
+    mov eax, [LOCAL(G_CX)]
+    shl eax, 5
+    add eax, r13d
+    imul eax, eax, 0x8DA6B343
+    mov ecx, [LOCAL(G_CZ)]
+    shl ecx, 5
+    add ecx, r12d
+    imul ecx, ecx, 0xD8163841
+    xor eax, ecx
+    imul ecx, edi, 0xCB1AB31F
+    xor eax, ecx
+    add eax, [rel g_world_seed]
+    mov ecx, eax
+    shr ecx, 15
+    xor eax, ecx
+    imul eax, eax, 0x2C1B3C6D
+    mov ecx, eax
+    shr ecx, 13
+    xor eax, ecx
+    and eax, 0xFFFF
+    cvtsi2ss xmm0, eax
+    mulss xmm0, [rel c_inv65536t]
+    xorps xmm1, xmm1
+    xor ecx, ecx
+.isle_ore:
+    cmp ecx, [rdx + BIOME.nisle_ore]
+    jae .isle_plain
+    addss xmm1, [rdx + BIOME.isle_ore_ch + rcx * 4]
+    comiss xmm0, xmm1
+    jb .isle_ore_hit
+    inc ecx
+    jmp .isle_ore
+.isle_ore_hit:
+    mov eax, [rdx + BIOME.isle_ore + rcx * 4]
+    jmp .put
+.isle_plain:
+    mov eax, [rel g_b_stone]
+    jmp .put
+.no_isle:
     mov eax, [rel g_b_water]
     cmp edi, [rel g_sea_level]
     jle .put

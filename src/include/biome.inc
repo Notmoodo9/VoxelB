@@ -120,6 +120,14 @@ struc BIOME
     .wplant         resd BIOME_PLANTS
     .wplant_ch      resd BIOME_PLANTS
     .rarity         resd 2              ; range of the "rarity" field (rare pockets)
+    .isle_ch        resd 1              ; floating islands: chance per 48 x 48 cell
+    .isle_r         resd 2              ; f32 radius range (max 25)
+    .isle_y         resd 2              ; int centre height range
+    .nisle_ore      resd 1              ; blocks in the island stone: block, chance
+    .isle_ore       resd BIOME_PLANTS
+    .isle_ore_ch    resd BIOME_PLANTS
+    .isle_roots     resd 1              ; strands under the islands: block, chance
+    .isle_roots_ch  resd 1
 endstruc
 
 struc TREE

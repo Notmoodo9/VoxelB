@@ -869,3 +869,25 @@ block for their upper half (mossy cobblestone boulders).
 * Weeping glowwoods reuse the `round` kind. `hanging_vines` = the glowwood
   leaves themselves (4.5% of leaves, 2–6 long) gives curtains of glowing
   leaves without a new generator.
+
+## D71 — Floating islands (M10 part 14)
+* Islands are terrain, not flora. One candidate per 48×48 cell (centre
+  8–40 inside it), hashed from the cell alone. A candidate exists where
+  the blended biome at its centre has `island_chance` (× density); the
+  blend map covers −32..63 around the chunk, which contains every centre
+  that can reach it.
+* `flora_islands` lists the candidates once per chunk (up to 16, with
+  tree reach) and writes each interior column's island top and bottom
+  into INFO (INFO_SIZE 24: INFO_ISLE_TOP / INFO_ISLE_BOT; the highest
+  island wins).
+* The terrain fill checks this before air and water, so islands cost
+  nothing in columns without them. Sections up to the highest island top
+  (+3) are filled block by block.
+* Shape at relative distance t (rim wobble ±15% from the detail noise):
+  * top = yc + 2.5·(1 − t²);
+  * bottom = yc − 1 − 0.9·r·(1 − t)^1.5, minus a 1-block hash jitter.
+* Island trees are ordinary tree candidates (CAND.y = the dome top), so
+  they stay consistent across chunks like every other tree. Plants use
+  the column's biome rules; root strands use `island_roots`.
+* Island ores use an inline position hash in the fill, from the biome's
+  `island_ore` list.

@@ -7,6 +7,9 @@
 %define MAX_PONDS       8
 %define MAX_CANDS       640
 %define TREE_REACH      20              ; blocks a tree may spread from its trunk
+%define MAX_ISLES       16
+%define ISLE_CELL       48              ; one floating island candidate per cell
+%define ISLE_MAX_R      25
 
 struc POND                              ; a pond touching the chunk (local)
     .x          resd 1                  ; centre (chunk-local blocks)
@@ -15,6 +18,18 @@ struc POND                              ; a pond touching the chunk (local)
     .rz         resd 1
     .c          resd 1                  ; f32 axis direction (cos, sin)
     .s          resd 1
+endstruc
+
+struc ISLE                              ; a floating island near the chunk
+    .x          resd 1                  ; centre (chunk-local)
+    .z          resd 1
+    .r          resd 1                  ; f32 radius
+    .yc         resd 1                  ; centre (top) height
+    .b          resq 1                  ; BIOME* at the centre
+    .h          resd 1                  ; hash
+    .cellx      resd 1
+    .cellz      resd 1
+    .pad        resd 1
 endstruc
 
 struc CAND                              ; a tree or bush that may touch the chunk
@@ -41,9 +56,12 @@ struc FCTX
     .ponds      resb MAX_PONDS * POND_size
     .cand       resb MAX_CANDS * CAND_size
     .litter     resw 1024               ; litter block per interior column (0 = none)
+    .nisle      resd 1
+    .pad2       resd 1
+    .isles      resb MAX_ISLES * ISLE_size
 endstruc
 
 %ifndef FLORA_IMPL
-extern flora_ponds, flora_prepare, flora_section, flora_survey
+extern flora_ponds, flora_prepare, flora_section, flora_survey, flora_islands
 %endif
 %endif

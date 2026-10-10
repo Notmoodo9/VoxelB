@@ -1,0 +1,44 @@
+# Sky islands (design/biomes/sky_islands.md): a rare region of lush,
+# flower-filled meadow with an archipelago of floating islands above it
+# (Y 200-320, 10-50 wide): meadow tops with trees, inverted-cone stone
+# undersides with exposed ores and crystals, hanging roots.
+
+[biome sky_islands]
+temperature   = 0.35, 0.65       # the plains climate,
+humidity      = 0.20, 0.60
+rarity        = 0.72, 1.00       #   in rare pockets
+priority      = 2
+height        = 98, 170
+hill_scale    = 0.7              # gentle hills
+grass_color   = 4CDC3C           # vivid spring green
+foliage_color = 3CBC2C
+
+plant = short_grass, 0.30
+plant = tall_grass, 0.06
+
+flowers       = poppy, dandelion, cornflower, oxeye_daisy, allium, red_tulip, orange_tulip, white_tulip, pink_tulip, blue_sage
+flower_chance = 0.07
+meadow_cell    = 128
+meadow_chance  = 0.8
+meadow_radius  = 10, 24
+meadow_density = 0.7
+meadow_mixed   = 0.7
+
+# a few trees on the ground; the islands take theirs from this list too
+tree         = small_oak, 6
+tree         = birch, 3
+tree         = flowering_bush, 2
+tree_density = 0.0006
+
+# the archipelago: an island in ~half the 48 x 48 cells
+island_chance = 0.9
+island_radius = 5, 25
+island_height = 200, 320
+island_ore    = coal_ore, 0.02
+island_ore    = iron_ore, 0.012
+island_ore    = blue_crystal, 0.006
+island_roots  = hanging_roots, 0.12
+
+pond_chance = 0.04
+pond_radius = 2.5, 5
+pond_depth  = 2
