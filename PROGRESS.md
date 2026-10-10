@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 11): 🎨 DESIGN — Swamp: DONE** (Windows CI: see below)
+**Milestone 10 (part 11): 🎨 DESIGN — Swamp: DONE** (Windows CI green: run #40)
 
 Next: **Milestone 10, part 12: the next biome**. Candidates are dark
 forest, meadow, river, ice spikes (`design/BACKLOG.md`). About 8% of land
