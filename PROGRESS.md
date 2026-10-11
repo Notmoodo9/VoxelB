@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 11: GPU-driven pipeline: DONE** (Windows CI: see below)
+**Milestone 11: GPU-driven pipeline: DONE** (Windows CI green: run #62)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
