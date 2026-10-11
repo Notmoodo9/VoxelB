@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 19): 🎨 DESIGN — Glacier: DONE** (Windows CI: see below)
+**Milestone 10 (part 19): 🎨 DESIGN — Glacier: DONE** (Windows CI green: run #56)
 
 Next: **Milestone 10, part 20: the next biome**. Candidates are crystal
 caves (underground, needs a cave-biome system) and river
