@@ -23,6 +23,8 @@
 %define BLOCKF_TINT_GRASS   2           ; biome grass colour (faces: g_block_tintmask)
 %define BLOCKF_TINT_FOLIAGE 4           ; biome foliage colour
 %define BLOCKF_AXIS         8           ; log axis states: 0 Y, 1 X, 2 Z (cube shape)
+%define BLOCKF_WATERLOGGED  16          ; drawn inside water (river weed): the mesher
+                                        ; treats the cell as water for faces
 
 ; mesher output capacity per section (greedy worst case is 98304 quads;
 ; the rest is room for shaped-block quads)

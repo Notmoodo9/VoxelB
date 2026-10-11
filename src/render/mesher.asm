@@ -32,7 +32,7 @@
 
 global mesh_section, vis_pair_bit
 
-extern g_block_opaque, g_block_layer, g_block_shape
+extern g_block_opaque, g_block_layer, g_block_shape, g_block_flags, g_block_water
 extern shapes_emit
 
 ; g_block_opaque, g_block_layer, g_block_cullself and g_block_shape are
@@ -496,6 +496,8 @@ PROC mesh_section, L_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov r12, [LOCAL(L_VOL)]
     mov r13, [LOCAL(L_MASK)]
     lea r14, [rel g_block_opaque]
+    lea r9, [rel g_block_flags]
+    mov r10d, [rel g_block_water]
     mov rax, [LOCAL(L_SLICE)]
     imul rax, [r15]
     add rax, ORIGIN                     ; p of (s, 0, 0)
@@ -508,11 +510,22 @@ PROC mesh_section, L_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     movzx eax, word [r12 + rsi * 2]     ; block
     test eax, eax
     jz .mask_store
+    ; waterlogged (river weed): faces as water; the plant by shapes_emit
+    test byte [r9 + rax], BLOCKF_WATERLOGGED
+    jz .not_wl
+    mov eax, r10d
+.not_wl:
     cmp byte [r14 + rax + SHAPE_OFS], 0
     jne .mask_hidden                    ; shaped: drawn by shapes_emit
     mov rdx, rsi
     add rdx, [r15 + 24]
     movzx edx, word [r12 + rdx * 2]     ; neighbour block
+    cmp edx, SOLID_ID
+    je .nb_not_wl                       ; (border filler: past the flag table)
+    test byte [r9 + rdx], BLOCKF_WATERLOGGED
+    jz .nb_not_wl
+    mov edx, r10d
+.nb_not_wl:
     cmp byte [r14 + rdx], 0
     jne .mask_hidden
     cmp edx, eax

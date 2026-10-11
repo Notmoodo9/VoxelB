@@ -756,9 +756,24 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov edx, [LOCAL(FR_X)]
     mov r8d, [LOCAL(FR_Z)]
     call bmap_col
+    movss [LOCAL(FR_D)], xmm0
+    ; river columns: the land biome's river biome
+    mov ecx, [LOCAL(FR_X)]
+    mov edx, [LOCAL(FR_Z)]
+    mov r8d, eax
+    HM_INDEX ecx, edx
+    mov rcx, [rbx + FCTX.river]
+    cmp byte [rcx + rax], 0
+    mov eax, r8d
+    je .no_river
+    imul rcx, rax, BIOME_size
+    lea rdx, [rel g_biomes]
+    mov ecx, [rdx + rcx + BIOME.river_b]
+    test ecx, ecx
+    cmovnz eax, ecx
+.no_river:
     test eax, eax
     jz .next_kind
-    movss [LOCAL(FR_D)], xmm0
     imul rax, rax, BIOME_size
     lea rcx, [rel g_biomes]
     add rax, rcx
@@ -809,13 +824,17 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     lea edx, [r12d - 1]
     cmp dword [LOCAL(FR_KIND)], 2
     jne .not_berg
-    ; icebergs: deep water only (4+ blocks); they float at the sea surface
+    ; water features: water at least water_feature_depth deep (default 4)
+    mov r8, [LOCAL(FR_B)]
+    mov ecx, [r8 + BIOME.berg_depth]
+    test ecx, ecx
+    jnz .wf_depth
+    mov ecx, 4
+.wf_depth:
     mov r8d, [rel g_sea_level]
-    sub r8d, 4
+    sub r8d, ecx
     cmp edx, r8d
     jg .next_kind
-    mov r12d, [rel g_sea_level]
-    inc r12d                            ; (first block above the surface)
     jmp .not_clearing
 .not_berg:
     cmp edx, [rel g_beach_high]
@@ -825,6 +844,10 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov r8, [LOCAL(FR_B)]
     cmp dword [r8 + BIOME.own_shore], 0
     je .next_kind
+    cmp edx, [rel g_sea_level]
+    jge .ground_high                    ; (dry low ground)
+    cmp dword [r8 + BIOME.trees_water], 0
+    je .next_kind                       ; (no trees in the water)
     mov r8d, [rel g_sea_level]
     sub r8d, 2
     cmp edx, r8d
@@ -902,6 +925,16 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     cmp eax, -1
     je .next_kind
     mov r15d, eax                       ; tree
+    ; water features stand on the bed (rocks), icebergs float at the surface
+    cmp dword [LOCAL(FR_KIND)], 2
+    jne .not_float
+    imul rax, r15, TREE_size
+    lea rcx, [rel g_trees]
+    cmp dword [rcx + rax + TREE.kind], TREE_ICEBERG
+    jne .not_float
+    mov r12d, [rel g_sea_level]
+    inc r12d                            ; (first block above the surface)
+.not_float:
     mov eax, [rbx + FCTX.ncand]
     cmp eax, MAX_CANDS
     jae .next_kind
@@ -2315,6 +2348,69 @@ PROC flora_section, FS_LOCALS, rbx, rsi, rdi, r12, r13
     jz .pnext
     cmp byte [rsi + INFO_DENS], 0
     je .pnext
+    ; ---- plants on the bed under the sea or a river (river weed) ----
+    movzx eax, byte [rsi + INFO_BIOME]
+    imul r8, rax, BIOME_size
+    lea rax, [rel g_biomes]
+    add r8, rax
+    cmp dword [r8 + BIOME.nbed], 0
+    je .no_bed
+    cmp word [rsi + INFO_POND], POND_NONE
+    jne .no_bed
+    HM_INDEX r13d, r12d
+    mov rcx, [rbx + FCTX.heights]
+    mov edi, [rcx + rax * 4]            ; the first block above the bed
+    mov eax, [rel g_sea_level]
+    sub eax, edi
+    jl .no_bed                          ; (dry land)
+    jz .no_bed                          ; (only 1 deep)
+    mov [LOCAL(FS_GROUND)], eax         ; (water above the plant)
+    mov [LOCAL(FS_B)], r8
+    mov ecx, [rbx + FCTX.cx]
+    shl ecx, 5
+    add ecx, r13d
+    mov edx, [rbx + FCTX.cz]
+    shl edx, 5
+    add edx, r12d
+    mov r8d, 0x4244                     ; "BD"
+    xor r9d, r9d
+    call hash4
+    FRAC16 ax
+    mov r8, [LOCAL(FS_B)]
+    xorps xmm2, xmm2
+    xor ecx, ecx
+.bd:
+    cmp ecx, [r8 + BIOME.nbed]
+    jae .no_bed
+    addss xmm2, [r8 + BIOME.bed_ch + rcx * 4]
+    comiss xmm0, xmm2
+    jb .bd_found
+    inc ecx
+    jmp .bd
+.bd_found:
+    mov eax, [r8 + BIOME.bed + rcx * 4]
+    mov [LOCAL(FS_ID)], eax
+    mov ecx, r13d
+    mov edx, edi
+    mov r8d, r12d
+    mov r9d, eax
+    mov r10d, PUT_SOLID                 ; (into the water)
+    call put_block
+    ; a tall plant's upper half, if it stays under the surface
+    mov eax, [LOCAL(FS_ID)]
+    lea rcx, [rel g_block_shape]
+    cmp byte [rcx + rax], SHAPE_TALL_PLANT
+    jne .no_bed
+    cmp dword [LOCAL(FS_GROUND)], 2
+    jl .no_bed
+    mov ecx, r13d
+    lea edx, [edi + 1]
+    mov r8d, r12d
+    mov r9d, [LOCAL(FS_ID)]
+    inc r9d
+    mov r10d, PUT_SOLID
+    call put_block
+.no_bed:
     ; ---- water plants (lily pads) floating on ponds and shallow sea ----
     movzx eax, byte [rsi + INFO_BIOME]
     imul r8, rax, BIOME_size
@@ -2602,6 +2698,34 @@ PROC flora_survey, SVF_LOCALS, rbx, rsi, rdi, r12, r13
     shl eax, 6
     mov [LOCAL(SVF_Z)], eax
     call sample_biome
+    ; a river here (under the sea level in a river valley, on land)? note the
+    ; nearest sample of each river biome
+    cmp edx, [rel g_sea_level]
+    jge .not_river
+    movss xmm0, [LOCAL(SVF_S) + TSAMPLE.river]
+    comiss xmm0, [rel c_one]
+    jae .not_river
+    movss xmm0, [LOCAL(SVF_S) + TSAMPLE.land]
+    comiss xmm0, [rel c_half]
+    jb .not_river
+    imul rcx, rax, BIOME_size
+    lea r8, [rel g_biomes]
+    mov ecx, [r8 + rcx + BIOME.river_b]
+    test ecx, ecx
+    jz .not_river
+    mov r8d, [LOCAL(SVF_X)]
+    imul r8d, r8d
+    mov r9d, [LOCAL(SVF_Z)]
+    imul r9d, r9d
+    add r8d, r9d
+    cmp r8d, [LOCAL(SVF_ND) + rcx * 4]
+    jae .not_river
+    mov [LOCAL(SVF_ND) + rcx * 4], r8d
+    mov r8d, [LOCAL(SVF_X)]
+    mov [LOCAL(SVF_NX) + rcx * 4], r8d
+    mov r8d, [LOCAL(SVF_Z)]
+    mov [LOCAL(SVF_NZ) + rcx * 4], r8d
+.not_river:
     cmp edx, [rel g_sea_level]
     jg .land
     mov dword [LOCAL(SVF_PREV)], -1

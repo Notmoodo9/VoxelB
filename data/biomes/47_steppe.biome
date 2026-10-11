@@ -35,3 +35,6 @@ pond_radius = 2.5, 5
 pond_depth  = 2
 pond_slope  = 3
 dry_ponds   = salt, 0.5
+
+# green oasis strips along rivers (design/biomes/river.md)
+river_biome = oasis_river

@@ -45,6 +45,7 @@
 global blocks_load, block_find, tex_find, str_dup
 global g_block_count, g_block_names, g_block_colors, g_block_opaque
 global g_block_layer, g_block_cullself, g_block_light, g_block_flags, g_block_tex
+global g_block_water
 global g_block_shape, g_block_state, g_block_nstates, g_block_tintmask
 global g_tex_count, g_tex_names, g_tex_frame_ms, g_tex_glow, g_tex_interp
 
@@ -88,6 +89,8 @@ k_textures:     db "textures", 0
 k_render:       db "render", 0
 k_light:        db "light", 0
 k_sway:         db "sway", 0
+k_waterlogged:  db "waterlogged", 0
+str_water:      db "water", 0
 k_tint:         db "tint", 0
 v_grass:        db "grass", 0
 v_foliage:      db "foliage", 0
@@ -729,6 +732,10 @@ PROC block_apply_one, 0, rbx, rsi, rdi, r12, r13
     INVOKE str_ieq, rsi, rdx
     test eax, eax
     jnz .sway
+    lea rdx, [rel k_waterlogged]
+    INVOKE str_ieq, rsi, rdx
+    test eax, eax
+    jnz .waterlogged
     lea rdx, [rel k_shape]
     INVOKE str_ieq, rsi, rdx
     test eax, eax
@@ -886,6 +893,20 @@ PROC block_apply_one, 0, rbx, rsi, rdi, r12, r13
     lea rcx, [rel g_block_flags]
     and byte [rcx + rbx], ~BLOCKF_SWAY
     or [rcx + rbx], al                  ; BLOCKF_SWAY = 1
+    RETURN
+
+.waterlogged:
+    mov rcx, rdi
+    mov edx, 1
+    call parse_small
+    cmp eax, -1
+    je .bad
+    lea rcx, [rel g_block_flags]
+    and byte [rcx + rbx], ~BLOCKF_WATERLOGGED
+    test eax, eax
+    jz .wl_done
+    or byte [rcx + rbx], BLOCKF_WATERLOGGED
+.wl_done:
     RETURN
 
 .bad:
@@ -1491,6 +1512,13 @@ PROC blocks_load, 0, rbx, rdi
     jmp .file
 .files_done:
     call finalize
+    ; the water block, for waterlogged cells (0 if there is none)
+    lea rcx, [rel str_water]
+    call block_find
+    xor ecx, ecx
+    cmp eax, -1
+    cmove eax, ecx
+    mov [rel g_block_water], eax
     mov ecx, LOG_LEVEL_INFO
     call log_begin
     lea rcx, [rel str_loaded]
@@ -1517,3 +1545,7 @@ PROC blocks_load, 0, rbx, rdi
     xor eax, eax
     RETURN
 ENDPROC
+
+section .bss
+alignb 4
+g_block_water:      resd 1              ; the "water" block (waterlogged cells draw as it)

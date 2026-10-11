@@ -24,3 +24,6 @@ tree_density = 0.0019
 # termite mounds (~1 per 40 x 40)
 bush         = termite_mound, 1
 bush_density = 0.000625
+
+# green oasis strips along rivers (design/biomes/river.md)
+river_biome = oasis_river

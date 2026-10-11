@@ -54,6 +54,7 @@ struc FCTX
     .bot        resd 1                  ; lowest y an iceberg reaches (under water)
     .pad0       resd 1
     .glac       resq 1                  ; u8[HM*HM] GF_ICE / GF_MORAINE (glacier.asm)
+    .river      resq 1                  ; u8[HM*HM] RIVER_BANK / RIVER_WATER (terrain.asm)
     .npond      resd 1
     .ncand      resd 1
     .ponds      resb MAX_PONDS * POND_size

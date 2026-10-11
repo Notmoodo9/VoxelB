@@ -11,6 +11,7 @@ height        = 90, 104          # only the wet lowlands
 hill_scale    = 0.2
 flatten       = 96.6, 0.9        # pulled to just above the sea: bumps make pools
 own_shore     = 1                # olive grass and mud down to the water, mud below it
+trees_in_water = 1                # cypresses stand in the shallow water
 top_patch     = mud, 0.15
 pond_floor    = mud
 grass_color   = 5E7A3A           # dark olive
@@ -29,3 +30,6 @@ water_plant = flowering_lily_pad, 0.02
 # a cypress every ~8-10 blocks
 tree         = bald_cypress, 1
 tree_density = 0.012
+
+# muddy rivers (design/biomes/river.md)
+river_biome = muddy_river

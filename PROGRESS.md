@@ -1,11 +1,73 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 20): 🎨 DESIGN — Crystal caves: DONE** (Windows CI green: run #58)
+**Milestone 10 (part 21): 🎨 DESIGN — Rivers: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 21: river**, the last biome on the list
-(`design/BACKLOG.md`). It starts with its design interview. After it,
-Milestone 10 is complete and Milestone 11 (GPU-driven pipeline) follows.
+**Milestone 10 (biomes) is complete.** The owner plans a larger rework of
+terrain generation and biomes, with many more biomes, later (in
+`design/BACKLOG.md`).
+
+Next: **Milestone 11: GPU-driven pipeline** (persistent buffers,
+multi-draw indirect, compute culling, Hi-Z). It is a technical milestone,
+so no design interview.
+
+---
+
+## Milestone 10, part 21 — done (2026-10-11)
+
+### Design interview
+Two rounds plus approval: `design/biomes/river.md`.
+* Four variants by the land around them:
+  * temperate: clear blue-green water, lush banks, willows, lily pads,
+    river weed, stepping stones;
+  * frozen: iced over with open channels;
+  * muddy: jungle and swamp;
+  * oasis: a green strip in dry lands.
+* Fish later.
+
+### What was built
+* **Per-column river classes and river biomes** (D78):
+  * the coarse grid keeps the river value;
+  * every column is water, bank or neither;
+  * river columns take the land biome's `river_biome` for ground, plants,
+    trees, water features and the water tint.
+* **Waterlogged blocks**: a block setting `waterlogged`. The mesher draws
+  the cell as water around the plant.
+* **Water features**: the iceberg layer generalised (`water_feature*`,
+  with a minimum depth; rocks stand on the bed).
+* **Bed plants** (`bed_plant`) under water. New biome settings
+  `river_biome`, `own_colors`, `trees_in_water`.
+* **Data**:
+  * `data/biomes/24_rivers.biome`: river, frozen_river, muddy_river,
+    oasis_river;
+  * trees `willow` and `river_stone`;
+  * blocks `river_weed` (2 tall) and `river_grass` (texgen);
+  * `river_biome` on the cold, jungle/swamp and dry-land biomes.
+* **Survey**: the nearest river of each variant.
+* MAX_TREES 64 → 96.
+
+### How to see it (seed 20261009)
+* Temperate river: `voxelb.exe --pos -128 118 -165 --look 0 -30`.
+* Oasis river: `voxelb.exe --pos -576 135 175 --look 0 -30`.
+* Frozen river: `voxelb.exe --pos -1408 140 -330 --look 0 -35`.
+
+### Verified
+* Debug and release headless tests pass. The debug build ran over the
+  river with no asserts and a clean exit.
+* Screenshots: temperate (lily pads, weed under water with no air
+  pockets), oasis (green strip, palms on the banks after the fix), frozen
+  (floes and channels, snowy gravel banks).
+
+### Known issues
+* The muddy river was not caught in a screenshot (the survey's spot showed
+  a temperate river). It uses the same mechanism.
+* Where a river meets a lake or the sea, its water colour changes at a
+  4-block cell edge.
+
+### Performance
+Unchanged: at the temperate river the 16-chunk view is ready after
+12.5 s (11.9 s without the river biomes; this spot is heavier than
+earlier ones). Meshing ~12.7 ms per column on average.
 
 ---
 

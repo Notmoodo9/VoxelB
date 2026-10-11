@@ -44,3 +44,6 @@ pond_chance = 0.35
 pond_radius = 2.5, 6
 pond_depth  = 3
 pond_floor  = gravel
+
+# frozen rivers (design/biomes/river.md)
+river_biome = frozen_river

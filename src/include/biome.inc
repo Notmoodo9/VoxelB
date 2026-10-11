@@ -6,7 +6,7 @@
 %define BIOME_INC
 
 %define MAX_BIOMES      32              ; including 0 = "none" (no biome yet)
-%define MAX_TREES       64
+%define MAX_TREES       96
 %define BIOME_PLANTS    8
 %define BIOME_FLOWERS   16
 %define BIOME_TREES     8
@@ -167,6 +167,14 @@ struc BIOME
     .crevasse       resd 2              ; f32 noise threshold, deepest crevasse
     .ice_caves      resd 1              ; f32 cave noise threshold (0 = none)
     .serac          resd 2              ; f32 slope (blocks per block), height jitter
+    .river_name     resq 1              ; its river biome's name (0 = the default "river")
+    .river_b        resd 1              ; its river biome (resolved; 0 = none)
+    .berg_depth     resd 1              ; water features: least water depth (0 = 4)
+    .own_colors     resd 1              ; river biome: its grass and foliage colours too
+    .trees_water    resd 1              ; own_shore biomes: trees may stand in shallow water
+    .nbed           resd 1              ; plants on the bed under water: block, chance
+    .bed            resd BIOME_PLANTS
+    .bed_ch         resd BIOME_PLANTS
 endstruc
 
 struc TREE

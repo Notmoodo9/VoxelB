@@ -32,3 +32,6 @@ iceberg         = small_iceberg, 10
 iceberg         = tall_iceberg, 3
 iceberg         = giant_iceberg, 1
 iceberg_density = 0.0004
+
+# frozen rivers (design/biomes/river.md)
+river_biome = frozen_river

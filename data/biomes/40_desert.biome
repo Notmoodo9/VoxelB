@@ -26,3 +26,6 @@ bush         = sandstone_spire, 25
 bush         = sandstone_arch, 2.25
 bush         = fossil, 4
 bush_density = 0.000365
+
+# green oasis strips along rivers (design/biomes/river.md)
+river_biome = oasis_river

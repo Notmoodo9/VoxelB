@@ -585,3 +585,25 @@ height    = 10, 16
 radius    = 7.0, 10.0
 branches  = 2, 3
 chance    = 1
+
+# --- rivers (design/biomes/river.md) -------------------------------------------
+# willows: a round crown with long hanging strands of leaves, leaning a
+# little
+[tree willow]
+kind      = round
+log       = willow_log
+leaves    = willow_leaves
+height    = 5, 8
+radius    = 2.8, 3.6
+leaf_gaps = 0.25
+hanging_vines = willow_leaves, 0.25
+vine_length   = 2, 5
+lean      = 0.12
+
+# mossy stepping stones rising from the river bed
+[tree river_stone]
+kind   = rock
+log    = cobblestone
+leaves = mossy_cobblestone
+radius = 0.8, 1.6
+height = 3, 5

@@ -1801,6 +1801,40 @@ def make_crystal_caves(out):
         out[f"{name}_glow_pool_glow"] = gframes
 
 
+def make_river(out):
+    """Rivers (M10 part 21): long waving river weed and short river grass."""
+    gp = ramp("2e8a4a", 5, spread=0.22)
+
+    def ribbons(r, top, count):
+        img = np.zeros((N, N, 4))
+        for i in range(count):
+            x0 = 2 + i * (12 // max(1, count - 1)) if count > 1 else 7
+            phase = r.random() * 6.28
+            for y in range(top, N):
+                x = int(round(x0 + 1.4 * np.sin(phase + y * 0.45)))
+                for dx in (0, 1):
+                    if 0 <= x + dx < N:
+                        img[y, x + dx, :3] = gp[1 + (dx + y // 3) % 3]
+                        img[y, x + dx, 3] = 1.0
+        return img
+    r = rng("river_weed")
+    out["river_weed_lower"] = ribbons(r, 0, 4)
+    out["river_weed_upper"] = ribbons(r, 3, 3)
+    # river grass: short tufts of thin blades
+    r = rng("river_grass")
+    img = np.zeros((N, N, 4))
+    for i in range(7):
+        x = int(r.integers(1, N - 1))
+        h = int(r.integers(5, 11))
+        lean = int(r.choice([-1, 0, 1]))
+        for k in range(h):
+            y = N - 1 - k
+            xx = min(N - 1, max(0, x + (lean * k) // 4))
+            img[y, xx, :3] = gp[1 + (k // 3) % 4]
+            img[y, xx, 3] = 1.0
+    out["river_grass"] = img
+
+
 def ladder_design(name, base):
     pal = ramp(base, 5, spread=0.15)
     img = np.zeros((N, N, 3)) + pal[1]
@@ -2322,6 +2356,7 @@ def build_all():
     make_ice_spikes(out)
     make_meadow(out)
     make_crystal_caves(out)
+    make_river(out)
     return out
 
 

@@ -351,6 +351,8 @@ c_six:      dd 6.0
 c_1000:     dd 1000.0
 c_255:          dd 255.0
 c_quarter:  dd 0.25
+c_nine:     dd 9.0                      ; (no river: far outside any valley)
+c_rv_bank:  dd 0.6                      ; river banks: inside this share of the valley
 c_eighth:   dd 0.125
 align 8
 c_one_d:    dq 1.0
@@ -1349,6 +1351,7 @@ underground:
 ;   in:  rcx = COLUMN*, rdx = scratch ARENA* (reset by the caller)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
+%define RIVER_BANK_HIGH 4               ; banks reach this far above the sea level
 %define G_COL       0
 %define G_ARENA     8
 %define G_H         16                  ; i32[34*34] surface heights
@@ -1380,7 +1383,9 @@ underground:
 %define G_TMP       (G_FCTX + 40)              ; scratch qword
 %define G_ISLE      (G_FCTX + 48)              ; highest floating island top
 %define G_GLAC      (G_FCTX + 56)              ; u8[HM*HM] glacier flags
-%define G_LOCALS    (96 + TSAMPLE_size + 96)
+%define G_RIVG      (G_FCTX + 64)              ; f32 river value on the coarse grid
+%define G_RIVM      (G_FCTX + 72)              ; u8[HM*HM] river classes
+%define G_LOCALS    (96 + TSAMPLE_size + 128)
 %define CG          (HM / 4 + 1)               ; coarse grid side (every 4 blocks)
 PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [LOCAL(G_COL)], rcx
@@ -1403,6 +1408,10 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [LOCAL(G_POND)], rax
     INVOKE arena_alloc, [LOCAL(G_ARENA)], HM * HM, 16
     mov [LOCAL(G_GLAC)], rax
+    INVOKE arena_alloc, [LOCAL(G_ARENA)], CG * CG * 4, 16
+    mov [LOCAL(G_RIVG)], rax
+    INVOKE arena_alloc, [LOCAL(G_ARENA)], HM * HM, 16
+    mov [LOCAL(G_RIVM)], rax
     INVOKE arena_alloc, [LOCAL(G_ARENA)], BMAP_size, 16
     mov [LOCAL(G_BMAP)], rax
     INVOKE arena_alloc, [LOCAL(G_ARENA)], FCTX_size, 16
@@ -1553,6 +1562,15 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     movss [rdx + rcx * 8], xmm1
     movss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.overhang]
     movss [rdx + rcx * 8 + 4], xmm0
+    ; the river value (0 at the river's edge .. 1 at the valley's), on land
+    movss xmm0, [LOCAL(G_SAMPLE) + TSAMPLE.river]
+    movss xmm1, [LOCAL(G_SAMPLE) + TSAMPLE.land]
+    comiss xmm1, [rel c_half]
+    jae .cg_land
+    movss xmm0, [rel c_nine]
+.cg_land:
+    mov rdx, [LOCAL(G_RIVG)]
+    movss [rdx + rcx * 4], xmm0
     inc r13d
     cmp r13d, CG
     jb .cg_x
@@ -1698,6 +1716,72 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     jle .glac_max
     mov [LOCAL(G_MAXH)], eax
 .glac_max:
+    ; ---- rivers: each column's class (water: under the sea level inside a
+    ; river valley; bank: low ground near the river) ------------------------------
+    mov rax, [LOCAL(G_RIVM)]
+    mov rbx, [LOCAL(G_FCTX)]
+    mov [rbx + FCTX.river], rax
+    xor r12d, r12d
+.rv_z:
+    xor r13d, r13d
+.rv_x:
+    mov ecx, r13d
+    mov r8d, ecx
+    shr r8d, 2
+    and ecx, 3
+    cvtsi2ss xmm4, ecx
+    mulss xmm4, [rel c_quarter]
+    mov ecx, r12d
+    mov r9d, ecx
+    shr r9d, 2
+    and ecx, 3
+    cvtsi2ss xmm5, ecx
+    mulss xmm5, [rel c_quarter]
+    imul eax, r9d, CG
+    add eax, r8d
+    mov rdx, [LOCAL(G_RIVG)]
+    movss xmm0, [rdx + rax * 4]
+    movss xmm1, [rdx + rax * 4 + 4]
+    subss xmm1, xmm0
+    mulss xmm1, xmm4
+    addss xmm0, xmm1
+    movss xmm2, [rdx + rax * 4 + CG * 4]
+    movss xmm3, [rdx + rax * 4 + CG * 4 + 4]
+    subss xmm3, xmm2
+    mulss xmm3, xmm4
+    addss xmm2, xmm3
+    subss xmm2, xmm0
+    mulss xmm2, xmm5
+    addss xmm0, xmm2                    ; river value
+    imul eax, r12d, HM
+    add eax, r13d
+    mov rdx, [LOCAL(G_H)]
+    mov ecx, [rdx + rax * 4]
+    dec ecx                             ; top block
+    xor r8d, r8d
+    comiss xmm0, [rel c_one]
+    jae .rv_put
+    cmp ecx, [rel g_sea_level]
+    jge .rv_bank
+    mov r8d, RIVER_WATER
+    jmp .rv_put
+.rv_bank:
+    comiss xmm0, [rel c_rv_bank]
+    jae .rv_put
+    mov r9d, [rel g_sea_level]
+    add r9d, RIVER_BANK_HIGH
+    cmp ecx, r9d
+    jg .rv_put
+    mov r8d, RIVER_BANK
+.rv_put:
+    mov rdx, [LOCAL(G_RIVM)]
+    mov [rdx + rax], r8b
+    inc r13d
+    cmp r13d, HM
+    jb .rv_x
+    inc r12d
+    cmp r12d, HM
+    jb .rv_z
     mov rbx, [LOCAL(G_FCTX)]
     mov rcx, rbx
     call flora_ponds
@@ -1731,6 +1815,21 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     call bmap_dither
     mov rcx, [LOCAL(G_TMP)]
     mov [rcx + INFO_BIOME], al
+    ; river columns: the land biome's river biome
+    lea edx, [r12d + HB]
+    imul edx, edx, HM
+    lea edx, [edx + r13d + HB]
+    mov r8, [LOCAL(G_RIVM)]
+    cmp byte [r8 + rdx], 0
+    je .not_river
+    movzx eax, al
+    imul rax, rax, BIOME_size
+    lea rdx, [rel g_biomes]
+    mov eax, [rdx + rax + BIOME.river_b]
+    test eax, eax
+    jz .not_river
+    mov [rcx + INFO_BIOME], al
+.not_river:
     lea eax, [r12d + HB]
     imul eax, eax, HM
     lea eax, [eax + r13d + HB]
@@ -1815,6 +1914,28 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     lea r8d, [r12d * 4 + 2]
     call bmap_tint
     mov r9d, ecx                        ; water layer
+    ; over a river: the river biome's water colour
+    lea r10d, [r12d * 4 + 2 + HB]
+    imul r10d, r10d, HM
+    lea r10d, [r10d + r13d * 4 + 2 + HB]
+    mov r11, [LOCAL(G_RIVM)]
+    cmp byte [r11 + r10], 0
+    je .ti_land
+    mov r10d, r12d
+    shl r10d, 7
+    lea r10d, [r10d + r13d * 4 + 2 + 64]  ; interior (4j+2) * 32 + 4i+2
+    imul r10, r10, INFO_SIZE
+    add r10, [LOCAL(G_INFO)]
+    movzx r10d, byte [r10 + INFO_BIOME]
+    imul r10, r10, BIOME_size
+    lea r11, [rel g_biomes]
+    add r10, r11
+    mov r9d, [r10 + BIOME.wfac]
+    cmp dword [r10 + BIOME.own_colors], 0
+    je .ti_land
+    mov eax, [r10 + BIOME.gfac]
+    mov edx, [r10 + BIOME.ffac]
+.ti_land:
     mov ecx, r12d
     shl ecx, 3
     add ecx, r13d

@@ -1,0 +1,87 @@
+# Rivers (design/biomes/river.md). The climate never picks these biomes
+# (their height range is impossible); the terrain's river columns (the
+# water and a strip of low bank) take the land biome's `river_biome`, by
+# default the one named "river".
+
+# temperate: clear blue-green water, lush grassy banks to the water's edge,
+# reeds, cattails, gravel bars, willows, lily pads, river weed, stepping
+# stones
+[biome river]
+height      = -1000, -999
+own_shore   = 1                  # grass to the water's edge
+pond_floor  = sand               # the river bed
+top_patch   = gravel, 0.55       # gravel bars
+water_color = 32B4C8             # clear bright blue-green
+
+plant = short_grass, 0.25
+plant = tall_grass, 0.15
+plant = reeds, 0.06
+plant = cattail, 0.04
+plant = fern, 0.03
+
+water_plant = lily_pad, 0.02
+water_plant = flowering_lily_pad, 0.008
+bed_plant   = river_weed, 0.10
+bed_plant   = river_grass, 0.12
+
+tree         = willow, 1
+tree_density = 0.004
+
+water_feature         = river_stone, 1
+water_feature_density = 0.002
+water_feature_depth   = 1
+
+# cold: mostly iced over with open channels; snowy gravel banks; no plants
+[biome frozen_river]
+height       = -1000, -999
+beach_block  = gravel
+beach_patch  = snow, 0.0
+seabed_block = gravel
+water_color  = 2A6A8A
+sea_ice             = ice
+sea_ice_snow        = snow, 0.3
+sea_ice_cover       = 0.85, 0
+sea_ice_floe        = 7, 1.2
+sea_ice_shore_depth = 2
+
+# jungle and swamp: murky water, mud banks, big ferns, reeds, many lily pads
+[biome muddy_river]
+height      = -1000, -999
+own_shore   = 1
+trees_in_water = 1
+pond_floor  = mud
+top_patch   = mud, 0.0
+water_color = 5A6A32
+
+plant = fern, 0.14
+plant = reeds, 0.08
+plant = cattail, 0.04
+plant = tall_grass, 0.08
+
+water_plant = lily_pad, 0.12
+water_plant = flowering_lily_pad, 0.02
+bed_plant   = river_weed, 0.08
+
+tree         = bald_cypress, 1
+tree_density = 0.003
+
+# dry lands: a green oasis strip of grass, reeds and palms
+[biome oasis_river]
+height        = -1000, -999
+own_shore     = 1
+own_colors    = 1                # its own green, not the desert's
+pond_floor    = sand
+grass_color   = 5CC83A
+foliage_color = 4AB02C
+water_color   = 2EB0C0
+
+plant = short_grass, 0.30
+plant = tall_grass, 0.10
+plant = reeds, 0.08
+plant = cattail, 0.03
+
+water_plant = lily_pad, 0.03
+bed_plant   = river_grass, 0.10
+
+tree         = palm, 1
+tree_density = 0.006

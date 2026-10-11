@@ -38,3 +38,6 @@ bush         = hoodoo, 7
 bush         = striped_arch, 1
 bush         = badlands_boulder, 10
 bush_density = 0.0001
+
+# green oasis strips along rivers (design/biomes/river.md)
+river_biome = oasis_river

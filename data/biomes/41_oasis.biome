@@ -28,3 +28,6 @@ pond_radius = 5, 6
 pond_depth  = 3
 pond_floor  = sand
 pond_slope  = 12               # pools may cut into sloping ground
+
+# green oasis strips along rivers (design/biomes/river.md)
+river_biome = oasis_river

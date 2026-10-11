@@ -49,6 +49,8 @@ endstruc
 %define INFO_GBIOME     28              ; u8 the glacier biome
 %define INFO_WX         32              ; i32 world x, z (ice columns)
 %define INFO_WZ         36
+%define RIVER_BANK      1               ; FCTX.river: a river bank column
+%define RIVER_WATER     2               ;   a river water column
 %define GF_ICE          1
 %define GF_MORAINE      2
 %define POND_NONE       -32768

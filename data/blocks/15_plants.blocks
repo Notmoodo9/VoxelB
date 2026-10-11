@@ -154,3 +154,20 @@ members   = lavender, blue_lupin, pink_lupin, white_lupin
 [family meadow_plants]
 templates = plant
 members   = clover, buttercup, edelweiss, gentian, alpine_aster
+
+# rivers (design/biomes/river.md): plants on the bed under water; the
+# mesher draws their cell as water around them (waterlogged)
+[block river_weed]
+shape          = tall_plant
+textures       = river_weed_lower
+upper_textures = river_weed_upper
+render         = cutout
+sway           = 1
+waterlogged    = 1
+
+[block river_grass]
+shape       = plant
+textures    = river_grass
+render      = cutout
+sway        = 1
+waterlogged = 1

@@ -43,3 +43,6 @@ pond_radius = 2.5, 5
 pond_depth  = 2
 pond_floor  = mud
 pond_slope  = 4
+
+# muddy rivers (design/biomes/river.md)
+river_biome = muddy_river

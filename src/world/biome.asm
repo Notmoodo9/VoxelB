@@ -74,6 +74,7 @@ IMPORT FindFirstFileA, FindNextFileA, FindClose
 %define T_KIND          9               ; tree kind name
 %define T_PATCH         10              ; block, float level
 %define T_THEME         11              ; 4 blocks appended to 4 lists (cave themes)
+%define T_NAME          12              ; a name (copied; resolved after loading)
 
 ; record kinds
 %define K_NONE          0
@@ -160,6 +161,14 @@ k_b_moraine_h:  db "moraine_height", 0
 k_b_crevasse:   db "crevasse", 0
 k_b_ice_caves:  db "ice_caves", 0
 k_b_serac:      db "serac", 0
+k_b_river:      db "river_biome", 0
+k_b_wfeat:      db "water_feature", 0
+k_b_wfeat_d:    db "water_feature_density", 0
+k_b_wfeat_dep:  db "water_feature_depth", 0
+k_b_bed:        db "bed_plant", 0
+k_b_own_col:    db "own_colors", 0
+k_b_trees_w:    db "trees_in_water", 0
+str_river:      db "river", 0
 k_contrast:     db "contrast", 0
 ; biome keys
 k_b_temp:       db "temperature", 0
@@ -310,6 +319,13 @@ biome_settings:
     dq k_b_crevasse,  T_RANGE_F,  BIOME.crevasse
     dq k_b_ice_caves, T_FLOAT,    BIOME.ice_caves
     dq k_b_serac,     T_RANGE_F,  BIOME.serac
+    dq k_b_river,     T_NAME,     BIOME.river_name
+    dq k_b_wfeat,     T_TREEREF,  BIOME.nbergs
+    dq k_b_wfeat_d,   T_FLOAT,    BIOME.berg_d
+    dq k_b_wfeat_dep, T_INT,      BIOME.berg_depth
+    dq k_b_bed,       T_PLANT,    BIOME.nbed
+    dq k_b_own_col,   T_INT,      BIOME.own_colors
+    dq k_b_trees_w,   T_INT,      BIOME.trees_water
     dq k_b_top,       T_BLOCK,    BIOME.top
     dq k_b_filler,    T_BLOCK,    BIOME.filler
     dq k_b_plant,     T_PLANT,    BIOME.nplants
@@ -1094,6 +1110,8 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     je .t_patch
     cmp eax, T_THEME
     je .t_theme
+    cmp eax, T_NAME
+    je .t_name
     ; T_KIND
     xor edi, edi
 .kind_find:
@@ -1258,6 +1276,13 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     lea rcx, [rel str_bad_block]
     mov rdx, [LOCAL(0)]
     call warn
+    RETURN
+.t_name:
+    mov rcx, rsi
+    call cfg_next_token
+    mov rcx, rax
+    call str_dup
+    mov [r13], rax
     RETURN
 .t_theme:                               ; crystal, sprout, stone, pool
     cmp dword [r13], CAVEB_THEMES
@@ -1680,6 +1705,50 @@ ENDPROC
 ;   clobbers: rax, rcx, rdx, r8
 ; -----------------------------------------------------------------------------
 smooth_setup:
+    ; river biomes: each biome's `river_biome`, by default the one named
+    ; "river" (if any)
+    push rbx
+    push rsi
+    push rdi
+    sub rsp, 32
+    xor ebx, ebx
+.rv:
+    cmp ebx, [rel g_biome_count]
+    jae .rv_done
+    imul rsi, rbx, BIOME_size
+    lea rax, [rel g_biomes]
+    add rsi, rax
+    mov dword [rsi + BIOME.river_b], 0
+    mov rdi, [rsi + BIOME.river_name]
+    test rdi, rdi
+    jnz .rv_find
+    lea rdi, [rel str_river]
+.rv_find:
+    mov ecx, 1
+.rv_f:
+    cmp ecx, [rel g_biome_count]
+    jae .rv_next
+    mov [rsp + 24], ecx
+    imul rax, rcx, BIOME_size
+    lea rdx, [rel g_biomes]
+    mov rcx, [rdx + rax + BIOME.name]
+    mov rdx, rdi
+    call str_ieq
+    mov ecx, [rsp + 24]
+    test eax, eax
+    jnz .rv_found
+    inc ecx
+    jmp .rv_f
+.rv_found:
+    mov [rsi + BIOME.river_b], ecx
+.rv_next:
+    inc ebx
+    jmp .rv
+.rv_done:
+    add rsp, 32
+    pop rdi
+    pop rsi
+    pop rbx
     mov dword [rel g_smooth_on], 0
     mov dword [rel g_smooth_lo], 0x7FFFFFFF
     mov edx, 1

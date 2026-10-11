@@ -1025,3 +1025,29 @@ block for their upper half (mossy cobblestone boulders).
   grottos are one colour. At 220 a single grotto showed 2–3 colours.
 * The survey logs the region share of the deep volume (6.4% at y −16 to
   −176 within 1 km) and the nearest region point.
+
+## D78 — Rivers: per-column river biomes (M10 part 21)
+* The biome blend samples every 16 blocks, which misses rivers that are
+  ~8 wide. So river columns are decided per column instead:
+  * the coarse terrain grid (every 4 blocks, world-aligned) keeps the
+    river value (0 at the river's edge, 1 at the valley's; 9 off land);
+  * every heightmap column gets a class: *water* (under the sea level
+    inside the valley) or *bank* (value < 0.6, at most 4 above the sea).
+* River columns take their land biome's `river_biome` (default "river")
+  for everything per column:
+  * INFO biome: ground, shore, plants, water plants, bed plants, sea ice;
+  * tree and water-feature candidates (the class map covers the whole
+    heightmap, so neighbouring chunks agree);
+  * the water tint of the 4×4 tint cell over the river (grass and
+    foliage too with `own_colors`).
+* Where a river meets a lake or the sea, the water colour changes at a
+  4-block cell edge. That is accepted for now.
+* `waterlogged` blocks (river weed): the mesher remaps the cell to the
+  water block for face building and culling, and `shapes_emit` draws the
+  plant inside it, so there are no air pockets. The border filler
+  (0xFFFF) is skipped (the flag table is 4096 entries).
+* The iceberg layer became a general water-feature layer, with a minimum
+  depth. Icebergs float; other kinds (stepping stones) stand on the bed.
+* `own_shore` biomes put trees in water only with `trees_in_water`
+  (swamp, muddy river). Palms and willows had stood in the river.
+* MAX_TREES 64 → 96.

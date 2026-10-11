@@ -82,6 +82,7 @@ Defines a block, or changes one defined earlier (the later settings win).
 | `light` | `r, g, b` (0–15 each) | coloured light the block emits (used from Milestone 13) |
 | `sway` | `0`/`1` | the block waves in the wind (leaves; plants bend from the ground) |
 | `tint` | `grass` / `foliage` / `water` / `none` [`, faces…`] | the faces (default all) take the biome's grass, foliage or water colour, blended across biome borders |
+| `waterlogged` | `1`: the block is drawn inside water (river weed): the mesher treats its cell as water for faces |
 | `shape` | see below (default `cube`) | a non-cube shape. **Must be the first setting of a new block** (in a template: the first line after `name`), because it reserves one block id per state |
 | `upper_textures` | like `textures` | door shapes only: textures of the upper half |
 
@@ -346,6 +347,11 @@ Temperature and humidity are 0..1.
 | `crevasse` | `threshold, depth`: ridged-noise lines above `threshold` (0..1, inside crevasse fields) are cut up to `depth` into the ice |
 | `ice_caves` | 3D noise threshold for caves inside ice at least 10 thick (0 = none) |
 | `serac` | `slope, jitter`: where the smoothed height slopes more than `slope` blocks per block, the ice breaks into 3×3 blocks ± `jitter` high |
+| `river_biome` | the biome its river columns take (the river water and a strip of low bank beside it); default: the biome named `river`. River biomes get an impossible `height` so the climate never picks them |
+| `own_colors` | river biome: `1` = its own grass and foliage colours on river columns (default: the land's; the water colour is always its own) |
+| `trees_in_water` | `own_shore` biomes: `1` = trees may also stand in water up to 2 deep (swamp cypresses); otherwise only on dry low ground |
+| `bed_plant` | `block, chance` (repeatable): plants on the bed under the sea or a river, at least 2 deep (tall plants need 3) |
+| `water_feature`, `water_feature_density`, `water_feature_depth` | the same layer as `iceberg`: trees placed on water at least `depth` deep (default 4); `iceberg` kinds float at the surface, others (rocks) stand on the bed |
 | `iceberg`, `iceberg_density` | `tree, weight` (repeatable, up to 8): icebergs on water 4+ deep (`iceberg` kind trees); per block² |
 
 ### `[cave_biome <name>]` (in `data/biomes/`)
