@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 18): 🎨 DESIGN — Frozen ocean: DONE** (Windows CI: see below)
+**Milestone 10 (part 18): 🎨 DESIGN — Frozen ocean: DONE** (Windows CI green: run #54)
 
 Next: **Milestone 10, part 19: the next biome**. Candidates are glaciers
 (the other half of this cold pair), crystal caves (underground), river
