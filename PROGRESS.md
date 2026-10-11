@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 21): 🎨 DESIGN — Rivers: DONE** (Windows CI: see below)
+**Milestone 10 (part 21): 🎨 DESIGN — Rivers: DONE** (Windows CI green: run #60)
 
 **Milestone 10 (biomes) is complete.** The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
