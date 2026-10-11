@@ -26,3 +26,7 @@ pond_radius = 1.5, 3.5
 pond_depth  = 2
 pond_floor  = gravel
 pond_top    = ice
+
+# snowy gravel shores along the frozen ocean (design/biomes/frozen_ocean.md)
+beach_block = gravel
+beach_patch = snow, 0.0

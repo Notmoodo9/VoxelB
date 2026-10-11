@@ -1,0 +1,34 @@
+# Frozen ocean (design/biomes/frozen_ocean.md): the cold seas freeze into
+# broken pack ice (floes of packed ice, many snow-covered, with open
+# channels of deep teal-blue water and pressure ridges), opening up toward
+# warmer seas, with icebergs, snowy gravel shores and a gravel, clay and
+# stone sea floor.
+
+[biome frozen_ocean]
+temperature = 0.00, 0.36         # every cold sea,
+priority    = 1
+height      = -300, 99           #   from the sea floor up to the shore
+water_color = 2A6A8A             # deep cold teal-blue
+
+# shores: gravel with snow where the detail noise is above 0; sea floor:
+# gravel with stony and clay patches
+beach_block  = gravel
+beach_patch  = snow, 0.0
+seabed_block = gravel
+seabed_patch = stone
+
+# pack ice: floes ~14 blocks across, channels 1.6 wide; 90% of the floes
+# frozen, thinning out over the warmest 0.12 of the temperature range;
+# water up to 3 deep always frozen
+sea_ice             = packed_ice
+sea_ice_snow        = snow, 0.55
+sea_ice_ridge       = packed_ice, 0.3
+sea_ice_cover       = 0.9, 0.12
+sea_ice_floe        = 14, 1.6
+sea_ice_shore_depth = 3
+
+# icebergs on deep water: about one per 50 x 50 blocks
+iceberg         = small_iceberg, 10
+iceberg         = tall_iceberg, 3
+iceberg         = giant_iceberg, 1
+iceberg_density = 0.0004

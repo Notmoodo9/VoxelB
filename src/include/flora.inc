@@ -51,6 +51,8 @@ struc FCTX
     .ids        resq 1                  ; section being filled
     .y0         resd 1
     .top        resd 1                  ; highest y any tree reaches
+    .bot        resd 1                  ; lowest y an iceberg reaches (under water)
+    .pad0       resd 1
     .npond      resd 1
     .ncand      resd 1
     .ponds      resb MAX_PONDS * POND_size
@@ -63,5 +65,6 @@ endstruc
 
 %ifndef FLORA_IMPL
 extern flora_ponds, flora_prepare, flora_section, flora_survey, flora_islands
+extern flora_sea_ice
 %endif
 %endif

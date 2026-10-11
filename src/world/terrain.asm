@@ -1786,6 +1786,10 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     call flora_islands
     mov [LOCAL(G_ISLE)], eax
 
+    ; ---- sea ice (frozen ocean floes) ---------------------------------------------
+    mov rcx, [LOCAL(G_FCTX)]
+    call flora_sea_ice
+
     ; ---- biome colours for the tint map (8 x 8 per layer) ----------------------
     xor r12d, r12d
 .ti_z:
@@ -1895,12 +1899,25 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     movzx r10d, byte [rcx + INFO_BIOME]
     imul r10, r10, BIOME_size
     lea rax, [rel g_biomes]
-    mov eax, [rax + r10 + BIOME.beach]
+    add r10, rax
+    mov eax, [r10 + BIOME.beach]
     test eax, eax
     jnz .beach_have
     mov eax, [rel g_b_beach]
 .beach_have:
     mov edx, eax
+    ; shore patches above the water (snow on frozen shores): where the
+    ; detail noise is above the biome's level
+    cmp dword [r10 + BIOME.beach_patch], 0
+    je .sf_store
+    cmp r9d, [rel g_sea_level]
+    jl .sf_store
+    movsx r11d, byte [rcx + INFO_SNOW]
+    cvtsi2ss xmm0, r11d
+    divss xmm0, [rel g_snow_var]
+    comiss xmm0, [r10 + BIOME.beach_patch_lvl]
+    jbe .sf_store
+    mov eax, [r10 + BIOME.beach_patch]
     jmp .sf_store
 .inland:
     ; scree high up on moderate slopes
@@ -1967,16 +1984,27 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov edx, eax
     jmp .sf_store
 .seabed:
-    ; sand, with gravel and clay patches from the detail noise
-    movss xmm0, [rcx]                   ; (overhang amplitude: unused here)
+    ; the biome's sea floor (else sand), with high patches (else gravel)
+    ; and clay patches from the detail noise
+    movzx r10d, byte [rcx + INFO_BIOME]
+    imul r10, r10, BIOME_size
+    lea rax, [rel g_biomes]
+    add r10, rax
+    mov eax, [r10 + BIOME.seabed]
+    test eax, eax
+    jnz .seabed_have
     mov eax, [rel g_b_beach]
-    movsx r10d, byte [rcx + 11]         ; detail-based jitter as a patch value
-    cmp r10d, 6
+.seabed_have:
+    movsx r11d, byte [rcx + 11]         ; detail-based jitter as a patch value
+    cmp r11d, 6
     jl .seabed_low
+    mov eax, [r10 + BIOME.seabed_hi]
+    test eax, eax
+    jnz .seabed_store
     mov eax, [rel g_b_gravel]
     jmp .seabed_store
 .seabed_low:
-    cmp r10d, -6
+    cmp r11d, -6
     jg .seabed_store
     mov eax, [rel g_b_clay]
 .seabed_store:
@@ -2065,6 +2093,14 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
 .above_ok:
     cmp ebx, ecx
     jl .not_above
+    ; icebergs reaching down into this section of the sea
+    mov rax, [LOCAL(G_FCTX)]
+    lea edx, [ebx + 31]
+    cmp edx, [rax + FCTX.bot]
+    jl .no_berg
+    cmp ebx, [rax + FCTX.top]
+    jle .not_above
+.no_berg:
     cmp ebx, [rel g_sea_level]
     jg .air
     lea eax, [ebx + 31]
@@ -2222,7 +2258,35 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
 .no_isle:
     mov eax, [rel g_b_water]
     cmp edi, [rel g_sea_level]
-    jle .put
+    jl .put
+    jg .above_sea
+    ; the sea surface: a floe of the frozen ocean (INFO_ICE)
+    movzx ecx, byte [r15 + INFO_ICE]
+    and ecx, ICE_FLOE | ICE_SNOW
+    jz .put
+    movzx edx, byte [r15 + INFO_BIOME]
+    imul edx, edx, BIOME_size
+    lea rax, [rel g_biomes]
+    add rdx, rax
+    mov eax, [rdx + BIOME.sea_ice]
+    cmp ecx, ICE_SNOW
+    jne .put
+    mov eax, [rdx + BIOME.sea_snow]
+    jmp .put
+.above_sea:
+    ; a pressure ridge on a floe, one block above the surface
+    test byte [r15 + INFO_ICE], ICE_RIDGE
+    jz .no_ridge
+    mov ecx, [rel g_sea_level]
+    inc ecx
+    cmp edi, ecx
+    jne .no_ridge
+    movzx edx, byte [r15 + INFO_BIOME]
+    imul edx, edx, BIOME_size
+    lea rax, [rel g_biomes]
+    mov eax, [rax + rdx + BIOME.sea_ridge]
+    jmp .put
+.no_ridge:
     movsx ecx, word [r15 + INFO_POND]   ; pond water
     cmp edi, ecx
     jl .put

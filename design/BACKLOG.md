@@ -28,7 +28,8 @@ yet; each item gets its own doc in `design/` when we interview it.
 | done | Taiga + snowy taiga | M10 | `design/biomes/taiga.md` |
 | done | Snowy tundra | M10 | `design/biomes/snowy_tundra.md` |
 | done | Ice spikes | M10 | `design/biomes/ice_spikes.md` |
-| todo | Cold biomes: glaciers, frozen ocean | M10 | |
+| done | Frozen ocean | M10 | `design/biomes/frozen_ocean.md` |
+| todo | Cold biomes: glaciers | M10 | |
 | done | Glowing forest | M10 | `design/biomes/glowing_forest.md` |
 | done | Sky islands (floating islands) | M10 | `design/biomes/sky_islands.md` |
 | done | Mushroom fields | M10 | `design/biomes/mushroom_fields.md` |
@@ -41,7 +42,7 @@ yet; each item gets its own doc in `design/` when we interview it.
 | done | Shaped blocks | M7b | `design/blocks/shaped_blocks.md` |
 | todo | Sign text, pressure plate mechanisms (wiring) | M16+ | from the M7b interview |
 | todo | Items, inventory, chests, crafting, tool tiers, smelting | M18 | |
-| todo | Passive animals | M19 | one mob at a time; bees and beehives on meadow trees (meadow interview) |
+| todo | Passive animals | M19 | one mob at a time; bees and beehives on meadow trees (meadow interview); seals, polar bears, walruses (frozen ocean interview) |
 | todo | Survival: health, hunger, damage, death, difficulty levels, Hardcore | M20 | |
 | todo | Combat: melee, ranged, armor | M21 | |
 | todo | Hostile mobs and spawning rules | M22 | |

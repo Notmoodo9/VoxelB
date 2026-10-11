@@ -118,6 +118,17 @@ k_b_grove_ch:   db "grove_chance", 0
 k_b_grove_r:    db "grove_radius", 0
 k_b_grove_d:    db "grove_density", 0
 k_b_grove_tree: db "grove_tree", 0
+k_b_sea_ice:    db "sea_ice", 0
+k_b_sea_snow:   db "sea_ice_snow", 0
+k_b_sea_ridge:  db "sea_ice_ridge", 0
+k_b_sea_cover:  db "sea_ice_cover", 0
+k_b_sea_floe:   db "sea_ice_floe", 0
+k_b_sea_fast:   db "sea_ice_shore_depth", 0
+k_b_seabed:     db "seabed_block", 0
+k_b_seabed_hi:  db "seabed_patch", 0
+k_b_beach_p:    db "beach_patch", 0
+k_b_berg:       db "iceberg", 0
+k_b_berg_d:     db "iceberg_density", 0
 k_contrast:     db "contrast", 0
 ; biome keys
 k_b_temp:       db "temperature", 0
@@ -180,6 +191,8 @@ v_cypress:      db "cypress", 0
 v_gnarled:      db "gnarled", 0
 v_mushroom:     db "mushroom", 0
 v_spike:        db "spike", 0
+v_iceberg:      db "iceberg", 0
+k_t_top:        db "top_block", 0
 k_t_under:      db "underside", 0
 k_t_lean:       db "lean", 0
 k_b_dry:        db "dry_ponds", 0
@@ -243,6 +256,17 @@ biome_settings:
     dq k_b_grove_r,   T_RANGE_F,  BIOME.grove_r
     dq k_b_grove_d,   T_FLOAT,    BIOME.grove_d
     dq k_b_grove_tree, T_TREEREF, BIOME.ngtrees
+    dq k_b_sea_ice,   T_BLOCK,    BIOME.sea_ice
+    dq k_b_sea_snow,  T_PATCH,    BIOME.sea_snow
+    dq k_b_sea_ridge, T_PATCH,    BIOME.sea_ridge
+    dq k_b_sea_cover, T_RANGE_F,  BIOME.sea_cover
+    dq k_b_sea_floe,  T_RANGE_F,  BIOME.sea_floe
+    dq k_b_sea_fast,  T_INT,      BIOME.sea_fast
+    dq k_b_seabed,    T_BLOCK,    BIOME.seabed
+    dq k_b_seabed_hi, T_BLOCK,    BIOME.seabed_hi
+    dq k_b_beach_p,   T_PATCH,    BIOME.beach_patch
+    dq k_b_berg,      T_TREEREF,  BIOME.nbergs
+    dq k_b_berg_d,    T_FLOAT,    BIOME.berg_d
     dq k_b_top,       T_BLOCK,    BIOME.top
     dq k_b_filler,    T_BLOCK,    BIOME.filler
     dq k_b_plant,     T_PLANT,    BIOME.nplants
@@ -307,6 +331,7 @@ tree_settings:
     dq k_t_vine_len,  T_RANGE_I,  TREE.vine_len
     dq k_t_lean,      T_FLOAT,    TREE.lean
     dq k_t_under,     T_BLOCK,    TREE.under
+    dq k_t_top,       T_BLOCK,    TREE.top
     dq 0
 climate_settings:
     dq k_grass_ref,   T_COLOR,    g_grass_ref
@@ -317,8 +342,8 @@ climate_settings:
 kind_names:     dq v_round, v_branching, v_bush, v_giant, v_fallen, v_stump
                 dq v_cactus, v_rock, v_arch, v_fossil, v_palm, v_conifer
                 dq v_acacia, v_baobab, v_kapok, v_grove, v_stone_ring
-                dq v_cypress, v_gnarled, v_mushroom, v_spike
-%define KIND_COUNT 21
+                dq v_cypress, v_gnarled, v_mushroom, v_spike, v_iceberg
+%define KIND_COUNT 22
 
 align 4
 c_one:          dd 1.0
@@ -868,6 +893,7 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     mov dword [r12 + TREE.vine_len + 4], 8
     mov dword [r12 + TREE.lean], 0
     mov dword [r12 + TREE.under], 0
+    mov dword [r12 + TREE.top], 0
     inc dword [rel g_tree_count]
     mov dword [rel g_kind], K_TREE
     RETURN

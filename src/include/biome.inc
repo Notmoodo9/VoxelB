@@ -32,6 +32,7 @@
 %define TREE_GNARLED    18              ; twisting leaning trunk, crooked branches
 %define TREE_MUSHROOM   19              ; stem with a dome or flat cap (giant mushrooms)
 %define TREE_SPIKE      20              ; a tapering spire with a core (ice spikes)
+%define TREE_ICEBERG    21              ; an ice body above and below the sea (frozen ocean)
 
 ; per-chunk blend map: biome samples every 16 blocks from -64 to +96 around
 ; the chunk, blurred (tent filter, radius 32) into points from -32 to +64
@@ -136,6 +137,22 @@ struc BIOME
     .ngtrees        resd 1              ; grove trees: TREE index, weight
     .gtree          resd BIOME_TREES
     .gtree_w        resd BIOME_TREES
+    .sea_ice        resd 1              ; frozen sea: floe block at sea level (0 = none)
+    .sea_snow       resd 1              ; snow-covered floes: block, share of floes
+    .sea_snow_ch    resd 1
+    .sea_ridge      resd 1              ; pressure ridges at floe edges: block, chance
+    .sea_ridge_ch   resd 1
+    .sea_cover      resd 2              ; f32 share of floes frozen, temperature fade width
+    .sea_floe       resd 2              ; f32 floe size, channel width
+    .sea_fast       resd 1              ; int: water this shallow is always frozen
+    .seabed         resd 1              ; sea floor block (0 = beach sand)
+    .seabed_hi      resd 1              ; its high patches (0 = gravel)
+    .beach_patch    resd 1              ; shore patches: block, detail level
+    .beach_patch_lvl resd 1
+    .nbergs         resd 1              ; icebergs: TREE index, weight (deep water)
+    .berg           resd BIOME_TREES
+    .berg_w         resd BIOME_TREES
+    .berg_d         resd 1              ; icebergs per block^2
 endstruc
 
 struc TREE
@@ -161,6 +178,7 @@ struc TREE
     .vine_len       resd 2              ; int length range of vines and strands
     .lean           resd 1              ; float: blocks east per block of height (wind)
     .under          resd 1              ; block under a mushroom cap (gills), 0 = none
+    .top            resd 1              ; block on the top of an iceberg (snow), 0 = none
 endstruc
 
 struc BMAP

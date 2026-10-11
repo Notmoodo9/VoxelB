@@ -1,11 +1,69 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 17): 🎨 DESIGN — Meadow: DONE** (Windows CI green: run #52)
+**Milestone 10 (part 18): 🎨 DESIGN — Frozen ocean: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 18: the next biome**. Candidates are crystal
-caves (underground), glaciers, frozen ocean, river (`design/BACKLOG.md`).
-It starts with its design interview.
+Next: **Milestone 10, part 19: the next biome**. Candidates are glaciers
+(the other half of this cold pair), crystal caves (underground), river
+(`design/BACKLOG.md`). It starts with its design interview.
+
+---
+
+## Milestone 10, part 18 — done (2026-10-11)
+
+### Design interview
+Two rounds plus approval: `design/biomes/frozen_ocean.md`. Frozen ocean
+was picked first; glaciers get their own interview.
+* All cold seas freeze into broken pack ice, with snowy and bare floes,
+  channels of deep teal-blue water and pressure ridges. The ice opens up
+  toward warmer seas.
+* Icebergs: many small, some tall jagged, rare giant tabular ones.
+* Snowy gravel shores with shore-fast ice; a gravel, clay and stone sea
+  floor.
+
+### What was built
+* **Frozen ocean** (`data/biomes/62_frozen_ocean.biome`): ocean heights
+  in the cold climates. 21% of the sea near the origin is frozen.
+* **Sea ice** (D75): a new pass, `flora_sea_ice`, with a new INFO byte.
+  * Voronoi floes with frayed edges and varied channels.
+  * Snowy or bare floes; ridge lines along shared floe edges.
+  * The ice fades with temperature; shallow water is always frozen.
+  * Settings: `sea_ice`, `sea_ice_floe`, `sea_ice_cover`, `sea_ice_snow`,
+    `sea_ice_ridge`, `sea_ice_shore_depth`.
+* **Icebergs**: a new tree kind `iceberg`, with tree setting `top_block`.
+  * A new candidate layer on deep water, with the biome settings
+    `iceberg` and `iceberg_density`.
+  * Sections under the sea are built block by block where icebergs reach
+    into them (`FCTX.bot`).
+  * Trees (data): `small_iceberg`, `tall_iceberg`, `giant_iceberg`.
+* **Shores and sea floor**: new biome settings `beach_patch`,
+  `seabed_block` and `seabed_patch`. Snowy tundra, snowy taiga and ice
+  spikes now have snowy gravel shores too.
+* **Survey**: logs the frozen share of the sea and the nearest open
+  frozen sea.
+
+### How to see it (seed 20261009)
+* Over the pack ice and icebergs:
+  `voxelb.exe --pos 300 150 60 --look 330 -25`.
+* At sea level among the floes:
+  `voxelb.exe --pos 330 110 120 --look 320 -5`.
+* The snowy gravel shore and shore-fast ice:
+  `voxelb.exe --pos 192 200 60 --look 0 -40`.
+
+### Verified
+* Debug and release headless tests pass. The debug build ran over the
+  frozen sea with no asserts.
+* Screenshots: from above, at sea level among the floes, and the shore.
+  The floes and ridges were reworked after the first look.
+
+### Known issues
+* The pack ice is one block thick.
+* Ridges still show small breaks and run along both sides of a channel.
+
+### Performance
+Unchanged: meshing 9.7 ms per column on average. The full 16-chunk view
+(797 columns) is ready after 8.0 s on 3 workers over the frozen sea. 7.0
+FPS average under Wine with llvmpipe.
 
 ---
 

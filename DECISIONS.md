@@ -933,3 +933,36 @@ block for their upper half (mossy cobblestone boulders).
 * `in_clearing` became one routine, `in_disc` (cell size and hash salt
   as parameters), shared with `in_grove`. Clearings are unchanged:
   same 160 cell, salt and centre range.
+
+## D75 — Frozen ocean: sea ice and icebergs (M10 part 18)
+* The frozen ocean is a biome of ocean heights (≤ 99, which includes the
+  low shore) in the cold climates (temperature ≤ 0.36), priority 1.
+  Mushroom islands (priority 3) keep their pockets.
+* Sea ice is decided per column in a new pass, `flora_sea_ice`, and kept
+  in a new INFO byte (`INFO_ICE`: floe, snowy floe, ridge). The terrain
+  fill puts it at the sea level (and ridges one block above).
+  * Floes are Voronoi cells of a jittered grid. The sample point is
+    shifted by the detail noise (±3 blocks) so the edges fray, and the
+    channel width varies 0.5–1.5× per floe, so some floes touch and some
+    have wide leads.
+  * The frozen share fades over the warmest part of the biome's
+    temperature range (`biome_climate` per column, only over open water
+    of these biomes), so the pack opens toward warmer seas.
+  * Ridges are decided per pair of floes (hash of both cells), so they
+    form lines along shared edges rather than scattered blocks.
+  * The ice is one block thick: the section below the sea level is a
+    uniform water section and stays one.
+* Icebergs are a tree kind (`iceberg`) and a third candidate layer in
+  `flora_prepare`, on water 4+ deep, standing at the sea level.
+  * Their underwater part needs the sections below the sea to be built
+    block by block. `FCTX.bot` (the lowest y an iceberg may reach, at
+    most 24 under the sea) turns those uniform water sections into
+    detailed ones, only in chunks with icebergs.
+  * Shape: the union of 1–4 lobes, peaked as (1 − t)^1.5 or flat-topped
+    (min(1, 3(1 − t))); 0.6 × the height under water.
+* Shores and sea floor are biome settings (`beach_patch`,
+  `seabed_block`, `seabed_patch`). The shores of a frozen sea mostly
+  belong to the cold land biomes (snowy tundra, snowy taiga, ice
+  spikes), so they got the same snowy gravel shore.
+* The survey logs the share of the sea that is frozen and the nearest
+  open frozen sea (6+ deep).

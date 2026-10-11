@@ -18,3 +18,7 @@ tree_density = 0.02
 bush         = mossy_boulder, 2
 bush         = fallen_spruce, 1
 bush_density = 0.0008
+
+# snowy gravel shores along the frozen ocean (design/biomes/frozen_ocean.md)
+beach_block = gravel
+beach_patch = snow, 0.0

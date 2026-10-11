@@ -31,9 +31,10 @@
 %include "flora.inc"
 
 global flora_ponds, flora_prepare, flora_section, flora_survey, flora_islands
+global flora_sea_ice
 
 extern g_world_seed, g_sea_level, g_beach_high, g_b_top, g_b_water
-extern terrain_sample, log_xz, g_snow_var
+extern terrain_sample, log_xz, g_snow_var, biome_climate
 
 %define POND_CELL       64
 %define POND_SPAN       (POND_CELL * 3 / 4)   ; centre range inside a cell
@@ -41,6 +42,7 @@ extern terrain_sample, log_xz, g_snow_var
 %define POND_MAX_R      6.0
 %define MEADOW_SHIFT    9               ; 512-block meadow cells
 %define TREE_CELL_SHIFT 2               ; 4-block tree cells
+%define BERG_DEPTH      24              ; icebergs reach at most this far under the sea
 
 ; leaf and log placement modes (put_block)
 %define PUT_LEAVES      0
@@ -122,7 +124,7 @@ align 8
 special_gen:    dq gen_giant, gen_fallen, gen_stump, gen_cactus, gen_rock
                 dq gen_arch, gen_fossil, gen_palm, gen_conifer
                 dq gen_acacia, gen_baobab, gen_kapok, gen_grove, gen_stone_ring
-                dq gen_cypress, gen_gnarled, gen_mushroom, gen_spike
+                dq gen_cypress, gen_gnarled, gen_mushroom, gen_spike, gen_iceberg
 
 section .text
 
@@ -675,13 +677,14 @@ pick_weighted:
 %define FR_B        32                  ; BIOME*
 %define FR_D        40
 %define FR_H        44
-%define FR_KIND     48                  ; 0 tree, 1 bush
+%define FR_KIND     48                  ; 0 tree, 1 bush, 2 iceberg
 %define FR_GROVE    52                  ; 1: inside a grove (its density and trees)
 %define FR_LOCALS   64
 PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov rbx, rcx
     mov dword [rbx + FCTX.ncand], 0
     mov dword [rbx + FCTX.top], -100000
+    mov dword [rbx + FCTX.bot], 100000
     lea rdi, [rbx + FCTX.litter]
     xor eax, eax
     mov ecx, 1024 / 4
@@ -761,8 +764,9 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     add rax, rcx
     mov [LOCAL(FR_B)], rax
     mov dword [LOCAL(FR_GROVE)], 0
-    cmp dword [LOCAL(FR_KIND)], 0
-    jne .bush_dens
+    cmp dword [LOCAL(FR_KIND)], 1
+    je .bush_dens
+    ja .berg_dens
     ; trees: inside a grove of the biome, its density and its tree list
     mov ecx, [rbx + FCTX.cx]
     shl ecx, 5
@@ -781,6 +785,9 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     jmp .dens
 .bush_dens:
     movss xmm1, [rax + BIOME.bush_dens]
+    jmp .dens
+.berg_dens:
+    movss xmm1, [rax + BIOME.berg_d]
 .dens:
     mulss xmm1, [rel c_16]
     mulss xmm1, [LOCAL(FR_D)]
@@ -796,6 +803,17 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov rcx, [rbx + FCTX.heights]
     mov r12d, [rcx + rax * 4]           ; H
     lea edx, [r12d - 1]
+    cmp dword [LOCAL(FR_KIND)], 2
+    jne .not_berg
+    ; icebergs: deep water only (4+ blocks); they float at the sea surface
+    mov r8d, [rel g_sea_level]
+    sub r8d, 4
+    cmp edx, r8d
+    jg .next_kind
+    mov r12d, [rel g_sea_level]
+    inc r12d                            ; (first block above the surface)
+    jmp .not_clearing
+.not_berg:
     cmp edx, [rel g_beach_high]
     jg .ground_high
     ; low ground: only biomes with their own shore (swamps), down into
@@ -860,6 +878,10 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov r14d, eax                       ; seed
     FRAC16 ax
     mov rcx, [LOCAL(FR_B)]
+    add rcx, BIOME.nbergs
+    cmp dword [LOCAL(FR_KIND)], 2
+    je .pick
+    mov rcx, [LOCAL(FR_B)]
     add rcx, BIOME.ntrees
     cmp dword [LOCAL(FR_GROVE)], 0
     je .not_grove
@@ -900,6 +922,15 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     jle .counted
     mov [rbx + FCTX.top], ecx
 .counted:
+    ; icebergs reach down into the water (at most BERG_DEPTH below the top)
+    cmp dword [LOCAL(FR_KIND)], 2
+    jne .not_deep
+    mov ecx, [rel g_sea_level]
+    sub ecx, BERG_DEPTH
+    cmp ecx, [rbx + FCTX.bot]
+    jge .not_deep
+    mov [rbx + FCTX.bot], ecx
+.not_deep:
     inc dword [rbx + FCTX.ncand]
     ; leaf litter around the trunks of the tree layer
     cmp dword [LOCAL(FR_KIND)], 0
@@ -957,7 +988,7 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     jle .lit_z
 .next_kind:
     inc dword [LOCAL(FR_KIND)]
-    cmp dword [LOCAL(FR_KIND)], 2
+    cmp dword [LOCAL(FR_KIND)], 3
     jb .kind
     inc dword [LOCAL(FR_CX)]
     mov eax, [LOCAL(FR_CX)]
@@ -2550,6 +2581,9 @@ PROC flora_survey, SVF_LOCALS, rbx, rsi, rdi, r12, r13
     mov dword [LOCAL(SVF_PD)], 0x7FFFFFFF
     mov dword [LOCAL(SVF_QD)], 0x7FFFFFFF
     mov dword [rel g_sv_rise_d], 0x7FFFFFFF
+    mov dword [rel g_sv_ice_d], 0x7FFFFFFF
+    mov dword [rel g_sv_sea_n], 0
+    mov dword [rel g_sv_ice_n], 0
     ; ---- biome shares ----
     xor r12d, r12d
 .gz:
@@ -2565,10 +2599,33 @@ PROC flora_survey, SVF_LOCALS, rbx, rsi, rdi, r12, r13
     cmp edx, [rel g_sea_level]
     jg .land
     mov dword [LOCAL(SVF_PREV)], -1
-    ; a biome that lifts the sea floor into an island (mushroom fields)?
+    ; frozen sea (a biome with sea ice): its share, and the nearest open
+    ; sea (6+ deep) in it
+    inc dword [rel g_sv_sea_n]
     imul rcx, rax, BIOME_size
-    lea rdx, [rel g_biomes]
-    add rcx, rdx
+    lea r8, [rel g_biomes]
+    add rcx, r8
+    cmp dword [rcx + BIOME.sea_ice], 0
+    je .not_ice
+    inc dword [rel g_sv_ice_n]
+    mov r8d, [rel g_sea_level]
+    sub r8d, 6
+    cmp edx, r8d
+    jg .not_ice
+    mov r8d, [LOCAL(SVF_X)]
+    imul r8d, r8d
+    mov r9d, [LOCAL(SVF_Z)]
+    imul r9d, r9d
+    add r8d, r9d
+    cmp r8d, [rel g_sv_ice_d]
+    jae .not_ice
+    mov [rel g_sv_ice_d], r8d
+    mov r8d, [LOCAL(SVF_X)]
+    mov [rel g_sv_ice_x], r8d
+    mov r8d, [LOCAL(SVF_Z)]
+    mov [rel g_sv_ice_z], r8d
+.not_ice:
+    ; a biome that lifts the sea floor into an island (mushroom fields)?
     movss xmm0, [rcx + BIOME.flatten + 4]
     comiss xmm0, [rel c_half]
     jbe .gnext
@@ -2901,6 +2958,22 @@ PROC flora_survey, SVF_LOCALS, rbx, rsi, rdi, r12, r13
     mov r8d, [rel g_sv_rise_z]
     call log_xz
 .no_rise:
+    mov eax, [rel g_sv_ice_n]
+    imul eax, eax, 1000
+    xor edx, edx
+    mov ecx, [rel g_sv_sea_n]
+    test ecx, ecx
+    jz .ice_div0
+    div ecx
+.ice_div0:
+    LOG_VAL LOG_LEVEL_INFO, "survey: frozen sea (per mille of sea samples)", rax
+    cmp dword [rel g_sv_ice_d], 0x7FFFFFFF
+    je .no_ice
+    lea rcx, [rel s_sv_ice]
+    mov edx, [rel g_sv_ice_x]
+    mov r8d, [rel g_sv_ice_z]
+    call log_xz
+.no_ice:
     RETURN
 
 ; sample_biome — biome (no blending) and height at [SVF_X], [SVF_Z]
@@ -2929,12 +3002,18 @@ s_sv_meadow:    db "survey: nearest flower meadow centre at", 0
 s_sv_pond:      db "survey: nearest pond centre at", 0
 s_sv_plateau:   db "survey: nearest plateau top at", 0
 s_sv_isle:      db "survey: nearest floating island at", 0
+s_sv_ice:       db "survey: nearest open frozen sea at", 0
 s_sv_rise:      db "survey: nearest island lifted from the sea (mushroom fields) at", 0
 section .bss
 alignb 4
 g_sv_rise_d:    resd 1
 g_sv_rise_x:    resd 1
 g_sv_rise_z:    resd 1
+g_sv_ice_d:     resd 1
+g_sv_ice_x:     resd 1
+g_sv_ice_z:     resd 1
+g_sv_sea_n:     resd 1
+g_sv_ice_n:     resd 1
 section .rdata
 c_sv_plat:      dd 0.95
 
@@ -6082,3 +6161,541 @@ ENDPROC
 section .rdata
 align 4
 c_spk_slack:    dd 0.35                 ; disc test slack (single blocks at the tip)
+
+section .text
+; -----------------------------------------------------------------------------
+; gen_iceberg — an iceberg floating in the sea (design/biomes/frozen_ocean.md):
+; the union of TREE.branches lobes (the first one centred, of TREE.radius
+; and TREE.height; the others smaller, lower and off-centre). Each lobe is
+; a peak, height h (1 - t)^1.5 at t = distance / lobe radius, or with
+; TREE.chance a flat-topped (tabular) block, h min(1, 3 (1 - t)). The body
+; (TREE.log, with streaks of TREE.leaves) runs from 1 + 0.6 h under the
+; sea surface (never into the sea floor) up to the sea level + h, capped
+; with TREE.top where the ice is not too steep.
+;   in:  rbx = FCTX*, edi = rng state, ecx = x, edx = y (sea level + 1),
+;        r8d = z, r9 = TREE*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define GI_X        0
+%define GI_Z        4
+%define GI_K        8                   ; lobes
+%define GI_FLAT     12
+%define GI_B        16                  ; bound (blocks)
+%define GI_DX       20
+%define GI_DZ       24
+%define GI_TOP      28
+%define GI_Y        32
+%define GI_BOT      36
+%define GI_SO       40                  ; streak offset
+%define GI_T        44                  ; f32 smallest t of the column
+%define GI_H        48                  ; f32 column height
+%define GI_HASH     52
+%define GI_R        56                  ; f32 main radius
+%define GI_OX       64                  ; f32[4] lobe centre x
+%define GI_OZ       80                  ; f32[4]
+%define GI_RL       96                  ; f32[4] lobe radius
+%define GI_HL       112                 ; f32[4] lobe height
+%define GI_LOCALS   128
+PROC gen_iceberg, GI_LOCALS, rsi, r12, r13, r14
+    mov rsi, r9
+    mov [LOCAL(GI_X)], ecx
+    mov [LOCAL(GI_Z)], r8d
+    ; main lobe: centred, the full radius and height
+    mov ecx, [rsi + TREE.height]
+    mov edx, [rsi + TREE.height + 4]
+    call rand_int
+    cvtsi2ss xmm1, eax
+    movss [LOCAL(GI_HL)], xmm1
+    call rng
+    movss xmm1, [rsi + TREE.radius + 4]
+    subss xmm1, [rsi + TREE.radius]
+    mulss xmm1, xmm0
+    addss xmm1, [rsi + TREE.radius]
+    movss [LOCAL(GI_R)], xmm1
+    movss [LOCAL(GI_RL)], xmm1
+    xorps xmm0, xmm0
+    movss [LOCAL(GI_OX)], xmm0
+    movss [LOCAL(GI_OZ)], xmm0
+    ; tabular or peaked
+    call rng
+    xor eax, eax
+    comiss xmm0, [rsi + TREE.chance]
+    setb al
+    mov [LOCAL(GI_FLAT)], eax
+    ; streak offset
+    call rng
+    mulss xmm0, [rel c_berg_six]
+    cvttss2si eax, xmm0
+    mov [LOCAL(GI_SO)], eax
+    ; lobe count 1..4
+    mov ecx, [rsi + TREE.branches]
+    mov edx, [rsi + TREE.branches + 4]
+    cmp edx, ecx
+    jge .k_ok
+    mov edx, ecx
+.k_ok:
+    call rand_int
+    cmp eax, 1
+    jge .k_lo
+    mov eax, 1
+.k_lo:
+    cmp eax, 4
+    jle .k_hi
+    mov eax, 4
+.k_hi:
+    mov [LOCAL(GI_K)], eax
+    ; the other lobes: off-centre (within 0.45 R), 0.5-0.85 R wide,
+    ; 0.45-0.95 of the height
+    mov r12d, 1
+.lobe:
+    cmp r12d, [LOCAL(GI_K)]
+    jae .lobes_done
+    call rng
+    addss xmm0, xmm0
+    subss xmm0, [rel c_one]
+    mulss xmm0, [rel c_berg_off]
+    mulss xmm0, [LOCAL(GI_R)]
+    movss [LOCAL(GI_OX) + r12 * 4], xmm0
+    call rng
+    addss xmm0, xmm0
+    subss xmm0, [rel c_one]
+    mulss xmm0, [rel c_berg_off]
+    mulss xmm0, [LOCAL(GI_R)]
+    movss [LOCAL(GI_OZ) + r12 * 4], xmm0
+    call rng
+    mulss xmm0, [rel c_berg_rspan]
+    addss xmm0, [rel c_half]
+    mulss xmm0, [LOCAL(GI_R)]
+    movss [LOCAL(GI_RL) + r12 * 4], xmm0
+    call rng
+    mulss xmm0, [rel c_half]
+    addss xmm0, [rel c_berg_hlo]
+    mulss xmm0, [LOCAL(GI_HL)]
+    movss [LOCAL(GI_HL) + r12 * 4], xmm0
+    inc r12d
+    jmp .lobe
+.lobes_done:
+    ; bound: 1.3 R + 1
+    movss xmm0, [LOCAL(GI_R)]
+    mulss xmm0, [rel c_berg_bound]
+    cvttss2si eax, xmm0
+    inc eax
+    mov [LOCAL(GI_B)], eax
+    neg eax
+    mov [LOCAL(GI_DZ)], eax
+.dz:
+    mov eax, [LOCAL(GI_B)]
+    neg eax
+    mov [LOCAL(GI_DX)], eax
+.dx:
+    mov r12d, [LOCAL(GI_X)]
+    add r12d, [LOCAL(GI_DX)]            ; local x
+    cmp r12d, 31
+    ja .dn
+    mov r13d, [LOCAL(GI_Z)]
+    add r13d, [LOCAL(GI_DZ)]            ; local z
+    cmp r13d, 31
+    ja .dn
+    ; the column's height: the highest lobe over it
+    xorps xmm0, xmm0
+    movss [LOCAL(GI_H)], xmm0
+    movss xmm0, [rel c_one]
+    movss [LOCAL(GI_T)], xmm0
+    xor r14d, r14d
+.lb:
+    cmp r14d, [LOCAL(GI_K)]
+    jae .lb_done
+    cvtsi2ss xmm0, dword [LOCAL(GI_DX)]
+    subss xmm0, [LOCAL(GI_OX) + r14 * 4]
+    mulss xmm0, xmm0
+    cvtsi2ss xmm1, dword [LOCAL(GI_DZ)]
+    subss xmm1, [LOCAL(GI_OZ) + r14 * 4]
+    mulss xmm1, xmm1
+    addss xmm0, xmm1
+    sqrtss xmm0, xmm0
+    divss xmm0, [LOCAL(GI_RL) + r14 * 4]  ; t
+    comiss xmm0, [rel c_one]
+    jae .lb_next
+    movss xmm3, xmm0
+    minss xmm0, [LOCAL(GI_T)]
+    movss [LOCAL(GI_T)], xmm0
+    movss xmm1, [rel c_one]
+    subss xmm1, xmm3                    ; 1 - t
+    cmp dword [LOCAL(GI_FLAT)], 0
+    je .peak
+    mulss xmm1, [rel c_three]
+    minss xmm1, [rel c_one]
+    jmp .lobe_h
+.peak:
+    sqrtss xmm2, xmm1
+    mulss xmm1, xmm2                    ; (1 - t)^1.5
+.lobe_h:
+    mulss xmm1, [LOCAL(GI_HL) + r14 * 4]
+    maxss xmm1, [LOCAL(GI_H)]
+    movss [LOCAL(GI_H)], xmm1
+.lb_next:
+    inc r14d
+    jmp .lb
+.lb_done:
+    movss xmm0, [LOCAL(GI_T)]
+    comiss xmm0, [rel c_one]
+    jae .dn                             ; outside every lobe
+    ; top: sea level + h (peaks lose a block here and there: jagged)
+    mov ecx, [rbx + FCTX.cx]
+    shl ecx, 5
+    add ecx, r12d
+    mov edx, [rbx + FCTX.cz]
+    shl edx, 5
+    add edx, r13d
+    mov r8d, 0x4942                     ; "IB"
+    xor r9d, r9d
+    call hash4
+    mov [LOCAL(GI_HASH)], eax
+    movss xmm0, [LOCAL(GI_H)]
+    cvttss2si eax, xmm0
+    cmp dword [LOCAL(GI_FLAT)], 0
+    jne .no_jag
+    cmp eax, 2
+    jle .no_jag
+    mov ecx, [LOCAL(GI_HASH)]
+    and ecx, 1
+    sub eax, ecx
+.no_jag:
+    add eax, [rel g_sea_level]
+    mov [LOCAL(GI_TOP)], eax
+    ; bottom: 1 + 0.6 h under the surface, never into the sea floor
+    movss xmm0, [LOCAL(GI_H)]
+    mulss xmm0, [rel c_berg_under]
+    cvttss2si eax, xmm0
+    inc eax
+    cmp eax, BERG_DEPTH
+    jle .depth_ok
+    mov eax, BERG_DEPTH
+.depth_ok:
+    mov ecx, [rel g_sea_level]
+    sub ecx, eax
+    mov [LOCAL(GI_BOT)], ecx
+    HM_INDEX r12d, r13d
+    mov rcx, [rbx + FCTX.heights]
+    mov eax, [rcx + rax * 4]            ; first block above the sea floor
+    cmp eax, [LOCAL(GI_BOT)]
+    jle .bot_ok
+    mov [LOCAL(GI_BOT)], eax
+.bot_ok:
+    mov eax, [LOCAL(GI_BOT)]
+    mov [LOCAL(GI_Y)], eax
+.y:
+    mov eax, [LOCAL(GI_Y)]
+    cmp eax, [LOCAL(GI_TOP)]
+    jg .dn
+    ; body, with blue streaks in every sixth layer (most columns)
+    mov r9d, [rsi + TREE.log]
+    add eax, [LOCAL(GI_SO)]
+    xor edx, edx
+    mov ecx, 6
+    div ecx                             ; (y + offset > 0 here)
+    test edx, edx
+    jnz .not_streak
+    mov eax, [LOCAL(GI_HASH)]
+    shr eax, 8
+    and eax, 0xFF
+    cmp eax, 180
+    jae .not_streak
+    mov eax, [rsi + TREE.leaves]
+    test eax, eax
+    jz .not_streak
+    mov r9d, eax
+.not_streak:
+    ; the top block above the water, where the ice is not steep
+    mov eax, [LOCAL(GI_Y)]
+    cmp eax, [LOCAL(GI_TOP)]
+    jne .place
+    cmp eax, [rel g_sea_level]
+    jle .place
+    mov eax, [rsi + TREE.top]
+    test eax, eax
+    jz .place
+    movss xmm0, [LOCAL(GI_T)]
+    comiss xmm0, [rel c_berg_snow_t]
+    jae .place
+    mov r9d, eax
+.place:
+    mov ecx, r12d
+    mov edx, [LOCAL(GI_Y)]
+    mov r8d, r13d
+    mov r10d, PUT_SOLID
+    call put_block
+    inc dword [LOCAL(GI_Y)]
+    jmp .y
+.dn:
+    inc dword [LOCAL(GI_DX)]
+    mov eax, [LOCAL(GI_DX)]
+    cmp eax, [LOCAL(GI_B)]
+    jle .dx
+    inc dword [LOCAL(GI_DZ)]
+    mov eax, [LOCAL(GI_DZ)]
+    cmp eax, [LOCAL(GI_B)]
+    jle .dz
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; flora_sea_ice — the sea ice of every interior column (INFO_ICE), for biomes
+; with `sea_ice` (design/biomes/frozen_ocean.md). Floes are the cells of a
+; jittered grid of `sea_ice_floe` size (Voronoi); where two cells meet
+; (closer than the channel width) the water stays open. A floe is frozen
+; with the share `sea_ice_cover`, fading out over the last `fade` of the
+; biome's temperature range (warmer seas: more open water). Water no deeper
+; than `sea_ice_shore_depth` is always frozen (shore-fast ice). Floes carry
+; snow (`sea_ice_snow` share) and pressure ridges near their edges.
+;   in:  rcx = FCTX* (heights, info, cx, cz)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define SI_X        0
+%define SI_Z        4
+%define SI_WX       8
+%define SI_WZ       12
+%define SI_GX       16                  ; cell of the column
+%define SI_GZ       20
+%define SI_D1       24                  ; f32 nearest distance^2
+%define SI_D2       28                  ; f32 second nearest
+%define SI_H1       32                  ; hash of the nearest cell
+%define SI_I        36
+%define SI_J        40
+%define SI_FAST     44
+%define SI_B        48                  ; BIOME*
+%define SI_INFO     56
+%define SI_EDGE     64                  ; f32 d2 - d1
+%define SI_GAP      68                  ; f32 this floe's channel width
+%define SI_H2       72                  ; hash of the second nearest cell
+%define SI_LOCALS   80
+PROC flora_sea_ice, SI_LOCALS, rbx, rsi, rdi, r12, r13
+    mov rbx, rcx
+    xor r12d, r12d
+.z:
+    xor r13d, r13d
+.x:
+    mov eax, r12d
+    shl eax, 5
+    add eax, r13d
+    imul rsi, rax, INFO_SIZE
+    add rsi, [rbx + FCTX.info]
+    mov byte [rsi + INFO_ICE], 0
+    movzx eax, byte [rsi + INFO_BIOME]
+    imul rax, rax, BIOME_size
+    lea rcx, [rel g_biomes]
+    add rax, rcx
+    mov rdi, rax                        ; BIOME*
+    cmp dword [rdi + BIOME.sea_ice], 0
+    je .next
+    ; open sea only: the top block under the surface
+    HM_INDEX r13d, r12d
+    mov rcx, [rbx + FCTX.heights]
+    mov eax, [rcx + rax * 4]
+    dec eax                             ; top block
+    mov ecx, [rel g_sea_level]
+    cmp eax, ecx
+    jge .next
+    sub ecx, eax                        ; depth
+    xor eax, eax
+    cmp ecx, [rdi + BIOME.sea_fast]
+    setle al
+    mov [LOCAL(SI_FAST)], eax
+    mov [LOCAL(SI_X)], r13d
+    mov [LOCAL(SI_Z)], r12d
+    mov eax, [rbx + FCTX.cx]
+    shl eax, 5
+    add eax, r13d
+    mov [LOCAL(SI_WX)], eax
+    mov eax, [rbx + FCTX.cz]
+    shl eax, 5
+    add eax, r12d
+    mov [LOCAL(SI_WZ)], eax
+    ; ragged floe edges: shift the point by the detail noise (+-3 blocks)
+    movsx eax, byte [rsi + INFO_SNOW]
+    sar eax, 1
+    add [LOCAL(SI_WX)], eax
+    sub [LOCAL(SI_WZ)], eax
+    ; the column's floe cell
+    cvtsi2ss xmm0, dword [LOCAL(SI_WX)]
+    divss xmm0, [rdi + BIOME.sea_floe]
+    roundss xmm0, xmm0, 9
+    cvttss2si eax, xmm0
+    mov [LOCAL(SI_GX)], eax
+    cvtsi2ss xmm0, dword [LOCAL(SI_WZ)]
+    divss xmm0, [rdi + BIOME.sea_floe]
+    roundss xmm0, xmm0, 9
+    cvttss2si eax, xmm0
+    mov [LOCAL(SI_GZ)], eax
+    mov dword [LOCAL(SI_D1)], 0x7F000000
+    mov dword [LOCAL(SI_D2)], 0x7F000000
+    mov dword [LOCAL(SI_J)], -1
+.cj:
+    mov dword [LOCAL(SI_I)], -1
+.ci:
+    mov ecx, [LOCAL(SI_GX)]
+    add ecx, [LOCAL(SI_I)]
+    mov edx, [LOCAL(SI_GZ)]
+    add edx, [LOCAL(SI_J)]
+    mov r8d, 0x464C                     ; "FL"
+    xor r9d, r9d
+    call hash4
+    mov r8d, eax
+    ; the cell's point: (cell + 0.1 .. 0.9) * size
+    movzx eax, r8w
+    cvtsi2ss xmm0, eax
+    mulss xmm0, [rel c_inv65536]
+    mulss xmm0, [rel c_si_span]
+    addss xmm0, [rel c_si_lo]
+    mov eax, [LOCAL(SI_GX)]
+    add eax, [LOCAL(SI_I)]
+    cvtsi2ss xmm1, eax
+    addss xmm0, xmm1
+    mulss xmm0, [rdi + BIOME.sea_floe]
+    cvtsi2ss xmm1, dword [LOCAL(SI_WX)]
+    addss xmm1, [rel c_half]
+    subss xmm0, xmm1
+    mulss xmm0, xmm0
+    mov eax, r8d
+    shr eax, 16
+    cvtsi2ss xmm2, eax
+    mulss xmm2, [rel c_inv65536]
+    mulss xmm2, [rel c_si_span]
+    addss xmm2, [rel c_si_lo]
+    mov eax, [LOCAL(SI_GZ)]
+    add eax, [LOCAL(SI_J)]
+    cvtsi2ss xmm1, eax
+    addss xmm2, xmm1
+    mulss xmm2, [rdi + BIOME.sea_floe]
+    cvtsi2ss xmm1, dword [LOCAL(SI_WZ)]
+    addss xmm1, [rel c_half]
+    subss xmm2, xmm1
+    mulss xmm2, xmm2
+    addss xmm0, xmm2                    ; distance^2
+    comiss xmm0, [LOCAL(SI_D1)]
+    jae .not_first
+    mov eax, [LOCAL(SI_D1)]
+    mov [LOCAL(SI_D2)], eax
+    mov eax, [LOCAL(SI_H1)]
+    mov [LOCAL(SI_H2)], eax
+    movss [LOCAL(SI_D1)], xmm0
+    mov [LOCAL(SI_H1)], r8d
+    jmp .cnext
+.not_first:
+    comiss xmm0, [LOCAL(SI_D2)]
+    jae .cnext
+    movss [LOCAL(SI_D2)], xmm0
+    mov [LOCAL(SI_H2)], r8d
+.cnext:
+    inc dword [LOCAL(SI_I)]
+    cmp dword [LOCAL(SI_I)], 1
+    jle .ci
+    inc dword [LOCAL(SI_J)]
+    cmp dword [LOCAL(SI_J)], 1
+    jle .cj
+    sqrtss xmm0, [LOCAL(SI_D2)]
+    sqrtss xmm1, [LOCAL(SI_D1)]
+    subss xmm0, xmm1
+    movss [LOCAL(SI_EDGE)], xmm0
+    ; channel width: 0.5 .. 1.5 x sea_ice_floe's, per floe (some floes
+    ; touch, some have wide leads)
+    mov eax, [LOCAL(SI_H1)]
+    shr eax, 24
+    cvtsi2ss xmm1, eax
+    mulss xmm1, [rel c_inv255]
+    addss xmm1, [rel c_half]
+    mulss xmm1, [rdi + BIOME.sea_floe + 4]
+    movss [LOCAL(SI_GAP)], xmm1
+    cmp dword [LOCAL(SI_FAST)], 0
+    jne .frozen
+    ; channels between the floes stay open
+    comiss xmm0, [LOCAL(SI_GAP)]
+    jb .next
+    ; this floe frozen? cover x (temperature fade toward the warm edge)
+    cvtsi2sd xmm0, dword [LOCAL(SI_WX)]
+    cvtsi2sd xmm1, dword [LOCAL(SI_WZ)]
+    call biome_climate                  ; xmm0 = temperature
+    movss xmm1, [rdi + BIOME.temp + 4]
+    subss xmm1, xmm0
+    movss xmm2, [rdi + BIOME.sea_cover + 4]
+    maxss xmm2, [rel c_si_min_fade]
+    divss xmm1, xmm2
+    maxss xmm1, [rel c_zero]
+    minss xmm1, [rel c_one]
+    mulss xmm1, [rdi + BIOME.sea_cover]
+    movss [LOCAL(SI_D2)], xmm1          ; (the share, reusing d2)
+    mov ecx, [LOCAL(SI_H1)]
+    xor edx, edx
+    mov r8d, 0x4643                     ; "FC"
+    xor r9d, r9d
+    call hash4
+    FRAC16 ax
+    comiss xmm0, [LOCAL(SI_D2)]
+    jae .next
+.frozen:
+    ; snow-covered or bare
+    mov ecx, [LOCAL(SI_H1)]
+    xor edx, edx
+    mov r8d, 0x4653                     ; "FS"
+    xor r9d, r9d
+    call hash4
+    FRAC16 ax
+    mov eax, ICE_FLOE
+    cmp dword [rdi + BIOME.sea_snow], 0
+    je .kind
+    comiss xmm0, [rdi + BIOME.sea_snow_ch]
+    jae .kind
+    mov eax, ICE_SNOW
+.kind:
+    mov [rsi + INFO_ICE], al
+    ; pressure ridges: a line along the edge of the floe, where it meets
+    ; the neighbour floe, for a share (sea_ice_ridge) of the floe pairs
+    cmp dword [rdi + BIOME.sea_ridge], 0
+    je .next
+    movss xmm0, [LOCAL(SI_GAP)]
+    addss xmm0, [rel c_si_ridge_w]
+    comiss xmm0, [LOCAL(SI_EDGE)]
+    jbe .next
+    mov ecx, [LOCAL(SI_H1)]
+    xor ecx, [LOCAL(SI_H2)]
+    xor edx, edx
+    mov r8d, 0x5249                     ; "RI"
+    xor r9d, r9d
+    call hash4
+    FRAC16 ax
+    comiss xmm0, [rdi + BIOME.sea_ridge_ch]
+    jae .next
+    ; (with a few breaks)
+    mov ecx, [LOCAL(SI_WX)]
+    mov edx, [LOCAL(SI_WZ)]
+    mov r8d, 0x5242                     ; "RB"
+    xor r9d, r9d
+    call hash4
+    FRAC16 ax
+    comiss xmm0, [rel c_si_ridge_keep]
+    jae .next
+    or byte [rsi + INFO_ICE], ICE_RIDGE
+.next:
+    inc r13d
+    cmp r13d, 32
+    jb .x
+    inc r12d
+    cmp r12d, 32
+    jb .z
+    RETURN
+ENDPROC
+
+section .rdata
+align 4
+c_berg_six:     dd 5.99
+c_berg_off:     dd 0.45                 ; lobe centres within 0.45 R
+c_berg_rspan:   dd 0.35                 ; lobe radius 0.5 .. 0.85 R
+c_berg_hlo:     dd 0.45                 ; lobe height 0.45 .. 0.95 H
+c_berg_bound:   dd 1.3
+c_berg_under:   dd 0.6                  ; depth under the surface per block above
+c_berg_snow_t:  dd 0.75                 ; snow on top inside this share of a lobe
+c_si_lo:        dd 0.1                  ; floe centres in 0.1 .. 0.9 of a cell
+c_si_span:      dd 0.8
+c_si_min_fade:  dd 0.001
+c_si_ridge_w:   dd 0.9                  ; ridges within this of the channel
+c_si_ridge_keep: dd 0.85                ; share of a ridge line's blocks
