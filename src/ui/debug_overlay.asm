@@ -30,6 +30,7 @@ extern g_cam_pos, g_cam_yaw, g_cam_pitch
 extern terrain_sample, g_world_seed, g_generator
 extern g_sections_live, g_section_bytes
 extern g_world_visible, g_world_drawn_quads, g_world_gpu_bytes
+extern g_world_gpu_visible, g_world_occluded, g_world_draws
 extern g_loaded_count, g_render_distance, g_stream_ready
 extern g_stream_gen_inflight, g_stream_mesh_inflight, g_stream_upload_frame
 extern g_stream_update_us, g_stream_quads, g_stream_cpu_mesh_bytes
@@ -95,8 +96,11 @@ s_gpu:          db "gpu     quads ", 0
 s_g_used:       db "   buffer ", 0
 s_g_total:      db " / 128 MB   CPU meshes waiting ", 0
 s_g_kb_nl:      db " KB", 10, 0
-s_draw:         db "draw    visible sections ", 0
+s_draw:         db "draw    walk sections ", 0
+s_d_gpu:        db "  GPU drawn ", 0
+s_d_occl:       db "  Hi-Z culled ", 0
 s_d_quads:      db "  quads ", 0
+s_d_mdi:        db "  multi-draws ", 0
 s_gen:          db "gen     ", 0
 s_cols_avg:     db " columns  avg ", 0
 s_us_max:       db " us  max ", 0
@@ -363,8 +367,14 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
     PUT s_g_kb_nl
     PUT s_draw
     PUTNUM [rel g_world_visible], 0
+    PUT s_d_gpu
+    PUTNUM [rel g_world_gpu_visible], 0
+    PUT s_d_occl
+    PUTNUM [rel g_world_occluded], 0
     PUT s_d_quads
     PUTNUM [rel g_world_drawn_quads], 0
+    PUT s_d_mdi
+    PUTNUM [rel g_world_draws], 0
     PUT s_nl
     ; generation / meshing times (averages over everything so far)
     PUT s_gen

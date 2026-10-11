@@ -1051,3 +1051,43 @@ block for their upper half (mossy cobblestone boulders).
 * `own_shore` biomes put trees in water only with `trees_in_water`
   (swamp, muddy river). Palms and willows had stood in the river.
 * MAX_TREES 64 → 96.
+
+## D79 — GPU-driven drawing (M11)
+* The CPU keeps the visibility walk (cave culling through the sections'
+  face-connectivity bits, plus a coarse sphere frustum test). It no
+  longer draws: it writes one 32-byte record per section and layer
+  (camera-relative origin, first quad, world origin, quad count) into a
+  persistent, coherently mapped ring with 3 frame slots, each guarded by
+  a fence.
+* `shaders/cull.comp`, one thread per record:
+  * an exact AABB frustum test;
+  * a Hi-Z occlusion test: the box is projected with the previous frame's
+    view-projection, moved by the camera's motion since then. It is hidden
+    if its nearest depth is behind the farthest depth of the pyramid
+    texels covering it, at the mip where the box spans at most 2 texels.
+    Boxes off the previous screen or crossing the camera plane are kept.
+  * It writes the record's DrawArraysIndirectCommand: instanceCount 1 or
+    0, first = first quad × 6, baseInstance = the record's index. The
+    order is kept, so translucent records stay sorted back to front.
+* Each pass (opaque, cutout, translucent) is one
+  `glMultiDrawArraysIndirect`. The vertex shader takes the quad from
+  `gl_VertexID` (which counts from the command's first vertex). The
+  record ring is also an instanced vertex buffer (stride 32, divisor 1),
+  so `baseInstance` selects the draw's origins as attributes.
+  * The first version read the record from an SSBO per vertex. Under
+    llvmpipe that cost ~50% frame time (2.4 M vertices per frame), so it
+    was replaced. It also needs no draw-ID buffer or `gl_DrawID`, so it
+    works on GL 4.5.
+* `shaders/hiz.comp` builds an R32F pyramid (level 0 = half the scene,
+  each texel the farthest = minimum reverse-Z depth; odd sizes fold the
+  extra row and column in) after the frame's draws. That needs the scene
+  in an offscreen framebuffer with a depth texture (renderer.asm), which
+  is blitted to the window; post-processing (M14) will use it too.
+* Stats (records drawn, quads, Hi-Z culled) are counted with atomics into
+  a mapped buffer per slot and read when the slot comes round again, 3
+  frames later.
+* Settings: `gpu_culling` and `occlusion_culling` in graphics.cfg.
+* Not done here:
+  * the quad uploads still use `glNamedBufferSubData` from the streamer;
+  * Hi-Z is single-phase (the previous frame's depth), so a section that
+    becomes visible from behind an occluder can appear one frame late.

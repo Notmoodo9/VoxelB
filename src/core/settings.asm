@@ -9,6 +9,8 @@
 ;   settings_load()              parse the file (missing file: defaults)
 ;   g_render_distance (u32)      full-detail view distance in chunks, 2..48
 ;   g_opaque_leaves (u32)        1 = draw leaves as solid cubes (low-end)
+;   g_gpu_culling (u32)          1 = cull the draws in a compute shader
+;   g_occlusion_culling (u32)    1 = Hi-Z occlusion culling (needs gpu_culling)
 ; =============================================================================
 %include "macros.inc"
 %include "log.inc"
@@ -17,6 +19,7 @@
 %include "cfg.inc"
 
 global settings_load, g_render_distance, g_opaque_leaves
+global g_gpu_culling, g_occlusion_culling
 
 extern str_ieq, str_parse_u64
 
@@ -28,6 +31,8 @@ str_cfg_path:   db "data/config/graphics.cfg", 0
 str_cfg_label:  db "graphics.cfg", 0
 k_distance:     db "render_distance", 0
 k_leaves:       db "opaque_leaves", 0
+k_gpu_cull:     db "gpu_culling", 0
+k_occlusion:    db "occlusion_culling", 0
 str_unknown:    db "unknown setting: ", 0
 str_bad:        db "bad value for: ", 0
 
@@ -35,6 +40,8 @@ section .data
 align 4
 g_render_distance:  dd 16
 g_opaque_leaves:    dd 0
+g_gpu_culling:      dd 1
+g_occlusion_culling: dd 1
 
 section .bss
 alignb 8
@@ -48,7 +55,7 @@ section .text
 ;   in:  rcx = name, rdx = value
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC graphics_pair, 0, rbx, rsi
+PROC graphics_pair, 0, rbx, rsi, rdi
     mov rbx, rcx
     mov rsi, rdx
     lea rdx, [rel k_distance]
@@ -59,6 +66,16 @@ PROC graphics_pair, 0, rbx, rsi
     INVOKE str_ieq, rbx, rdx
     test eax, eax
     jnz .leaves
+    lea rdx, [rel k_gpu_cull]
+    INVOKE str_ieq, rbx, rdx
+    lea rdi, [rel g_gpu_culling]
+    test eax, eax
+    jnz .flag
+    lea rdx, [rel k_occlusion]
+    INVOKE str_ieq, rbx, rdx
+    lea rdi, [rel g_occlusion_culling]
+    test eax, eax
+    jnz .flag
     lea rcx, [rel str_cfg_label]
     lea rdx, [rel str_unknown]
     INVOKE cfg_warn, rcx, rdx, rbx
@@ -82,6 +99,15 @@ PROC graphics_pair, 0, rbx, rsi
     cmp eax, 1
     ja .bad
     mov [rel g_opaque_leaves], eax
+    RETURN
+.flag:                                  ; 0 / 1 into [rdi]
+    mov rcx, rsi
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    cmp eax, 1
+    ja .bad
+    mov [rdi], eax
     RETURN
 .bad:
     lea rcx, [rel str_cfg_label]

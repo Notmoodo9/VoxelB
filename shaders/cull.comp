@@ -1,0 +1,101 @@
+#version 450 core
+// GPU culling of the frame's draw records (src/render/world_render.asm,
+// milestone 11). One thread per record (a section's opaque, cutout or
+// translucent quad range): an exact AABB-vs-frustum test, then a Hi-Z
+// occlusion test against the previous frame's depth pyramid (reprojected
+// with the previous frame's view-projection). It writes the record's
+// indirect draw command (instanceCount 1 visible, 0 culled), keeping the
+// order (translucent records stay sorted back to front).
+
+layout(local_size_x = 64) in;
+
+struct Record {
+    vec3 rel;     // section origin - camera (this frame)
+    uint first;   // first quad
+    vec3 world;   // section origin (mod 65536), for the vertex shader
+    uint count;   // quads
+};
+struct Command { uint count; uint instances; uint first; uint base_instance; };
+
+layout(std430, binding = 3) readonly buffer Records { Record records[]; };
+layout(std430, binding = 4) writeonly buffer Commands { Command commands[]; };
+layout(std430, binding = 5) buffer Stats { uint stats[]; };  // per frame slot: 4
+
+layout(location = 0) uniform uint u_count;       // records this frame
+layout(location = 1) uniform uint u_base;        // first record (ring slot)
+layout(location = 2) uniform vec4 u_planes[5];   // camera-relative frustum
+layout(location = 7) uniform mat4 u_prev_viewproj;
+layout(location = 8) uniform vec3 u_cam_delta;   // camera now - camera then
+layout(location = 9) uniform int u_hiz_levels;   // 0: no pyramid yet
+layout(location = 10) uniform ivec2 u_hiz_size;  // level 0 size
+layout(location = 11) uniform uint u_stats;      // this slot's first counter
+
+layout(binding = 5) uniform sampler2D u_hiz;     // farthest depth (reverse-Z: min)
+
+const float SECTION = 32.0;
+
+bool in_frustum(vec3 lo, vec3 hi) {
+    for (int i = 0; i < 5; ++i) {
+        vec4 p = u_planes[i];
+        vec3 v = vec3(p.x >= 0.0 ? hi.x : lo.x, p.y >= 0.0 ? hi.y : lo.y,
+                      p.z >= 0.0 ? hi.z : lo.z);     // the corner furthest along n
+        if (dot(p.xyz, v) < 0.0) return false;
+    }
+    return true;
+}
+
+// true if the box is certainly hidden behind last frame's depth
+bool occluded(vec3 lo, vec3 hi) {
+    if (u_hiz_levels <= 0) return false;
+    lo += u_cam_delta;      // into last frame's camera-relative space
+    hi += u_cam_delta;
+    vec2 smin = vec2(1.0), smax = vec2(-1.0);
+    float near_z = 0.0;     // reverse-Z: the nearest point has the largest z
+    for (int i = 0; i < 8; ++i) {
+        vec3 c = vec3((i & 1) != 0 ? hi.x : lo.x, (i & 2) != 0 ? hi.y : lo.y,
+                      (i & 4) != 0 ? hi.z : lo.z);
+        vec4 h = u_prev_viewproj * vec4(c, 1.0);
+        if (h.w <= 0.05) return false;      // crosses the camera plane
+        vec3 n = h.xyz / h.w;
+        smin = min(smin, n.xy);
+        smax = max(smax, n.xy);
+        near_z = max(near_z, n.z);
+    }
+    // off last frame's screen: unknown, keep it
+    if (smin.x < -1.0 || smin.y < -1.0 || smax.x > 1.0 || smax.y > 1.0) return false;
+    vec2 size = vec2(u_hiz_size);
+    vec2 a = (smin * 0.5 + 0.5) * size;
+    vec2 b = (smax * 0.5 + 0.5) * size;
+    float extent = max(b.x - a.x, b.y - a.y);
+    int level = clamp(int(ceil(log2(max(extent, 1.0)))), 0, u_hiz_levels - 1);
+    ivec2 lsize = max(u_hiz_size >> level, ivec2(1));
+    ivec2 ia = clamp(ivec2(a) >> level, ivec2(0), lsize - 1);
+    ivec2 ib = clamp(ivec2(b) >> level, ivec2(0), lsize - 1);
+    float far_z = 1.0;
+    for (int y = ia.y; y <= ib.y; ++y)
+        for (int x = ia.x; x <= ib.x; ++x)
+            far_z = min(far_z, texelFetch(u_hiz, ivec2(x, y), level).r);
+    return near_z < far_z;  // nearer than nothing that was drawn there
+}
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= u_count) return;
+    Record r = records[u_base + i];
+    vec3 lo = r.rel, hi = r.rel + vec3(SECTION);
+    bool visible = in_frustum(lo, hi);
+    if (visible && occluded(lo, hi)) {
+        visible = false;
+        atomicAdd(stats[u_stats + 2u], 1u);
+    }
+    Command c;
+    c.count = r.count * 6u;
+    c.instances = visible ? 1u : 0u;
+    c.first = r.first * 6u;
+    c.base_instance = u_base + i;
+    commands[i] = c;
+    if (visible) {
+        atomicAdd(stats[u_stats + 0u], 1u);
+        atomicAdd(stats[u_stats + 1u], r.count);
+    }
+}

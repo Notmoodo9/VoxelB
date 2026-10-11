@@ -1,7 +1,11 @@
 #version 450 core
 // World sections: vertex pulling from packed greedy quads (format in
 // src/render/mesher.asm) and model quads of shaped blocks (src/render/shapes.asm). 6 vertices per quad, no vertex buffers. Rendering
-// is camera-relative (u_origin_rel = section origin - camera).
+// is camera-relative (section origin - camera). Milestone 11: drawn with
+// glMultiDrawArraysIndirect; the draw records are an instanced vertex
+// buffer (stride 32, divisor 1), so the command's base instance picks the
+// draw's origins as attributes; gl_VertexID counts from the command's first
+// vertex (first quad * 6).
 // Textures: block face -> texture (binding 1), texture -> array layers and
 // animation (binding 2); see src/render/block_textures.asm.
 
@@ -10,9 +14,8 @@ layout(std430, binding = 1) readonly buffer Faces { uint block_face[]; };
 layout(std430, binding = 2) readonly buffer Textures { uvec4 tex_info[]; };
 
 layout(location = 0) uniform mat4 u_viewproj;     // rotation + projection
-layout(location = 1) uniform vec3 u_origin_rel;   // section origin - camera
-layout(location = 2) uniform uint u_quad_base;    // first quad of the range
-layout(location = 3) uniform vec3 u_origin_world; // section origin (mod 65536)
+layout(location = 0) in vec3 a_origin_rel;        // section origin - camera
+layout(location = 1) in vec3 a_origin_world;      // section origin (mod 65536)
 layout(location = 4) uniform float u_time;        // seconds
 
 out vec3 v_rel;          // camera-relative position (fog)
@@ -30,7 +33,9 @@ const uint CORNERS[12] = uint[](0u, 1u, 2u, 0u, 2u, 3u,
                                 0u, 2u, 1u, 0u, 3u, 2u);
 
 void main() {
-    uvec2 q = quads[u_quad_base + uint(gl_VertexID) / 6u];
+    vec3 u_origin_rel = a_origin_rel;
+    vec3 u_origin_world = a_origin_world;
+    uvec2 q = quads[uint(gl_VertexID) / 6u];
     uint lo = q.x;
     uint face = (lo >> 28) & 7u;
     bool flip = (face == 1u || face == 3u || face == 4u);

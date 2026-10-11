@@ -62,3 +62,27 @@ GLFN glGenerateTextureMipmap,   1
 GLFN glDepthMask,               1
 GLFN glProgramUniform1f,        1
 GLFN glProgramUniform1i,        1
+; milestone 11: GPU-driven rendering
+GLFN glDispatchCompute,             1
+GLFN glMemoryBarrier,               1
+GLFN glMultiDrawArraysIndirect,     1
+GLFN glBindBuffer,                  1
+GLFN glMapNamedBufferRange,         1
+GLFN glUnmapNamedBuffer,            1
+GLFN glFenceSync,                   1
+GLFN glClientWaitSync,              1
+GLFN glDeleteSync,                  1
+GLFN glCreateFramebuffers,          1
+GLFN glNamedFramebufferTexture,     1
+GLFN glCheckNamedFramebufferStatus, 1
+GLFN glBindFramebuffer,             1
+GLFN glBlitNamedFramebuffer,        1
+GLFN glDeleteFramebuffers,          1
+GLFN glBindImageTexture,            1
+GLFN glVertexArrayAttribFormat,     1
+GLFN glVertexArrayAttribBinding,    1
+GLFN glVertexArrayBindingDivisor,   1
+GLFN glVertexArrayVertexBuffer,     1
+GLFN glEnableVertexArrayAttrib,     1
+GLFN glProgramUniform2i,            1
+GLFN glClearNamedBufferSubData,     1

@@ -1,0 +1,35 @@
+#version 450 core
+// Hi-Z pyramid (milestone 11): each level holds, per texel, the farthest
+// depth of the area it covers (reverse-Z: the minimum). Level 0 is half the
+// scene's size, built from the depth texture; level n from level n - 1.
+// Odd sizes: the last texel of a row / column also covers the extra source
+// texel, so the pyramid stays conservative.
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 6) uniform sampler2D u_depth;            // level 0 source
+layout(r32f, binding = 0) readonly uniform image2D u_src;  // level n - 1
+layout(r32f, binding = 1) writeonly uniform image2D u_dst; // level n
+
+layout(location = 0) uniform int u_from_depth;   // 1: build level 0
+layout(location = 1) uniform ivec2 u_src_size;
+layout(location = 2) uniform ivec2 u_dst_size;
+
+float src_at(ivec2 p) {
+    p = min(p, u_src_size - 1);
+    return u_from_depth != 0 ? texelFetch(u_depth, p, 0).r : imageLoad(u_src, p).r;
+}
+
+void main() {
+    ivec2 d = ivec2(gl_GlobalInvocationID.xy);
+    if (d.x >= u_dst_size.x || d.y >= u_dst_size.y) return;
+    ivec2 s = d * 2;
+    float z = min(min(src_at(s), src_at(s + ivec2(1, 0))),
+                  min(src_at(s + ivec2(0, 1)), src_at(s + ivec2(1, 1))));
+    bool last_x = (d.x == u_dst_size.x - 1) && (u_src_size.x & 1) != 0;
+    bool last_y = (d.y == u_dst_size.y - 1) && (u_src_size.y & 1) != 0;
+    if (last_x) z = min(z, min(src_at(s + ivec2(2, 0)), src_at(s + ivec2(2, 1))));
+    if (last_y) z = min(z, min(src_at(s + ivec2(0, 2)), src_at(s + ivec2(1, 2))));
+    if (last_x && last_y) z = min(z, src_at(s + ivec2(2, 2)));
+    imageStore(u_dst, d, vec4(z));
+}

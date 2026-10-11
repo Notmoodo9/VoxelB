@@ -1,15 +1,63 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 21): 🎨 DESIGN — Rivers: DONE** (Windows CI green: run #60)
+**Milestone 11: GPU-driven pipeline: DONE** (Windows CI: see below)
 
-**Milestone 10 (biomes) is complete.** The owner plans a larger rework of
+Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
 `design/BACKLOG.md`).
 
-Next: **Milestone 11: GPU-driven pipeline** (persistent buffers,
-multi-draw indirect, compute culling, Hi-Z). It is a technical milestone,
-so no design interview.
+Next: **Milestone 12: LOD system** to 64+ chunks (scalable to 256). It is
+a technical milestone, so no design interview.
+
+---
+
+## Milestone 11 — done (2026-10-11)
+
+### What was built (D79)
+* **Offscreen scene target** (renderer.asm): colour + 32-bit float depth
+  texture, blitted to the window. The overlay draws on top.
+* **Persistent draw-record ring**: 3 fenced frame slots of 32768 records
+  (3 MB), coherently mapped. The CPU visibility walk writes records
+  instead of drawing.
+* **Compute culling** (`shaders/cull.comp`): an exact AABB frustum test
+  and a Hi-Z occlusion test against the previous frame's depth pyramid
+  (reprojected). It writes the indirect commands.
+* **Multi-draw indirect**: one `glMultiDrawArraysIndirect` per pass
+  (opaque, cutout, translucent; the translucent order is kept). The
+  vertex shader gets each draw's origins from the record ring, bound as
+  an instanced vertex buffer (base instance = record).
+* **Hi-Z pyramid** (`shaders/hiz.comp`): an R32F mip chain of the
+  farthest depth, built after the draws.
+* **Compute shader support** in shader.asm (`shader_create_compute`, with
+  hot reload).
+* **Settings**: `gpu_culling`, `occlusion_culling` (graphics.cfg).
+* **Debug overlay**: walk sections, GPU-drawn records, Hi-Z culled,
+  quads, multi-draws.
+
+### Verified
+* Debug and release headless tests pass. The debug build ran with GL
+  debug output on: no GL errors, no asserts, clean exit.
+* Screenshots with GPU culling on and off are the same, apart from
+  animated plants and water.
+* At spawn the overlay shows 460 walk sections, 775 GPU-drawn records,
+  93 Hi-Z culled, 3 multi-draws per frame.
+
+### Performance (llvmpipe software GL under Wine, 1280×720, 16 chunks)
+| View | Before (one draw per range) | GPU cull + Hi-Z | GPU cull, no Hi-Z | CPU commands (gpu_culling 0) |
+|---|---|---|---|---|
+| Spawn | ~310 ms (3.1 FPS) | ~250 ms (4.0 FPS) | — | ~310 ms |
+| Glacier flank (mountains) | — | ~477 ms | ~530–640 ms | ~550–610 ms |
+
+On a real GPU the absolute numbers will be far better. These show the
+relative gain: about 20% fewer frame milliseconds from culling on the
+software rasterizer.
+
+### Known issues
+* Single-phase Hi-Z: a section revealed from behind an occluder can
+  appear one frame late.
+* The quad uploads still use `glNamedBufferSubData`; a persistent staging
+  ring is possible later.
 
 ---
 

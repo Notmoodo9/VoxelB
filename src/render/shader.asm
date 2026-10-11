@@ -9,6 +9,8 @@
 ;
 ; Public API (see include/shader.inc):
 ;   shader_create(vs_rel, fs_rel) -> eax handle, or -1 (errors logged)
+;   shader_create_compute(cs_rel) -> eax handle, or -1 (a compute program:
+;                                   shader_create with fs_rel = 0)
 ;   shader_program(handle) -> eax GL program name
 ;   shader_poll()   shader_reload_all()   shader_shutdown()
 ;   g_shader_count, g_shader_reloads, g_shader_failures, g_shader_last_ok
@@ -22,6 +24,7 @@
 %include "memory.inc"
 
 global shader_create, shader_program, shader_poll, shader_reload_all, shader_shutdown
+global shader_create_compute
 global g_shader_count, g_shader_reloads, g_shader_failures, g_shader_last_ok
 
 IMPORT GetTickCount64
@@ -122,10 +125,13 @@ PROC log_pair, 0, rbx, rsi, rdi
     call log_append_str
     mov rcx, rsi
     call log_append_str
+    test rdi, rdi
+    jz .single                          ; (a compute program: one file)
     lea rcx, [rel str_plus]
     call log_append_str
     mov rcx, rdi
     call log_append_str
+.single:
     call log_end
     RETURN
 ENDPROC
@@ -207,6 +213,20 @@ ENDPROC
 PROC build_program, 16, rbx, rsi, rdi, r12, r13
     mov r12, rcx
     mov r13, rdx
+    test r13, r13
+    jnz .graphics
+    ; compute: one stage
+    INVOKE compile_shader, GL_COMPUTE_SHADER, r12
+    mov ebx, eax
+    test ebx, ebx
+    jz .fail
+    GL glCreateProgram
+    mov edi, eax
+    GL glAttachShader, rdi, rbx
+    GL glLinkProgram, rdi
+    GL glDeleteShader, rbx
+    jmp .check
+.graphics:
     INVOKE compile_shader, GL_VERTEX_SHADER, r12
     mov ebx, eax
     test ebx, ebx
@@ -222,6 +242,7 @@ PROC build_program, 16, rbx, rsi, rdi, r12, r13
     GL glLinkProgram, rdi
     GL glDeleteShader, rbx              ; flagged; freed with the program
     GL glDeleteShader, rsi
+.check:
     mov dword [LOCAL(0)], 0
     lea r8, [LOCAL(0)]
     GL glGetProgramiv, rdi, GL_LINK_STATUS, r8
@@ -287,6 +308,8 @@ PROC refresh_mtimes, 0, rbx, rsi
     mov [rbx + PROGRAM.vs_mtime], rax
     mov esi, 1
 .fs:
+    cmp qword [rbx + PROGRAM.fs_rel], 0
+    je .done                            ; (a compute program)
     lea rcx, [rel g_path_buf]
     INVOKE path_make, rcx, [rbx + PROGRAM.fs_rel]
     lea rcx, [rel g_path_buf]
@@ -339,6 +362,16 @@ PROC shader_create, 0, rbx, rsi, rdi
     mov dword [rel g_shader_last_ok], 1
     RETURN
 ENDPROC
+
+; -----------------------------------------------------------------------------
+; shader_create_compute — register and build a compute program.
+;   in:  rcx = compute shader path (root-relative, static string)
+;   out: eax = handle, or -1
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+shader_create_compute:
+    xor edx, edx
+    jmp shader_create
 
 ; -----------------------------------------------------------------------------
 ; shader_program — GL program name for a handle.
