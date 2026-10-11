@@ -1,0 +1,36 @@
+# Crystal caves (design/biomes/crystal_caves.md): deep cavern systems turned
+# into glittering grottos: near-black veined rock, crystal sprouts on floors
+# and ceilings, crystal clumps and stalactites, giant crystal pillars,
+# glowing moss and glowcaps, luminous pools, more star crystal ore. Each
+# area is one colour; rare rainbow areas mix them.
+
+[cave_biome crystal_caves]
+depth        = -220, 0           # deep underground
+region       = 0.42, 1.0         # region noise (-1..1): uncommon large regions
+region_scale = 120
+theme_scale  = 600
+rainbow      = 0.06              # share of 16-block cells mixing every colour
+
+# themes: crystal, sprout, veined stone, pool
+theme = blue_crystal, blue_crystal_sprout, blue_veined_stone, blue_glow_pool
+theme = purple_crystal, purple_crystal_sprout, purple_veined_stone, purple_glow_pool
+theme = green_crystal, green_crystal_sprout, green_veined_stone, green_glow_pool
+theme = pink_crystal, pink_crystal_sprout, pink_veined_stone, pink_glow_pool
+theme = amber_crystal, amber_crystal_sprout, amber_veined_stone, amber_glow_pool
+
+# floors: glowing moss where its noise is above 0.25, pools above 0.45;
+# per floor block: sprouts 12%, glowcaps 4%, crystal clumps 2%;
+# per ceiling block: sprouts 12%, crystal stalactites 3%
+moss              = glow_moss, 0.25
+pool_threshold    = 0.45
+sprout_chance     = 0.12
+fungus            = glowcap, 0.04
+clump_chance      = 0.02
+stalactite_chance = 0.03
+
+# star crystal ore: per stone block inside the region
+ore = star_crystal_ore, 0.004
+
+# giant pillars: in 30% of the 16 x 16 cells, radius 1.5-3
+pillar_chance = 0.3
+pillar_radius = 1.5, 3

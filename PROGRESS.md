@@ -1,11 +1,58 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 19): 🎨 DESIGN — Glacier: DONE** (Windows CI green: run #56)
+**Milestone 10 (part 20): 🎨 DESIGN — Crystal caves: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 20: the next biome**. Candidates are crystal
-caves (underground, needs a cave-biome system) and river
-(`design/BACKLOG.md`). It starts with its design interview.
+Next: **Milestone 10, part 21: river**, the last biome on the list
+(`design/BACKLOG.md`). It starts with its design interview. After it,
+Milestone 10 is complete and Milestone 11 (GPU-driven pipeline) follows.
+
+---
+
+## Milestone 10, part 20 — done (2026-10-11)
+
+### Design interview
+Two rounds plus approval: `design/biomes/crystal_caves.md`.
+* Glittering grottos in large deep caverns, one colour per grotto, with
+  rare rainbow mixes.
+* Dark veined rock; crystal sprouts on floors and ceilings; clumps; giant
+  pillars.
+* Glowing moss and fungi, glowing pools, more crystal ore.
+
+### What was built
+* **Cave-biome system** (D77): `[cave_biome]` records with a depth range,
+  a 3D region noise and a theme noise. A decoration pass after the cave
+  decoration (new module `src/world/cavebiome.asm`):
+  * veined stone and ore;
+  * floor-to-ceiling crystal pillars;
+  * pools, moss, sprouts (up and down), glowcaps, clumps, stalactites.
+* **Crystal caves** (`data/biomes/70_crystal_caves.biome`): 5 colour
+  themes, deep (−220 to 0), 6.4% of the deep volume.
+* **New blocks** (texgen), per colour: `<c>_veined_stone` (glowing
+  cracks), `<c>_crystal_sprout` (spike shape, the crystal's texture),
+  `<c>_glow_pool` (translucent, animated, glowing).
+* **Survey**: logs the region share and the nearest grotto.
+
+### How to see it (seed 20261009)
+* A grotto right under spawn, from the cave below it:
+  `voxelb.exe --pos 64 -70 0 --look 0 25`.
+
+### Verified
+* Debug and release headless tests pass. Debug and release ran in the
+  grotto with no asserts and clean exits.
+* Screenshots: veined walls, sprouts, clumps and moss in the grotto.
+  The vein texture and theme scale were reworked after the first look.
+
+### Known issues
+* Pillars and pools were not clearly caught in a screenshot. They are
+  built and in the data, but caves are hard to frame from fixed camera
+  positions.
+* A pillar can plug a tunnel that passes through it.
+* Pools are blocks, not fluids, until M15.
+
+### Performance
+The 16-chunk view at the grotto is ready after 7.3 s (7.1 s without
+crystal caves: ~3%). Meshing ~10.3 ms per column on average.
 
 ---
 

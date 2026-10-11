@@ -1758,6 +1758,49 @@ def make_meadow(out):
     out["alpine_aster"] = flower("alpine_aster", "a880e8", "f0c830", "daisy")
 
 
+def make_crystal_caves(out):
+    """Crystal caves (M10 part 20): veined stone and glowing pools per colour."""
+    yy, xx = np.mgrid[0:N, 0:N]
+    for name, c in CRYSTALS.items():
+        # veined stone: near-black rock with thin glowing veins (wandering
+        # lines in both directions), seamless
+        r = rng(name + "_veined")
+        img = stone(r, base="2a2a36")
+        # 2-3 thin cracks wandering diagonally (not a lattice)
+        m = np.zeros((N, N))
+        for _ in range(int(r.integers(2, 4))):
+            x, y = (int(v) for v in r.integers(0, N, 2))
+            dx = int(r.choice([-1, 1]))
+            for _ in range(int(r.integers(7, 13))):
+                m[y % N, x % N] = 1.0
+                step = r.random()
+                if step < 0.45:
+                    y += 1
+                elif step < 0.8:
+                    x += dx
+                    y += 1
+                else:
+                    x += dx
+        vp = ramp(c, 4, spread=0.2, sat_boost=1.1)
+        img[m > 0] = vp[2]
+        out[f"{name}_veined_stone"] = rgba(img)
+        out[f"{name}_veined_stone_glow"] = glow_layer(m, c, 0.8)
+        # glowing pool: a still luminous liquid, slowly shimmering
+        pal = ramp(c, 6, spread=0.18, sat_boost=1.05)
+        frames, gframes = [], []
+        for f in range(16):
+            t = 2 * np.pi * f / 16
+            v = (0.5 + 0.2 * np.sin(xx * 2 * np.pi / 16 + t)
+                 + 0.15 * np.sin((xx - yy) * 2 * np.pi / 16 * 2 - t)
+                 + 0.1 * np.sin(yy * 2 * np.pi / 16 * 3 + 2 * t))
+            img = shade(np.clip(v * 0.8, 0, 0.999), pal)
+            a = np.full((N, N), 0.62)
+            frames.append(rgba(img, a))
+            gframes.append(glow_layer(np.clip(0.45 + 0.4 * (v - 0.5) * 2, 0, 1), c, 0.75))
+        out[f"{name}_glow_pool"] = frames
+        out[f"{name}_glow_pool_glow"] = gframes
+
+
 def ladder_design(name, base):
     pal = ramp(base, 5, spread=0.15)
     img = np.zeros((N, N, 3)) + pal[1]
@@ -2278,6 +2321,7 @@ def build_all():
     make_mushroom_fields(out)
     make_ice_spikes(out)
     make_meadow(out)
+    make_crystal_caves(out)
     return out
 
 

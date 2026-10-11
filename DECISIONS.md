@@ -999,3 +999,29 @@ block for their upper half (mossy cobblestone boulders).
 * Bug found on the way: `andps xmm, [mem]` needs a 16-byte-aligned
   operand. A lone `dd` mask worked in debug by luck and faulted in
   release. Masks are now whole aligned xmm constants.
+
+## D77 — Cave biomes (M10 part 20)
+* Cave biomes are their own records (`[cave_biome]`), not surface
+  biomes. They are picked by a depth range and a 3D region noise, and
+  decorate a section after the normal cave decoration (new module
+  `src/world/cavebiome.asm`). Adding another cave biome is a data file.
+* The region and theme fields are evaluated on a 5×5×5 grid (every 8
+  blocks) per section and interpolated. A section is skipped when the
+  grid's maximum is below the region range (interpolation stays inside
+  the grid's extremes). Sections outside the depth range cost nothing.
+  The grotto chunks cost ~3% generation time.
+* Decoration only reads and writes the section's own blocks. Floor and
+  ceiling tests skip the top and bottom layer (ly 0 and 31). Stone is
+  replaced everywhere inside the region, not only at the cave walls, so
+  section borders show no seams.
+* Pillars: a disc per 16×16 cell, kept inside the chunk, where every cave
+  air block in the region becomes crystal. In a cavern that is a column
+  from floor to ceiling across sections without any cross-section state.
+  Tunnels through the disc are plugged (crystal can be mined).
+* Pools are a translucent glowing block until fluids exist.
+* Sprouts reuse the `spike` shape (state 0 up, 1 down) and the crystal's
+  own texture and glow.
+* One theme per area: the theme noise is large (scale 600), so most
+  grottos are one colour. At 220 a single grotto showed 2–3 colours.
+* The survey logs the region share of the deep volume (6.4% at y −16 to
+  −176 within 1 km) and the nearest region point.

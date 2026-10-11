@@ -347,6 +347,24 @@ Temperature and humidity are 0..1.
 | `ice_caves` | 3D noise threshold for caves inside ice at least 10 thick (0 = none) |
 | `serac` | `slope, jitter`: where the smoothed height slopes more than `slope` blocks per block, the ice breaks into 3×3 blocks ± `jitter` high |
 | `iceberg`, `iceberg_density` | `tree, weight` (repeatable, up to 8): icebergs on water 4+ deep (`iceberg` kind trees); per block² |
+
+### `[cave_biome <name>]` (in `data/biomes/`)
+A decorated cave region underground (design/biomes/crystal_caves.md),
+applied after the cave decoration to stone and cave air under the surface
+crust.
+
+| Setting | Meaning |
+|---|---|
+| `depth` | `lo, hi`: y range |
+| `region`, `region_scale` | `lo, hi`: range of its 3D region noise (−1..1); its scale in blocks (default 120; flattened 1.5× vertically) |
+| `theme`, `theme_scale` | `crystal, sprout, stone, pool` blocks (repeatable, up to 8 themes); a second noise of `theme_scale` blocks (default 200) picks one per area |
+| `rainbow` | share of 16-block cells that mix every theme per block |
+| `moss` | `block, level`: floor patches where their noise is above `level` |
+| `pool_threshold` | floors become the theme's pool (top 2 blocks) where the pool noise is above this (0 = none) |
+| `sprout_chance`, `clump_chance`, `stalactite_chance` | per floor / ceiling block: the theme's sprout (spike shape: state 0 up, 1 down), crystal clumps (1–3 up), crystal stalactites (1–3 down) |
+| `fungus` | `block, chance`: a floor plant |
+| `ore` | `block, chance`: replaces stone inside the region |
+| `pillar_chance`, `pillar_radius` | per 16×16 cell of a chunk: a disc where all cave air becomes the theme's crystal (floor-to-ceiling pillars); radius range |
 | `top_patch_low` | `block, level`: replaces the top block where the detail noise is below `level` (a second kind of patch, e.g. frozen dirt beside gravel) |
 | `dune_height` | dunes: the `dunes` noise × this is added to the height (blended across borders) |
 | `plateau_height` | plateaus: where the `plateaus` noise is high, this many blocks are added to the land (a steep ramp to a flat top; blended across borders) |

@@ -28,3 +28,33 @@ render = cutout
 
 [block star_crystal_ore]
 light = 12, 11, 6
+
+# --- crystal caves (design/biomes/crystal_caves.md) ----------------------------
+# near-black rock with glowing veins in the grotto's colour
+[template veined_stone]
+name = {}_veined_stone
+
+[family veined_stones]
+templates = veined_stone
+members   = blue, purple, green, pink, amber
+
+# crystal sprouts: the spike shape (state 0 points up from floors, 1 hangs
+# from ceilings) with the crystal's own glowing texture
+[template crystal_sprout]
+name     = {}_crystal_sprout
+shape    = spike
+render   = cutout
+textures = {}_crystal
+
+[family crystal_sprouts]
+templates = crystal_sprout
+members   = blue, purple, green, pink, amber
+
+# still, luminous pools (a block, not a flowing liquid, until fluids come)
+[template glow_pool]
+name     = {}_glow_pool
+render   = translucent
+
+[family glow_pools]
+templates = glow_pool
+members   = blue, purple, green, pink, amber

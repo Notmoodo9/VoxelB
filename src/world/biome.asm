@@ -49,6 +49,7 @@ global biomes_load, biome_climate, biome_pick, bmap_build, bmap_col, bmap_tint
 global biome_at, biome_point, biome_dunes, biome_plateau, biome_mesa, biome_strata_wave
 global g_strata, g_is_strata, bmap_dither, bmap_flatten
 global g_biomes, g_biome_count, g_trees, g_tree_count, bmap_hs, bmap_ice
+global g_caveb, g_caveb_count
 
 extern str_ieq, str_len, str_copy, str_dup, str_parse_float
 extern terrain_sample, g_world_seed, g_b_stone
@@ -72,6 +73,7 @@ IMPORT FindFirstFileA, FindNextFileA, FindClose
 %define T_BLOCKLIST     8               ; blocks (appended)
 %define T_KIND          9               ; tree kind name
 %define T_PATCH         10              ; block, float level
+%define T_THEME         11              ; 4 blocks appended to 4 lists (cave themes)
 
 ; record kinds
 %define K_NONE          0
@@ -79,6 +81,7 @@ IMPORT FindFirstFileA, FindNextFileA, FindClose
 %define K_TREE          2
 %define K_CLIMATE       3
 %define K_NOISE         4
+%define K_CAVE          5
 
 section .rdata
 str_pattern:    db "data\biomes\*.biome", 0
@@ -86,6 +89,22 @@ str_dir:        db "data\biomes\", 0
 str_none:       db "none", 0
 k_biome:        db "biome", 0
 k_tree:         db "tree", 0
+k_cave:         db "cave_biome", 0
+k_c_depth:      db "depth", 0
+k_c_region:     db "region", 0
+k_c_rscale:     db "region_scale", 0
+k_c_tscale:     db "theme_scale", 0
+k_c_rainbow:    db "rainbow", 0
+k_c_theme:      db "theme", 0
+k_c_moss:       db "moss", 0
+k_c_fungus:     db "fungus", 0
+k_c_ore:        db "ore", 0
+k_c_sprout:     db "sprout_chance", 0
+k_c_clump:      db "clump_chance", 0
+k_c_drip:       db "stalactite_chance", 0
+k_c_pool:       db "pool_threshold", 0
+k_c_pillar:     db "pillar_chance", 0
+k_c_pillar_r:   db "pillar_radius", 0
 k_climate:      db "climate", 0
 k_noise:        db "noise", 0
 n_temp:         db "temperature", 0
@@ -337,6 +356,23 @@ biome_settings:
     dq k_b_beach,     T_BLOCK,    BIOME.beach
     dq k_b_dry,       T_PATCH,    BIOME.dry_block
     dq 0
+cave_settings:
+    dq k_c_depth,     T_RANGE_I,  CAVEB.depth
+    dq k_c_region,    T_RANGE_F,  CAVEB.region
+    dq k_c_rscale,    T_FLOAT,    CAVEB.region_scale
+    dq k_c_tscale,    T_FLOAT,    CAVEB.theme_scale
+    dq k_c_rainbow,   T_FLOAT,    CAVEB.rainbow
+    dq k_c_theme,     T_THEME,    CAVEB.ntheme
+    dq k_c_moss,      T_PATCH,    CAVEB.moss
+    dq k_c_fungus,    T_PATCH,    CAVEB.fungus
+    dq k_c_ore,       T_PATCH,    CAVEB.ore
+    dq k_c_sprout,    T_FLOAT,    CAVEB.sprout_ch
+    dq k_c_clump,     T_FLOAT,    CAVEB.clump_ch
+    dq k_c_drip,      T_FLOAT,    CAVEB.drip_ch
+    dq k_c_pool,      T_FLOAT,    CAVEB.pool_ch
+    dq k_c_pillar,    T_FLOAT,    CAVEB.pillar_ch
+    dq k_c_pillar_r,  T_RANGE_F,  CAVEB.pillar_r
+    dq 0
 tree_settings:
     dq k_t_kind,      T_KIND,     TREE.kind
     dq k_t_log,       T_BLOCK,    TREE.log
@@ -412,6 +448,9 @@ alignb 4
 g_biome_count:  resd 1
 g_tree_count:   resd 1
 g_kind:         resd 1
+alignb 8
+g_caveb:        resb MAX_CAVEB * CAVEB_size
+g_caveb_count:  resd 1
 g_rec:          resd 1
 g_file_count:   resd 1
 alignb 8
@@ -923,6 +962,36 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     mov dword [rel g_kind], K_TREE
     RETURN
 .not_tree:
+    lea rdx, [rel k_cave]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_cave
+    mov eax, [rel g_caveb_count]
+    cmp eax, MAX_CAVEB
+    jae .full
+    mov [rel g_rec], eax
+    imul r12, rax, CAVEB_size
+    lea rax, [rel g_caveb]
+    add r12, rax
+    xor ecx, ecx                        ; (zeroed, then the defaults)
+.cv_zero:
+    mov dword [r12 + rcx], 0
+    add ecx, 4
+    cmp ecx, CAVEB_size
+    jb .cv_zero
+    mov rcx, rdi
+    call str_dup
+    mov [r12 + CAVEB.name], rax
+    mov dword [r12 + CAVEB.depth], -100000
+    mov dword [r12 + CAVEB.depth + 4], 100000
+    mov dword [r12 + CAVEB.region], 0x40000000          ; 2 (none)
+    mov dword [r12 + CAVEB.region + 4], 0x40000000
+    mov dword [r12 + CAVEB.region_scale], 0x42F00000    ; 120
+    mov dword [r12 + CAVEB.theme_scale], 0x43480000     ; 200
+    inc dword [rel g_caveb_count]
+    mov dword [rel g_kind], K_CAVE
+    RETURN
+.not_cave:
     lea rdx, [rel k_biome]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
@@ -968,6 +1037,13 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     add r12, rdx
     cmp eax, K_TREE
     je .find
+    lea rdi, [rel cave_settings]
+    imul r12, rcx, CAVEB_size
+    lea rdx, [rel g_caveb]
+    add r12, rdx
+    cmp eax, K_CAVE
+    je .find
+    mov ecx, [rel g_rec]
     lea rdi, [rel biome_settings]
     imul r12, rcx, BIOME_size
     lea rdx, [rel g_biomes]
@@ -1016,6 +1092,8 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     je .t_blocklist
     cmp eax, T_PATCH
     je .t_patch
+    cmp eax, T_THEME
+    je .t_theme
     ; T_KIND
     xor edi, edi
 .kind_find:
@@ -1180,6 +1258,39 @@ PROC biome_pair, 16, rbx, rsi, rdi, r12, r13
     lea rcx, [rel str_bad_block]
     mov rdx, [LOCAL(0)]
     call warn
+    RETURN
+.t_theme:                               ; crystal, sprout, stone, pool
+    cmp dword [r13], CAVEB_THEMES
+    jae .full_list
+    mov rdi, rsi
+    xor r12d, r12d                      ; which list
+.th_token:
+    test rdi, rdi
+    jz .th_done
+    cmp r12d, 4
+    jae .th_done
+    mov rcx, rdi
+    call cfg_next_token
+    mov rdi, rdx
+    cmp byte [rax], 0
+    je .th_token
+    mov [LOCAL(0)], rax
+    INVOKE block_find, rax
+    cmp eax, -1
+    jne .th_ok
+    lea rcx, [rel str_bad_block]
+    mov rdx, [LOCAL(0)]
+    call warn
+    xor eax, eax
+.th_ok:
+    mov ecx, [r13]
+    imul edx, r12d, CAVEB_THEMES * 4
+    lea rdx, [rdx + rcx * 4 + 4]
+    mov [r13 + rdx], eax
+    inc r12d
+    jmp .th_token
+.th_done:
+    inc dword [r13]
     RETURN
 .t_blocklist:
     mov rdi, rsi

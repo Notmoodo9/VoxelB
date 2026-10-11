@@ -34,7 +34,7 @@ yet; each item gets its own doc in `design/` when we interview it.
 | done | Sky islands (floating islands) | M10 | `design/biomes/sky_islands.md` |
 | done | Mushroom fields | M10 | `design/biomes/mushroom_fields.md` |
 | done | Meadow (and alpine meadow) | M10 | `design/biomes/meadow.md` |
-| todo | Crystal caves (underground) | M10 | |
+| done | Crystal caves (cave-biome system) | M10 | `design/biomes/crystal_caves.md` |
 | todo | Babbling streams down the meadow slopes | M15 | from the meadow interview (needs rivers and flowing water) |
 | todo | Fireflies (glowing forests, swamps) and spore haze (mushroom fields): drifting particles | M14+ | from the biome interviews |
 | todo | Trees and vegetation per biome | M10 | |

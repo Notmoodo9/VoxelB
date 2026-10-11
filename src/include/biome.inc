@@ -195,6 +195,34 @@ struc TREE
     .top            resd 1              ; block on the top of an iceberg (snow), 0 = none
 endstruc
 
+%define MAX_CAVEB       8               ; cave biomes
+%define CAVEB_THEMES    8
+struc CAVEB                             ; a cave biome (design/biomes/crystal_caves.md)
+    .name           resq 1
+    .depth          resd 2              ; int y range
+    .region         resd 2              ; f32 range of its region field (-1..1)
+    .region_scale   resd 1              ; f32 blocks
+    .theme_scale    resd 1
+    .rainbow        resd 1              ; f32 share of areas mixing every theme
+    .ntheme         resd 1              ; themes: crystal, sprout, stone, pool
+    .th_crystal     resd CAVEB_THEMES
+    .th_sprout      resd CAVEB_THEMES
+    .th_stone       resd CAVEB_THEMES
+    .th_pool        resd CAVEB_THEMES
+    .moss           resd 1              ; floor patches: block, share
+    .moss_ch        resd 1
+    .fungus         resd 1              ; floor plant: block, chance
+    .fungus_ch      resd 1
+    .ore            resd 1              ; wall ore: block, chance
+    .ore_ch         resd 1
+    .sprout_ch      resd 1              ; per floor / ceiling block
+    .clump_ch       resd 1              ; crystal clumps on floors
+    .drip_ch        resd 1              ; crystal stalactites on ceilings
+    .pool_ch        resd 1              ; pool noise threshold (0 = none)
+    .pillar_ch      resd 1              ; chance per 16 x 16 cell
+    .pillar_r       resd 2              ; f32 radius range
+endstruc
+
 struc BMAP
     .cx             resd 1
     .cz             resd 1
@@ -209,5 +237,6 @@ extern biomes_load, biome_climate, biome_pick, bmap_build, bmap_col, bmap_tint
 extern biome_at, biome_point, biome_dunes, biome_plateau, biome_mesa, biome_strata_wave
 extern g_strata, g_is_strata, bmap_dither, bmap_flatten
 extern g_biomes, g_biome_count, g_trees, g_tree_count, bmap_hs, bmap_ice
+extern g_caveb, g_caveb_count
 %endif
 %endif

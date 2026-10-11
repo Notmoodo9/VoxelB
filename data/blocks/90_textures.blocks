@@ -135,3 +135,35 @@ glow = star_bloom_glow
 glow = glow_fern_glow
 [texture glow_moss]
 glow = glow_moss_glow
+
+# crystal caves (design/biomes/crystal_caves.md)
+[texture blue_veined_stone]
+glow = blue_veined_stone_glow
+[texture purple_veined_stone]
+glow = purple_veined_stone_glow
+[texture green_veined_stone]
+glow = green_veined_stone_glow
+[texture pink_veined_stone]
+glow = pink_veined_stone_glow
+[texture amber_veined_stone]
+glow = amber_veined_stone_glow
+[texture blue_glow_pool]
+frame_ms    = 160
+interpolate = 1
+glow        = blue_glow_pool_glow
+[texture purple_glow_pool]
+frame_ms    = 160
+interpolate = 1
+glow        = purple_glow_pool_glow
+[texture green_glow_pool]
+frame_ms    = 160
+interpolate = 1
+glow        = green_glow_pool_glow
+[texture pink_glow_pool]
+frame_ms    = 160
+interpolate = 1
+glow        = pink_glow_pool_glow
+[texture amber_glow_pool]
+frame_ms    = 160
+interpolate = 1
+glow        = amber_glow_pool_glow

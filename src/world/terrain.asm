@@ -45,6 +45,7 @@
 %include "caves.inc"
 %include "biome.inc"
 %include "flora.inc"
+extern cavebiome_section, cavebiome_survey
 
 global terrain_load, terrain_gen_column, terrain_sample, terrain_find_spawn, log_xz
 global terrain_survey, g_snow_var
@@ -1318,6 +1319,7 @@ PROC terrain_survey, SV_LOCALS, rbx, rsi, rdi
     call log_xz
 .done:
     call caves_survey
+    call cavebiome_survey
     call flora_survey
     RETURN
 ENDPROC
@@ -2472,6 +2474,8 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     cmp ebx, eax
     jg .no_finish
     INVOKE caves_finish, [LOCAL(G_CTX)], [LOCAL(G_IDS)], rbx, [LOCAL(G_SY)]
+    ; cave biomes (crystal grottos)
+    INVOKE cavebiome_section, [LOCAL(G_CTX)], [LOCAL(G_IDS)], rbx
 .no_finish:
     ; plants and trees
     cmp ebx, [LOCAL(G_TOPF)]
