@@ -29,7 +29,7 @@ yet; each item gets its own doc in `design/` when we interview it.
 | done | Snowy tundra | M10 | `design/biomes/snowy_tundra.md` |
 | done | Ice spikes | M10 | `design/biomes/ice_spikes.md` |
 | done | Frozen ocean | M10 | `design/biomes/frozen_ocean.md` |
-| todo | Cold biomes: glaciers | M10 | |
+| done | Glacier | M10 | `design/biomes/glacier.md` |
 | done | Glowing forest | M10 | `design/biomes/glowing_forest.md` |
 | done | Sky islands (floating islands) | M10 | `design/biomes/sky_islands.md` |
 | done | Mushroom fields | M10 | `design/biomes/mushroom_fields.md` |

@@ -1,0 +1,46 @@
+# Glacier (design/biomes/glacier.md): thick ice caps on the high cold
+# mountains, with tongues flowing down the valleys: snow fields up high,
+# bare packed and blue ice lower down, seracs on steep ice, crevasse
+# fields, a few blue ice caves, sheer blue cliffs at the snout and edges,
+# gravel moraines with boulders and milky turquoise meltwater lakes.
+
+[biome glacier]
+temperature   = 0.00, 0.33       # the cold climates,
+priority      = 2
+height        = 160, 1024        #   on high ground,
+smooth_height = 1                #   by the smoothed height (tongues down valleys)
+top_block     = snow
+water_color   = 4AD0C8           # milky turquoise meltwater
+
+# the ice: 5-8 thick on ridges; valleys filled up to 3 below the smoothed
+# height (at most 40 thick); blue ice from 3 below the surface; snow on
+# top above 190
+ice_block = packed_ice
+ice_deep  = blue_ice, 3
+ice_snow  = snow, 190
+ice_cap   = 5, 8
+ice_fill  = 3, 40
+
+# the ice ends at blend weight 0.5 (a sheer wall); the band 0.14 below it
+# is a moraine ridge 3 high
+ice_edge       = 0.5, 0.14
+moraine_block  = gravel
+moraine_height = 3
+
+# crevasses: ridged-noise lines above 0.93, up to 15 deep; ice caves;
+# seracs where the ice slopes more than 0.9 (3 x 3 blocks, +-3)
+crevasse  = 0.93, 15
+ice_caves = 0.45
+serac     = 0.9, 3
+
+# boulders on the moraines (nothing grows on the ice)
+bush         = meadow_stone, 3
+bush         = mossy_boulder, 2
+bush         = tundra_boulder, 2
+bush_density = 0.002
+
+# meltwater lakes
+pond_chance = 0.35
+pond_radius = 2.5, 6
+pond_depth  = 3
+pond_floor  = gravel

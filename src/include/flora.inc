@@ -53,6 +53,7 @@ struc FCTX
     .top        resd 1                  ; highest y any tree reaches
     .bot        resd 1                  ; lowest y an iceberg reaches (under water)
     .pad0       resd 1
+    .glac       resq 1                  ; u8[HM*HM] GF_ICE / GF_MORAINE (glacier.asm)
     .npond      resd 1
     .ncand      resd 1
     .ponds      resb MAX_PONDS * POND_size
@@ -66,5 +67,8 @@ endstruc
 %ifndef FLORA_IMPL
 extern flora_ponds, flora_prepare, flora_section, flora_survey, flora_islands
 extern flora_sea_ice
+%endif
+%ifndef GLACIER_IMPL
+extern glacier_pass, glacier_block
 %endif
 %endif

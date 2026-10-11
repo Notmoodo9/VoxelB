@@ -153,6 +153,20 @@ struc BIOME
     .berg           resd BIOME_TREES
     .berg_w         resd BIOME_TREES
     .berg_d         resd 1              ; icebergs per block^2
+    .smooth_h       resd 1              ; 1: picked by the smoothed surface height
+    .ice            resd 1              ; glacier ice block (0 = none)
+    .ice_deep       resd 1              ; deeper ice: block, depth below the surface
+    .ice_deep_d     resd 1
+    .ice_snow       resd 1              ; snow on the ice: block, height above which
+    .ice_snow_y     resd 1
+    .ice_cap        resd 2              ; f32 thickness on ridges (range)
+    .ice_fill       resd 2              ; f32 surface below the smoothed height, max thickness
+    .ice_edge       resd 2              ; f32 blend weight where the ice ends, moraine band
+    .moraine        resd 1              ; moraine block
+    .moraine_h      resd 1              ; f32 moraine ridge height
+    .crevasse       resd 2              ; f32 noise threshold, deepest crevasse
+    .ice_caves      resd 1              ; f32 cave noise threshold (0 = none)
+    .serac          resd 2              ; f32 slope (blocks per block), height jitter
 endstruc
 
 struc TREE
@@ -186,12 +200,14 @@ struc BMAP
     .cz             resd 1
     .raw            resb 124            ; BM_RAW^2 biome ids
     .w              resd BM_PTS * BM_PTS * MAX_BIOMES
+    .rawh           resd BM_RAW * BM_RAW    ; f32 sample heights
+    .hs             resd BM_PTS * BM_PTS    ; f32 smoothed heights (the weights' tent)
 endstruc
 
 %ifndef BIOME_IMPL
 extern biomes_load, biome_climate, biome_pick, bmap_build, bmap_col, bmap_tint
 extern biome_at, biome_point, biome_dunes, biome_plateau, biome_mesa, biome_strata_wave
 extern g_strata, g_is_strata, bmap_dither, bmap_flatten
-extern g_biomes, g_biome_count, g_trees, g_tree_count
+extern g_biomes, g_biome_count, g_trees, g_tree_count, bmap_hs, bmap_ice
 %endif
 %endif

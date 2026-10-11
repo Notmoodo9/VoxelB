@@ -802,6 +802,10 @@ PROC flora_prepare, FR_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     HM_INDEX ecx, edx
     mov rcx, [rbx + FCTX.heights]
     mov r12d, [rcx + rax * 4]           ; H
+    ; nothing grows on glacier ice
+    mov rdx, [rbx + FCTX.glac]
+    cmp byte [rdx + rax], GF_ICE
+    je .next_kind
     lea edx, [r12d - 1]
     cmp dword [LOCAL(FR_KIND)], 2
     jne .not_berg
@@ -2369,6 +2373,8 @@ PROC flora_section, FS_LOCALS, rbx, rsi, rdi, r12, r13
     cmp word [rsi + INFO_POND], POND_NONE
     jne .pnext
     ; plants grow on grass and on the biome's top patch block (moss)
+    cmp byte [rsi + INFO_GFLAG], GF_ICE
+    je .pnext                           ; (nothing grows on glacier ice)
     movzx eax, byte [rsi + INFO_BIOME]
     imul r8, rax, BIOME_size
     lea rax, [rel g_biomes]

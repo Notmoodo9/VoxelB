@@ -337,6 +337,15 @@ Temperature and humidity are 0..1.
 | `sea_ice_snow` | `block, share`: share of the floes covered with this block instead |
 | `sea_ice_ridge` | `block, share`: pressure ridges, one block high, along the edges of this share of floe pairs |
 | `sea_ice_shore_depth` | water no deeper than this is always frozen (shore-fast ice) |
+| `smooth_height` | `1`: the biome's `height` range is tested against the smoothed surface height (the mean of the height and 4 samples 24 blocks away), so it reaches down valleys between high ground (glacier tongues) |
+| `ice_block` | glacier: the ice laid on the ground (0 = none); the ice ends where the blended weight of such biomes drops below `ice_edge` |
+| `ice_deep`, `ice_snow` | `block, depth`: the ice this deep below the surface and lower (blue ice); `block, height`: the top above this height (snow, jittered like the snow line) |
+| `ice_cap`, `ice_fill` | thickness range on ridges (varies smoothly); `offset, max`: the ice fills up to the smoothed height minus `offset`, at most `max` thick |
+| `ice_edge` | `weight, band`: the ice ends (a sheer wall) at this blend weight; the `band` below it is a moraine ridge |
+| `moraine_block`, `moraine_height` | the moraine's top block and ridge height |
+| `crevasse` | `threshold, depth`: ridged-noise lines above `threshold` (0..1, inside crevasse fields) are cut up to `depth` into the ice |
+| `ice_caves` | 3D noise threshold for caves inside ice at least 10 thick (0 = none) |
+| `serac` | `slope, jitter`: where the smoothed height slopes more than `slope` blocks per block, the ice breaks into 3×3 blocks ± `jitter` high |
 | `iceberg`, `iceberg_density` | `tree, weight` (repeatable, up to 8): icebergs on water 4+ deep (`iceberg` kind trees); per block² |
 | `top_patch_low` | `block, level`: replaces the top block where the detail noise is below `level` (a second kind of patch, e.g. frozen dirt beside gravel) |
 | `dune_height` | dunes: the `dunes` noise × this is added to the height (blended across borders) |

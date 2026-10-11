@@ -1377,6 +1377,7 @@ underground:
 %define G_MESA      (G_FCTX + 36)              ; f32 blended mesa height
 %define G_TMP       (G_FCTX + 40)              ; scratch qword
 %define G_ISLE      (G_FCTX + 48)              ; highest floating island top
+%define G_GLAC      (G_FCTX + 56)              ; u8[HM*HM] glacier flags
 %define G_LOCALS    (96 + TSAMPLE_size + 96)
 %define CG          (HM / 4 + 1)               ; coarse grid side (every 4 blocks)
 PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
@@ -1398,6 +1399,8 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [LOCAL(G_CGRID)], rax
     INVOKE arena_alloc, [LOCAL(G_ARENA)], HM * HM * 2, 16
     mov [LOCAL(G_POND)], rax
+    INVOKE arena_alloc, [LOCAL(G_ARENA)], HM * HM, 16
+    mov [LOCAL(G_GLAC)], rax
     INVOKE arena_alloc, [LOCAL(G_ARENA)], BMAP_size, 16
     mov [LOCAL(G_BMAP)], rax
     INVOKE arena_alloc, [LOCAL(G_ARENA)], FCTX_size, 16
@@ -1684,6 +1687,16 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [rbx + FCTX.info], rax
     mov rax, [LOCAL(G_BMAP)]
     mov [rbx + FCTX.bmap], rax
+    mov rax, [LOCAL(G_GLAC)]
+    mov [rbx + FCTX.glac], rax
+    ; ---- glacier ice and moraines (raise the heightmap) ---------------------
+    mov rcx, rbx
+    call glacier_pass
+    cmp eax, [LOCAL(G_MAXH)]
+    jle .glac_max
+    mov [LOCAL(G_MAXH)], eax
+.glac_max:
+    mov rbx, [LOCAL(G_FCTX)]
     mov rcx, rbx
     call flora_ponds
 
@@ -2010,6 +2023,18 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
 .seabed_store:
     mov edx, eax
 .sf_store:
+    ; moraines (glacier edges): the glacier biome's moraine block
+    cmp byte [rcx + INFO_GFLAG], GF_MORAINE
+    jne .sf_pond
+    movzx r10d, byte [rcx + INFO_GBIOME]
+    imul r10, r10, BIOME_size
+    lea r11, [rel g_biomes]
+    mov r10d, [r11 + r10 + BIOME.moraine]
+    test r10d, r10d
+    jz .sf_pond
+    mov eax, r10d
+    mov edx, r10d
+.sf_pond:
     ; pond floor: the biome's pond_floor, else its filler
     cmp word [rcx + INFO_POND], POND_NONE
     je .sf_put
@@ -2304,6 +2329,20 @@ PROC terrain_gen_column, G_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     cmovnz eax, ecx
     jmp .put
 .solid:
+    ; glacier ice: from the ground under it up to the surface
+    cmp byte [r15 + INFO_GFLAG], GF_ICE
+    jne .not_ice
+    movsx eax, word [r15 + INFO_GROUND]
+    cmp edi, eax
+    jl .not_ice
+    cmp edi, r14d
+    jge .not_ice
+    mov rcx, r15
+    mov edx, edi
+    mov r8d, r14d
+    call glacier_block
+    jmp .put
+.not_ice:
     cmp edi, r14d
     jge .crag
     mov eax, r14d

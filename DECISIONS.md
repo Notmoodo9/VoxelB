@@ -966,3 +966,36 @@ block for their upper half (mossy cobblestone boulders).
   spikes), so they got the same snowy gravel shore.
 * The survey logs the share of the sea that is frozen and the nearest
   open frozen sea (6+ deep).
+
+## D76 — Glaciers: smoothed-height biomes and an ice layer (M10 part 19)
+* Tongues: a biome can be picked by the smoothed surface height
+  (`smooth_height`), the mean of the sample and 4 samples 24 blocks
+  away. In a valley between high ridges it stays high, so the glacier
+  reaches down the valley and ends where the mountain ends. The extra
+  samples are taken only within 96 blocks below the lowest such biome, so
+  lowland chunks pay nothing.
+* The blend map also keeps its sample heights and a smoothed height per
+  blend point (the same tent as the weights, ~32 blocks), read with
+  bilinear interpolation (`bmap_hs`).
+* Ice is a layer on the ground, laid by `glacier_pass` (new module
+  `src/world/glacier.asm`) right after the heightmap. It raises the
+  heightmap to the ice surface, so ponds, trees, plants, caves and the
+  section bounds all see the ice as the ground.
+  * Surface = max(ground + cap, smoothed height − fill), at most `max`
+    above the ground. Ridges get a thin cap, valleys fill to a broad
+    surface.
+  * It ends abruptly where the glacier blend weight drops below
+    `ice_edge`, giving sheer walls at the snout and edges. The band below
+    is a moraine ridge.
+  * Seracs where the smoothed height is steep.
+  * Crevasses: depth per column (ridged noise in field masks).
+  * Ice caves: 3D noise evaluated per block, only inside thick ice.
+  * The ice columns have no overhang noise.
+  * INFO grew to 40 bytes (ground, crevasse, flags, glacier biome, world
+    x/z).
+* `glacier_block` picks each block between the ground and the surface:
+  air in crevasses and caves, snow on top above the snow height, packed
+  ice, blue ice deeper.
+* Bug found on the way: `andps xmm, [mem]` needs a 16-byte-aligned
+  operand. A lone `dd` mask worked in debug by luck and faulted in
+  release. Masks are now whole aligned xmm constants.

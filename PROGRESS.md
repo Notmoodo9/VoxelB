@@ -1,11 +1,65 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 18): 🎨 DESIGN — Frozen ocean: DONE** (Windows CI green: run #54)
+**Milestone 10 (part 19): 🎨 DESIGN — Glacier: DONE** (Windows CI: see below)
 
-Next: **Milestone 10, part 19: the next biome**. Candidates are glaciers
-(the other half of this cold pair), crystal caves (underground), river
+Next: **Milestone 10, part 20: the next biome**. Candidates are crystal
+caves (underground, needs a cave-biome system) and river
 (`design/BACKLOG.md`). It starts with its design interview.
+
+---
+
+## Milestone 10, part 19 — done (2026-10-11)
+
+### Design interview
+Two rounds plus approval: `design/biomes/glacier.md`.
+* Ice caps on the high cold mountains, with tongues down the valleys.
+* Snow fields up high; bare packed and blue ice lower down.
+* Crevasse fields, blue cliffs, seracs, a few ice caves.
+* Gravel moraines with boulders, and milky turquoise meltwater lakes.
+
+### What was built
+* **Glacier** (`data/biomes/54_glacier.biome`): 3.1% of land near the
+  origin.
+* **Smoothed-height biomes** (D76): a new biome setting `smooth_height`,
+  so glaciers reach down valleys. The blend map keeps smoothed heights
+  (`bmap_hs`).
+* **Ice layer** (new module `src/world/glacier.asm`):
+  * `glacier_pass` raises the heightmap to the ice surface: a cap on
+    ridges, valleys filled to a broad surface;
+  * the ice ends in a sheer wall, with a moraine ridge beyond;
+  * seracs on steep ice; crevasse depths per column;
+  * `glacier_block` picks snow, packed ice and blue ice, and cuts
+    crevasses and ice caves.
+  * New biome settings: `ice_block`, `ice_deep`, `ice_snow`, `ice_cap`,
+    `ice_fill`, `ice_edge`, `moraine_block`, `moraine_height`,
+    `crevasse`, `ice_caves`, `serac`.
+* Nothing grows on the ice (trees and plants skip it). Boulders sit on
+  the moraines.
+* INFO grew to 40 bytes.
+
+### How to see it (seed 20261009)
+* Over the glacier: `voxelb.exe --pos 256 330 -330 --look 0 -35`.
+* Its flank with seracs and crevasses:
+  `voxelb.exe --pos 256 215 -385 --look 340 -12`.
+
+### Verified
+* Debug and release headless tests pass. Debug and release ran over the
+  glacier with no asserts and clean exits.
+* Screenshots: the ice cap from above (snow cap, bare ice, crevasse lines,
+  moraine ring) and its flank (seracs).
+* A release-only crash (an unaligned `andps` operand) was found and fixed.
+
+### Known issues
+* The glacier near spawn sits on a single mountain, so its tongues are
+  short. Long valley tongues need a big range.
+* Ice caves and meltwater lakes were not seen in screenshots. Both are in
+  the code and data, but they are uncommon.
+
+### Performance
+Unchanged: the 16-chunk view over the glacier is ready after ~10.5 s on 3
+workers, with or without the glacier biome (mountain terrain is heavier).
+Meshing 9.3 ms per column; 7.2 FPS average under Wine with llvmpipe.
 
 ---
 

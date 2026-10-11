@@ -48,7 +48,7 @@
 global biomes_load, biome_climate, biome_pick, bmap_build, bmap_col, bmap_tint
 global biome_at, biome_point, biome_dunes, biome_plateau, biome_mesa, biome_strata_wave
 global g_strata, g_is_strata, bmap_dither, bmap_flatten
-global g_biomes, g_biome_count, g_trees, g_tree_count
+global g_biomes, g_biome_count, g_trees, g_tree_count, bmap_hs, bmap_ice
 
 extern str_ieq, str_len, str_copy, str_dup, str_parse_float
 extern terrain_sample, g_world_seed, g_b_stone
@@ -129,6 +129,18 @@ k_b_seabed_hi:  db "seabed_patch", 0
 k_b_beach_p:    db "beach_patch", 0
 k_b_berg:       db "iceberg", 0
 k_b_berg_d:     db "iceberg_density", 0
+k_b_smooth:     db "smooth_height", 0
+k_b_ice:        db "ice_block", 0
+k_b_ice_deep:   db "ice_deep", 0
+k_b_ice_snow:   db "ice_snow", 0
+k_b_ice_cap:    db "ice_cap", 0
+k_b_ice_fill:   db "ice_fill", 0
+k_b_ice_edge:   db "ice_edge", 0
+k_b_moraine:    db "moraine_block", 0
+k_b_moraine_h:  db "moraine_height", 0
+k_b_crevasse:   db "crevasse", 0
+k_b_ice_caves:  db "ice_caves", 0
+k_b_serac:      db "serac", 0
 k_contrast:     db "contrast", 0
 ; biome keys
 k_b_temp:       db "temperature", 0
@@ -267,6 +279,18 @@ biome_settings:
     dq k_b_beach_p,   T_PATCH,    BIOME.beach_patch
     dq k_b_berg,      T_TREEREF,  BIOME.nbergs
     dq k_b_berg_d,    T_FLOAT,    BIOME.berg_d
+    dq k_b_smooth,    T_INT,      BIOME.smooth_h
+    dq k_b_ice,       T_BLOCK,    BIOME.ice
+    dq k_b_ice_deep,  T_PATCH,    BIOME.ice_deep
+    dq k_b_ice_snow,  T_PATCH,    BIOME.ice_snow
+    dq k_b_ice_cap,   T_RANGE_F,  BIOME.ice_cap
+    dq k_b_ice_fill,  T_RANGE_F,  BIOME.ice_fill
+    dq k_b_ice_edge,  T_RANGE_F,  BIOME.ice_edge
+    dq k_b_moraine,   T_BLOCK,    BIOME.moraine
+    dq k_b_moraine_h, T_FLOAT,    BIOME.moraine_h
+    dq k_b_crevasse,  T_RANGE_F,  BIOME.crevasse
+    dq k_b_ice_caves, T_FLOAT,    BIOME.ice_caves
+    dq k_b_serac,     T_RANGE_F,  BIOME.serac
     dq k_b_top,       T_BLOCK,    BIOME.top
     dq k_b_filler,    T_BLOCK,    BIOME.filler
     dq k_b_plant,     T_PLANT,    BIOME.nplants
@@ -509,6 +533,7 @@ PROC biomes_load, 0, rbx, rsi
     jmp .file
 .files_done:
     call strata_build
+    call smooth_setup
     ; colour factors (relative to the textures' own colours)
     xor ebx, ebx
 .fac:
@@ -1287,10 +1312,54 @@ ENDPROC
 ;   in:  xmm0 = x, xmm1 = z (doubles), ecx = surface height
 ;   out: eax = biome      clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC biome_point, 0, rbx
+%define SMOOTH_R    24                  ; smoothed height: samples this far away
+%define SMOOTH_REACH 96                 ; only this far below the lowest such biome
+%define BP_X        0                   ; doubles
+%define BP_Z        8
+%define BP_SUM      16
+%define BP_I        20
+%define BP_S        32                  ; TSAMPLE
+%define BP_LOCALS   (32 + TSAMPLE_size)
+PROC biome_point, BP_LOCALS, rbx, rsi
     mov ebx, ecx
+    mov esi, ecx                        ; smoothed height
+    movsd [LOCAL(BP_X)], xmm0
+    movsd [LOCAL(BP_Z)], xmm1
+    ; biomes picked by the smoothed height (glaciers reaching down
+    ; valleys): the mean of this height and 4 samples SMOOTH_R away; only
+    ; within reach of their heights
+    cmp dword [rel g_smooth_on], 0
+    je .pick
+    lea eax, [ebx + SMOOTH_REACH]
+    cmp eax, [rel g_smooth_lo]
+    jl .pick
+    mov [LOCAL(BP_SUM)], ebx
+    mov dword [LOCAL(BP_I)], 0
+.s:
+    mov eax, [LOCAL(BP_I)]
+    lea rcx, [rel smooth_ofs]
+    cvtsi2sd xmm0, dword [rcx + rax * 8]
+    addsd xmm0, [LOCAL(BP_X)]
+    cvtsi2sd xmm1, dword [rcx + rax * 8 + 4]
+    addsd xmm1, [LOCAL(BP_Z)]
+    lea rcx, [LOCAL(BP_S)]
+    call terrain_sample
+    cvttss2si eax, [LOCAL(BP_S) + TSAMPLE.height]
+    add [LOCAL(BP_SUM)], eax
+    inc dword [LOCAL(BP_I)]
+    cmp dword [LOCAL(BP_I)], 4
+    jb .s
+    mov eax, [LOCAL(BP_SUM)]
+    cdq
+    mov ecx, 5
+    idiv ecx
+    mov esi, eax
+.pick:
+    movsd xmm0, [LOCAL(BP_X)]
+    movsd xmm1, [LOCAL(BP_Z)]
     call biome_climate
     mov ecx, ebx
+    mov r9d, esi
     call biome_pick
     RETURN
 ENDPROC
@@ -1306,8 +1375,9 @@ clim_norm:
 ; -----------------------------------------------------------------------------
 ; biome_pick — the biome for a climate and surface height: among the boxes
 ; that contain the climate, the highest priority, then the nearest centre.
+; Biomes with `smooth_height` test the smoothed height instead.
 ;   in:  xmm0 = temperature, xmm1 = humidity, xmm2 = weirdness,
-;        xmm3 = rarity, ecx = surface height
+;        xmm3 = rarity, ecx = surface height, r9d = smoothed height
 ;   out: eax = biome index (0 = none)
 ;   clobbers: rax, rcx, rdx, r8-r11, xmm3-xmm5
 ; -----------------------------------------------------------------------------
@@ -1322,9 +1392,12 @@ biome_pick:
 .b:
     cmp edx, [rel g_biome_count]
     jae .done
-    cmp ecx, [r8 + BIOME.height]
+    mov r10d, ecx
+    cmp dword [r8 + BIOME.smooth_h], 0
+    cmovne r10d, r9d
+    cmp r10d, [r8 + BIOME.height]
     jl .next
-    cmp ecx, [r8 + BIOME.height + 4]
+    cmp r10d, [r8 + BIOME.height + 4]
     jg .next
     comiss xmm0, [r8 + BIOME.temp]
     jb .next
@@ -1425,6 +1498,8 @@ PROC bmap_build, BB_LOCALS, rbx, rsi, rdi, r12, r13
     imul ecx, r12d, BM_RAW
     add ecx, r13d
     mov [rbx + BMAP.raw + rcx], al
+    movss xmm0, [LOCAL(BB_S) + TSAMPLE.height]
+    movss [rbx + BMAP.rawh + rcx * 4], xmm0
     inc r13d
     cmp r13d, BM_RAW
     jb .rx
@@ -1435,6 +1510,9 @@ PROC bmap_build, BB_LOCALS, rbx, rsi, rdi, r12, r13
     lea rdi, [rbx + BMAP.w]
     xor eax, eax
     mov ecx, BM_PTS * BM_PTS * MAX_BIOMES
+    rep stosd
+    lea rdi, [rbx + BMAP.hs]
+    mov ecx, BM_PTS * BM_PTS
     rep stosd
     xor r12d, r12d                      ; pj
 .pz:
@@ -1457,8 +1535,19 @@ PROC bmap_build, BB_LOCALS, rbx, rsi, rdi, r12, r13
     movss xmm0, [rcx + r8 * 4]
     mulss xmm0, [rcx + r9 * 4]
     mulss xmm0, [rel c_inv81]
-    addss xmm0, [rsi + rax * 4]
-    movss [rsi + rax * 4], xmm0
+    movss xmm1, [rsi + rax * 4]
+    addss xmm1, xmm0
+    movss [rsi + rax * 4], xmm1
+    ; the smoothed height: the same tent over the sample heights
+    lea eax, [r12d + r8d]
+    imul eax, eax, BM_RAW
+    add eax, r13d
+    add eax, r9d
+    mulss xmm0, [rbx + BMAP.rawh + rax * 4]
+    imul eax, r12d, BM_PTS
+    add eax, r13d
+    addss xmm0, [rbx + BMAP.hs + rax * 4]
+    movss [rbx + BMAP.hs + rax * 4], xmm0
     inc r9d
     cmp r9d, 5
     jb .di
@@ -1473,6 +1562,113 @@ PROC bmap_build, BB_LOCALS, rbx, rsi, rdi, r12, r13
     jb .pz
     RETURN
 ENDPROC
+
+; -----------------------------------------------------------------------------
+; smooth_setup — after loading: do any biomes use the smoothed height
+; (`smooth_height`)? g_smooth_lo = the lowest of their height ranges.
+;   clobbers: rax, rcx, rdx, r8
+; -----------------------------------------------------------------------------
+smooth_setup:
+    mov dword [rel g_smooth_on], 0
+    mov dword [rel g_smooth_lo], 0x7FFFFFFF
+    mov edx, 1
+    lea r8, [rel g_biomes + BIOME_size]
+.b:
+    cmp edx, [rel g_biome_count]
+    jae .done
+    cmp dword [r8 + BIOME.smooth_h], 0
+    je .next
+    mov dword [rel g_smooth_on], 1
+    mov eax, [r8 + BIOME.height]
+    cmp eax, [rel g_smooth_lo]
+    jge .next
+    mov [rel g_smooth_lo], eax
+.next:
+    inc edx
+    add r8, BIOME_size
+    jmp .b
+.done:
+    ret
+
+; -----------------------------------------------------------------------------
+; bmap_hs — the smoothed surface height at a local block (bilinear between
+; the blend points; the tent over the samples ~32 blocks around).
+;   in:  rcx = BMAP*, edx = lx, r8d = lz (-32..63)
+;   out: xmm0 = height     clobbers: rax, rdx, r8, r10, xmm0-xmm5
+; -----------------------------------------------------------------------------
+bmap_hs:
+    add edx, 32
+    add r8d, 32
+    mov eax, edx
+    shr eax, 4
+    and edx, 15
+    cvtsi2ss xmm4, edx
+    mulss xmm4, [rel c_inv16]           ; fx
+    mov r10d, r8d
+    shr r10d, 4
+    and r8d, 15
+    cvtsi2ss xmm5, r8d
+    mulss xmm5, [rel c_inv16]           ; fz
+    imul r10d, r10d, BM_PTS
+    add eax, r10d
+    lea r10, [rcx + BMAP.hs + rax * 4]
+    movss xmm0, [r10]
+    movss xmm1, [r10 + 4]
+    subss xmm1, xmm0
+    mulss xmm1, xmm4
+    addss xmm0, xmm1
+    movss xmm2, [r10 + BM_PTS * 4]
+    movss xmm3, [r10 + BM_PTS * 4 + 4]
+    subss xmm3, xmm2
+    mulss xmm3, xmm4
+    addss xmm2, xmm3
+    subss xmm2, xmm0
+    mulss xmm2, xmm5
+    addss xmm0, xmm2
+    ret
+
+; -----------------------------------------------------------------------------
+; bmap_ice — the blended weight of the glacier biomes (with `ice_block`) at
+; a local block, and the strongest of them.
+;   in:  rcx = BMAP*, edx = lx, r8d = lz (-32..63)
+;   out: xmm0 = weight 0..1, eax = biome (0 = none)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC bmap_ice, MAX_BIOMES * 4
+    lea r9, [LOCAL(0)]
+    call bmap_weights
+    xorps xmm0, xmm0                    ; sum
+    xorps xmm2, xmm2                    ; best weight
+    xor eax, eax
+    mov ecx, 1
+    lea r8, [rel g_biomes + BIOME_size]
+.b:
+    cmp ecx, [rel g_biome_count]
+    jae .done
+    cmp dword [r8 + BIOME.ice], 0
+    je .next
+    movss xmm1, [LOCAL(0) + rcx * 4]
+    addss xmm0, xmm1
+    comiss xmm1, xmm2
+    jbe .next
+    movss xmm2, xmm1
+    mov eax, ecx
+.next:
+    inc ecx
+    add r8, BIOME_size
+    jmp .b
+.done:
+    RETURN
+ENDPROC
+
+section .rdata
+align 4
+smooth_ofs:     dd SMOOTH_R, 0,  -SMOOTH_R, 0,  0, SMOOTH_R,  0, -SMOOTH_R
+section .bss
+alignb 4
+g_smooth_on:    resd 1
+g_smooth_lo:    resd 1
+section .text
 
 ; -----------------------------------------------------------------------------
 ; bmap_weights — bilinear blend of the weight vectors at a local block.

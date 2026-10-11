@@ -23,7 +23,7 @@ endstruc
 %define HM              (32 + 2 * HB)
 
 ; per-column info of the 32 x 32 interior (terrain_gen_column)
-%define INFO_SIZE       24
+%define INFO_SIZE       40
 %define INFO_A          0               ; f32 overhang amplitude
 %define INFO_TOP        4               ; u16 top block
 %define INFO_FILL       6               ; u16 filler block
@@ -43,6 +43,14 @@ endstruc
 %define ICE_RIDGE       4               ;   a pressure ridge on top
 %define INFO_ISLE_TOP   20              ; i16 floating island: top block y (POND_NONE)
 %define INFO_ISLE_BOT   22              ; i16 its lowest block
+%define INFO_GROUND     24              ; i16 glacier: the ground under the ice (first ice block)
+%define INFO_CREV       26              ; u8 crevasse depth from the top
+%define INFO_GFLAG      27              ; u8 GF_ICE / GF_MORAINE (glacier.asm)
+%define INFO_GBIOME     28              ; u8 the glacier biome
+%define INFO_WX         32              ; i32 world x, z (ice columns)
+%define INFO_WZ         36
+%define GF_ICE          1
+%define GF_MORAINE      2
 %define POND_NONE       -32768
 %define POND_DRY        -32767          ; a dry hollow (salt flat): no water
 
