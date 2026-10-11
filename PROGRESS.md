@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 10 (part 20): 🎨 DESIGN — Crystal caves: DONE** (Windows CI: see below)
+**Milestone 10 (part 20): 🎨 DESIGN — Crystal caves: DONE** (Windows CI green: run #58)
 
 Next: **Milestone 10, part 21: river**, the last biome on the list
 (`design/BACKLOG.md`). It starts with its design interview. After it,
