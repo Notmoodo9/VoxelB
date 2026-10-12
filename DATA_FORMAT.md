@@ -47,6 +47,9 @@ warnings, as above.
 | `data/world/ores.cfg` | `src/world/terrain.asm` (used by `caves.asm`) | ores: blocks, heights, cluster sizes and counts |
 | `data/world/flat_test.cfg` | `src/world/world.asm` | **debug** test world: layers, block gallery, test structures |
 | `assets/textures/blocks/*.png` | `src/render/block_textures.asm` | block textures (16×16, animated strips, glow layers) |
+| `data/ui/menu.cfg` | `src/core/game.asm` | the main menu's background: world seed, time, the camera's path |
+| `data/ui/credits.txt` | `src/ui/menu.asm` | the Credits screen: plain text, one line per line (the first is the heading) |
+| `assets/fonts/ui_sdf.png`, `ui_sdf.cfg` | `src/ui/ui_draw.asm` | the menus' / HUD's SDF font (made by `tools/make_sdf_font.py`) |
 
 ### `controls.cfg`
 
@@ -466,6 +469,16 @@ test structures are near the start position. Blocks are named as in
 
 The parser is shared (`src/core/cfg.asm`). Every reader reports problems as
 `<file>: <message>` warnings and keeps going.
+
+### `menu.cfg` (Milestone 17)
+
+| Key | Value | Meaning |
+|---|---|---|
+| `seed` | number | the world shown behind the main menu |
+| `time` | hour 0–24 | the (still) time of day there |
+| `speed` | blocks/s | how fast the camera glides along the path |
+| `look_at` | x, y, z | the point the camera keeps facing |
+| `point` | x, y, z | the path, two or more points in order; at the end it fades and starts again |
 
 ## Saved worlds (`saves/<name>/`, Milestone 17)
 

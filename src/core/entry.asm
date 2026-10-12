@@ -64,6 +64,7 @@ extern daycycle_init, g_time_override
 extern sim_init, sim_update, client_init, client_input, client_view
 extern block_find, g_held_block
 extern save_open, save_load_player, save_update, save_all
+extern ui_draw_init, game_init, game_frame, g_overlay_visible
 extern g_save_enabled, g_save_player_flags, g_save_held
 extern block_textures_poll
 extern g_cam_pos, g_cam_yaw, g_cam_pitch
@@ -94,6 +95,15 @@ opt_look:           db "--look ", 0
 opt_held:           db "--held-light", 0
 opt_held_block:     db "--held ", 0
 opt_world:          db "--world ", 0
+opt_world_any:      db "--world", 0
+opt_flat_any:       db "--flat", 0
+opt_survey_any:     db "--survey", 0
+opt_flytest_any:    db "--flytest", 0
+opt_pos_any:        db "--pos", 0
+opt_seed_any:       db "--seed", 0
+align 8
+direct_opts:        dq opt_world_any, opt_pos_any, opt_flytest_any, opt_flat_any
+                    dq opt_seed_any, opt_survey_any, 0
 opt_nosave:         db "--nosave", 0
 opt_daylight:       db "--daylight ", 0
 opt_time:           db "--time ", 0
@@ -135,6 +145,7 @@ g_start_flags:      resd 1              ; PF_FLYING / PF_NOCLIP for the player
 g_flytest:          resd 1
 g_held_name:        resb 64
 g_world_arg:        resb 64
+g_direct:           resd 1              ; started in a world (not the menus)
 
 section .text
 
@@ -326,6 +337,19 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     jz .no_flat
     mov dword [rel g_force_flat], 1
 .no_flat:
+    ; menus or straight into a world? (milestone 17) Development options
+    ; (--world, --pos, --flytest, --flat, --seed, --survey) skip the menus.
+    lea rsi, [rel direct_opts]
+.direct_opt:
+    mov rdx, [rsi]
+    test rdx, rdx
+    jz .direct_known
+    INVOKE str_find, rbx, rdx
+    add rsi, 8
+    test rax, rax
+    jz .direct_opt
+    mov dword [rel g_direct], 1
+.direct_known:
     ; the save (milestone 17): --nosave, --world <name>; world.dat may set
     ; the seed, generator and time
     lea rdx, [rel opt_nosave]
@@ -360,8 +384,11 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     jz .world_named
     mov rsi, rdi
 .world_named:
+    cmp dword [rel g_direct], 0
+    je .no_save_yet                     ; (the menus open worlds later)
     mov rcx, rsi
     call save_open
+.no_save_yet:
     call world_init
     test eax, eax
     jz .world_fail
@@ -509,7 +536,20 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     mov edx, [rel g_start_flags]
     call sim_init
     call client_view                    ; (the spawn state)
+    call ui_draw_init                   ; menus and HUD (milestone 17)
+    test eax, eax
+    jnz .ui_ok
+    lea rcx, [rel str_init_fail]
+    call log_fatal
+.ui_ok:
+    ; the debug overlay starts shown only in development runs
+    mov eax, [rel g_direct]
+    mov [rel g_overlay_visible], eax
+    mov ecx, [rel g_direct]
+    call game_init                      ; (the menus: the flyover world)
     call timer_init
+    cmp dword [rel g_direct], 0
+    je .no_initial_capture
     cmp dword [rel g_window_active], 0
     je .no_initial_capture
     mov ecx, 1
@@ -527,33 +567,7 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     test eax, eax
     jz .loop_done
 
-    ; ---- actions ---------------------------------------------------------------------
-    mov ecx, ACT_MENU
-    call input_pressed
-    test eax, eax
-    jz .no_menu
-    cmp dword [rel g_mouse_captured], 0
-    je .menu_quit
-    xor ecx, ecx
-    call input_set_capture
-    jmp .no_menu
-.menu_quit:
-    LOG_INFO "menu key with the mouse free: quitting"
-    jmp .loop_done
-.no_menu:
-    cmp dword [rel g_mouse_captured], 0
-    jne .capture_ok
-    cmp dword [rel g_window_active], 0
-    je .capture_ok
-    mov ecx, VK_LBUTTON
-    call input_vk_pressed
-    test eax, eax
-    jz .capture_ok
-    mov ecx, 1
-    call input_set_capture
-.capture_ok:
-    call input_update_capture
-
+    ; ---- actions (Esc and the mouse: game.asm) ------------------------------------------
     mov ecx, ACT_TOGGLE_VSYNC
     call input_pressed
     test eax, eax
@@ -593,22 +607,9 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
 
     mov ecx, [rel g_client_w]
     mov edx, [rel g_client_h]
-    call camera_update
-    call client_input
-    call sim_update
-    call client_view
-    call save_update                    ; autosave
-    call stream_update
-    call lod_update
-    mov ecx, [rel g_client_w]
-    mov edx, [rel g_client_h]
-    call renderer_frame
-    mov ecx, [rel g_client_w]
-    mov edx, [rel g_client_h]
-    call hud_draw
-    mov ecx, [rel g_client_w]
-    mov edx, [rel g_client_h]
-    call overlay_draw
+    call game_frame                     ; menus or the game, then the frame
+    test eax, eax
+    jnz .loop_done
     call gl_swap
     call timer_frame
     test eax, eax

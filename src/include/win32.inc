@@ -48,7 +48,10 @@
 %define WM_KEYUP                    0x0101
 %define WM_SYSKEYDOWN               0x0104
 %define WM_SYSKEYUP                 0x0105
+%define WM_MOUSEMOVE                0x0200
 %define WM_LBUTTONDOWN              0x0201
+%define WM_MOUSEWHEEL               0x020A
+%define WM_CHAR                     0x0102
 %define WM_MBUTTONUP                0x0208
 %define WM_TIMER                    0x0113
 %define WM_DPICHANGED               0x02E0

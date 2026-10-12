@@ -293,6 +293,12 @@ PROC window_proc, 0, rbx, rsi, rdi, r12
     je .on_syskeydown
     cmp esi, WM_SYSKEYUP
     je .on_syskeyup
+    cmp esi, WM_MOUSEMOVE
+    je .on_mouse_move
+    cmp esi, WM_MOUSEWHEEL
+    je .on_wheel
+    cmp esi, WM_CHAR
+    je .on_char
     cmp esi, WM_LBUTTONDOWN
     jb .not_mouse
     cmp esi, WM_MBUTTONUP
@@ -377,7 +383,39 @@ PROC window_proc, 0, rbx, rsi, rdi, r12
     xor eax, eax
     RETURN
 
+.on_mouse_move:
+    ; the cursor in client pixels (menus; milestone 17)
+    movsx eax, r12w
+    mov [rel g_mouse_x], eax
+    mov rax, r12
+    shr eax, 16
+    movsx eax, ax
+    mov [rel g_mouse_y], eax
+    xor eax, eax
+    RETURN
+
+.on_wheel:
+    mov rax, rdi
+    shr eax, 16
+    movsx eax, ax                       ; +120 per notch away from the user
+    add [rel g_mouse_wheel], eax
+    xor eax, eax
+    RETURN
+
+.on_char:
+    mov ecx, edi
+    call input_on_char
+    xor eax, eax
+    RETURN
+
 .on_mouse_button:
+    ; the cursor position comes with the click
+    movsx eax, r12w
+    mov [rel g_mouse_x], eax
+    mov rax, r12
+    shr eax, 16
+    movsx eax, ax
+    mov [rel g_mouse_y], eax
     ; WM_LBUTTONDOWN 0x201 .. WM_MBUTTONUP 0x208: map to VK_L/R/MBUTTON
     lea eax, [rsi - WM_LBUTTONDOWN]     ; 0..7
     cmp eax, 6                          ; 0x207 WM_MBUTTONDOWN

@@ -39,7 +39,7 @@ compile all of that out and link with `/opt:ref /opt:icf`.
 ## Run
 
 ```
-build\debug\voxelb.exe                    normal run (Esc twice, Alt+F4 or the close button quits)
+build\debug\voxelb.exe                    normal run: the main menu (Play, Credits, Quit)
 build\debug\voxelb.exe --autoclose 3000   closes itself after 3 s (automated tests)
 build\debug\voxelb.exe --novsync          start with vsync off
 build\debug\voxelb.exe --workers 2        use 2 job worker threads (default: CPU threads - 1)
@@ -54,23 +54,32 @@ build\debug\voxelb.exe --survey            log terrain statistics and places to 
 build\debug\voxelb.exe --held-light        start with the held light on (L toggles it)
 build\debug\voxelb.exe --daylight 8        sky light at 8% of normal (a dimmer for testing)
 build\debug\voxelb.exe --time 18.5         start at 18:30 (time of day; T fast-forwards)
+build\debug\voxelb.exe --world name        play saves\name\ directly (created if missing)
+build\debug\voxelb.exe --nosave            load and save nothing (tests)
+build\debug\voxelb.exe --held water        start holding a block (e.g. a liquid)
 ```
+
+The options `--world`, `--pos`, `--flytest`, `--flat`, `--seed` and
+`--survey` skip the menus and start in a world (with the debug overlay
+shown); without them the game opens on the main menu.
 
 Default controls (rebind in `data/config/controls.cfg`, format in `DATA_FORMAT.md`):
 
 | Key | Action |
 |---|---|
 | Mouse | look (while captured) |
-| W A S D / arrows | fly |
-| Space / Shift | up / down |
-| Ctrl | fly faster |
+| W A S D / arrows | walk (fly when flying) |
+| Space | jump / swim up; twice quickly: start or stop flying (Creative) |
+| Shift | sneak / dive / fly down |
+| Ctrl | sprint / fly faster |
+| Left / right / middle click | break / place / pick the block |
 | F3 | debug overlay on/off |
 | F5 | reload all shaders (they also reload automatically when saved) |
 | F8 | vsync on/off |
 | L | held light on/off (a torch in hand, until items arrive) |
 | T (hold) | time of day runs 240× faster |
-| Esc | release the mouse; press again (mouse free) to quit |
-| Left click | capture the mouse again |
+| Esc | in a world: pause menu (Esc again resumes); in the menus: back |
+| Left click | capture the mouse again (in a world) |
 
 Render distance is set in `data/config/graphics.cfg` (`render_distance`, 2–48
 chunks, default 16). Restart after editing.
@@ -115,6 +124,10 @@ python3 tools/texgen/texgen.py              # all textures (overwrites!)
 python3 tools/texgen/texgen.py oak_planks   # only the named ones
 python3 tools/texgen/texgen.py --list       # list every texture name
 ```
+
+`tools/make_sdf_font.py [font]` rebuilds the UI font (`assets/fonts/ui_sdf.png`
+and `ui_sdf.cfg`, a signed-distance-field atlas of printable ASCII) from a
+TrueType/OpenType font (default: Inter SemiBold, needs Pillow and numpy).
 
 `tools/make_png_tests.py` regenerates the PNG decoder's self-test images
 (`src/include/png_tests.inc`).

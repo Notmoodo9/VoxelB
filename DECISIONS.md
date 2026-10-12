@@ -1520,3 +1520,34 @@ block for their upper half (mossy cobblestone boulders).
   with a separate server this moves to the server side as is.
 * Not done yet: reusing freed sectors, saving liquid updates still
   pending, saving in a background job.
+
+## D89 — Menus: SDF text, glass panels, immediate-mode widgets, game states (M17 part 2a)
+* **Font:** a signed-distance-field atlas (Inter SemiBold, OFL) made by
+  `tools/make_sdf_font.py`: printable ASCII in 48 px cells at 34 px/em, 6 px
+  of distance on each side, distances computed against the outline at 8×
+  resolution (numpy only). The shader thresholds at 0.5 with `fwidth`
+  antialiasing, so one atlas is crisp from 12 to 150 px; bold = a lower
+  threshold, shadows = the same glyph offset with a soft ramp.
+* **One renderer for menus and HUD** (`ui_draw.asm`, `ui.vert/frag`): a
+  per-frame batch of 64-byte quads in a storage buffer (vertex pulling, one
+  draw): rounded rectangles (SDF box: gradients, borders), glyphs, glass
+  panels, soft glows/shadows, images. UI units: a 1280 × 720 design canvas
+  scaled to the window (the canvas widens with the aspect ratio).
+* **Glass:** the finished frame is blitted down to 1/4 and 1/16 size (linear
+  filtering) only when a glass quad is queued; the panel samples it with a
+  5 × 5 tent, darkens and tints it, adds a sheen and a light border. Cheap
+  (two small blits) and shows clouds and bloom too.
+* **Widgets** are immediate mode (`ui.asm`): a screen calls `ui_button`
+  etc. every frame; a widget id keeps only its hover animation. Clicks act
+  on press. The menus never act themselves: `menu_frame` returns an action
+  (`MA_*`) for `game.asm`.
+* **Game states** (`game.asm`): the menus run over a real world (seed, time
+  and camera path from `data/ui/menu.cfg`, never saved, no simulation); a
+  world being played can be paused (no ticks, the world blurred behind the
+  pause menu). Switching worlds = save, `stream_reset` (unload every column;
+  changed ones are saved), `lod_reset` (tables kept, tiles freed), empty the
+  liquid / edit queues and the packet queues, then open the next world
+  (seed, spawn or saved player, time) — no restart needed. Command-line
+  development options still start straight in a world, so tests and
+  screenshots are unchanged.
+* The HUD (crosshair, held block on a glass pill) moved to the same renderer.

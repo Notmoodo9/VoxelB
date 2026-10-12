@@ -23,6 +23,7 @@ global input_down, input_pressed, input_vk_pressed
 global input_set_capture, input_update_capture, input_key_name, input_action_name
 global g_mouse_dx, g_mouse_dy, g_mouse_captured, g_bindings
 global g_mouse_sensitivity, g_invert_mouse_y
+global input_on_char, g_mouse_x, g_mouse_y, g_mouse_wheel, g_chars, g_char_count
 
 extern str_ieq, str_parse_float
 
@@ -93,6 +94,12 @@ g_mouse_sensitivity:    dd 0.12         ; degrees per mouse count
 g_invert_mouse_y:       dd 0.0          ; nonzero = invert
 
 section .bss
+alignb 16
+g_chars:            resb 32                 ; characters typed this frame (WM_CHAR)
+g_char_count:       resd 1
+g_mouse_x:          resd 1                  ; cursor in client pixels
+g_mouse_y:          resd 1
+g_mouse_wheel:      resd 1                  ; wheel this frame (+120 per notch up)
 alignb 16
 g_keys_down:        resb 256
 g_keys_pressed:     resb 256                ; went down since input_new_frame
@@ -376,6 +383,8 @@ input_new_frame:
 %endrep
     mov dword [rel g_mouse_dx], 0
     mov dword [rel g_mouse_dy], 0
+    mov dword [rel g_mouse_wheel], 0
+    mov dword [rel g_char_count], 0
     cmp dword [rel g_capture_settle], 0
     je .settled
     dec dword [rel g_capture_settle]
@@ -400,6 +409,34 @@ input_on_key:
     mov byte [r8 + rcx], 1
 .store:
     mov [rax + rcx], dl
+    ret
+
+; -----------------------------------------------------------------------------
+; input_on_char — a typed character (WM_CHAR), kept for this frame's text
+; fields (milestone 17). Control characters other than backspace (8),
+; tab (9) and enter (13) are ignored.
+;   in:  ecx = character code
+;   clobbers: rax, rdx
+; -----------------------------------------------------------------------------
+input_on_char:
+    cmp ecx, 255
+    ja .done
+    cmp ecx, 32
+    jae .keep
+    cmp ecx, 8
+    je .keep
+    cmp ecx, 9
+    je .keep
+    cmp ecx, 13
+    jne .done
+.keep:
+    mov eax, [rel g_char_count]
+    cmp eax, 32
+    jae .done
+    lea rdx, [rel g_chars]
+    mov [rdx + rax], cl
+    inc dword [rel g_char_count]
+.done:
     ret
 
 ; -----------------------------------------------------------------------------

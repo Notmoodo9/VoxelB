@@ -23,6 +23,8 @@
 ;   stream_update()                once per frame, after camera_update
 ;   stream_shutdown()              waits for in-flight jobs, frees everything
 ;   stream_block_changed(ecx=x, edx=y, r8d=z)   a block changed: remesh
+;   stream_reset()                 unload everything (changed columns are
+;                                  saved), ready for another world (M17)
 ;   g_loaded / g_loaded_count      columns (for drawing: state COL_READY)
 ;   g_stream_* statistics (render distance: settings.asm)
 ; =============================================================================
@@ -36,7 +38,7 @@
 %include "section.inc"
 %include "world_api.inc"
 
-global stream_init, stream_update, stream_shutdown, stream_block_changed
+global stream_init, stream_update, stream_shutdown, stream_block_changed, stream_reset
 global g_loaded, g_loaded_count
 global g_stream_ready, g_stream_gen_inflight, g_stream_mesh_inflight
 global g_stream_update_us, g_stream_update_max_us, g_stream_upload_frame
@@ -1105,5 +1107,22 @@ PROC stream_shutdown, 0
     jmp .next
 .done:
     LOG_INFO "stream: all columns released"
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; stream_reset — release every column (waits for the jobs; changed columns
+; are saved by unload_column) and start counting afresh: another world
+; comes next.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC stream_reset, 0
+    call stream_shutdown
+    xor eax, eax
+    mov [rel g_view_logged], eax
+    mov [rel g_stream_view_ms], rax
+    mov [rel g_stream_ready], rax
+    mov [rel g_stream_quads], rax
+    mov [rel g_gpu_full_warned], eax
     RETURN
 ENDPROC

@@ -27,7 +27,7 @@
 %include "packet.inc"
 %include "physics.inc"
 
-global edit_request, edit_tick, edit_apply, g_edit_applied, g_edit_rejected
+global edit_reset, edit_request, edit_tick, edit_apply, g_edit_applied, g_edit_rejected
 
 extern g_pl_pos, g_pl_eye, g_pl_reach, g_pl_width, g_pl_height
 extern fluid_schedule_around
@@ -60,6 +60,12 @@ g_edit_rejected: resq 1
 g_edit_out:     resb BLOCK_PKT_size
 
 section .text
+
+; edit_reset — forget queued changes (another world comes next)
+edit_reset:
+    mov eax, [rel g_edit_head]
+    mov [rel g_edit_tail], eax
+    ret
 
 ; -----------------------------------------------------------------------------
 ; queue_edit — append a change (dropped if the queue is full).

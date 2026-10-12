@@ -1,0 +1,10 @@
+VoxelB
+A voxel world written in x86-64 assembly
+ 
+Design: Notmoodo9
+Engineering: Claude (Anthropic)
+ 
+Font: Inter by Rasmus Andersson and the Inter Project Authors
+(SIL Open Font License 1.1, assets/fonts/Inter-LICENSE.txt)
+ 
+Built with NASM and LLVM lld-link; OpenGL 4.5+

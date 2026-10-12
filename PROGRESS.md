@@ -1,15 +1,55 @@
 # Progress
 
 ## Current state
-**Milestone 17, part 1: Saving and loading worlds: DONE** (Windows CI green: run #82)
+**Milestone 17, part 2a: Main menu, flyover, pause menu, world switching: DONE** (Windows CI: see below)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
 `design/BACKLOG.md`). Progressive LOD is planned as Milestone 34.
 
-Next: **Milestone 17, part 2: main menu, world list and creation, pause
-menu, settings menus.** Waiting for the owner's answers to the menu
-design questions (look and feel of the menus).
+Next: **Milestone 17, part 2b: the full world list (thumbnails, mode,
+last played, size) and the world creation screen** (name, seed, mode,
+difficulty, hardcore; design/ui/menus.md), then **part 2c: settings**.
+
+---
+
+## Milestone 17, part 2a — done (2026-10-12): menus (D89, design/ui/menus.md)
+
+### What was built
+* **Main menu** over a live flyover: the camera glides toward the giant
+  mountain range at sunset (`data/ui/menu.cfg`: seed, time, path); the
+  title "VoxelB" in big teal-gradient text; Play, Settings (greyed until
+  part 2c), Credits, Quit on a glass panel; screens slide and fade in.
+* **Worlds:** the saved worlds (folders in `saves/`); click selects, click
+  again (or Play world) plays; New world makes "World N" with a random
+  seed and starts it. Back returns.
+* **Credits** from `data/ui/credits.txt`.
+* **Pause menu** (Esc in a world): Resume, Settings (greyed), Save & quit
+  to menu, Save & quit game; the world keeps showing, darkened, behind the
+  glass. Esc again resumes.
+* **World switching** without restarting: save, unload, load the next world
+  with its own seed, player and time.
+* **New UI renderer:** our own SDF font (Inter), glass panels that blur
+  the world behind them, glowing teal buttons; the HUD uses it too.
+* Development options (`--world`, `--pos`, `--flytest`, `--flat`,
+  `--seed`, `--survey`) still start straight in a world.
+
+### Verified (scripted clicks with xdotool)
+* Main menu over the sunset flyover; Credits; Play → Worlds ("No worlds
+  yet") → New world → playing "World 1" (saved at once); Esc → pause menu →
+  Save & quit to menu → the flyover again; Play → World 1 is listed;
+  selecting and clicking it loads it (player restored).
+* Debug build with asserts through the same path: no warnings; debug and
+  release headless tests (now starting on the main menu) pass.
+
+### Performance
+* The UI is one draw call; the glass needs two small blits of the frame.
+  World switching takes as long as the new view needs to stream in.
+
+### Deferred (next parts of milestone 17)
+* World list details (thumbnail, mode, last played, size), the world
+  creation screen, deleting worlds (part 2b).
+* Settings screens (part 2c).
 
 ---
 

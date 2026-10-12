@@ -34,7 +34,7 @@
 %include "block.inc"
 %include "physics.inc"
 
-global fluid_schedule, fluid_schedule_around, fluid_tick
+global fluid_schedule, fluid_schedule_around, fluid_tick, fluid_reset
 global g_fluid_updates, g_fluid_changes, g_fluid_pending
 
 extern phys_block, edit_apply
@@ -401,6 +401,20 @@ PROC update_cell, 32, rbx, rsi, rdi, r12, r13
 .done:
     RETURN
 ENDPROC
+
+; -----------------------------------------------------------------------------
+; fluid_reset — forget every scheduled update (another world comes next).
+;   clobbers: rax, rcx, rdi
+; -----------------------------------------------------------------------------
+fluid_reset:
+    push rdi
+    lea rdi, [rel g_bucket_n]
+    xor eax, eax
+    mov ecx, BUCKETS
+    rep stosd
+    mov [rel g_fluid_pending], rax
+    pop rdi
+    ret
 
 ; -----------------------------------------------------------------------------
 ; fluid_tick — run the updates due in this tick.

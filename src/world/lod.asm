@@ -36,7 +36,7 @@
 %define LOD_IMPL
 %include "lod.inc"
 
-global lod_init, lod_update, lod_shutdown
+global lod_reset, lod_init, lod_update, lod_shutdown
 global g_lod_tiles, g_lod_used, g_lod_levels, g_lod_r
 global g_lod_ready, g_lod_inflight, g_lod_quads
 global g_lod_gen_count, g_lod_gen_total_us, g_lod_gen_max_us
@@ -120,7 +120,7 @@ section .text
 ;   out: eax = 1 (0 on out of memory)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC lod_init, 0, rbx
+PROC lod_init, 0, rbx, rdi
     mov dword [rel g_lod_levels], 0
     ; r[0]: two chunks inside the full-detail radius (always fully loaded)
     mov eax, [rel g_render_distance]
@@ -147,15 +147,13 @@ PROC lod_init, 0, rbx
 .lv_done:
     mov [rel g_lod_levels], ebx
 .no_lod:
+    cmp qword [rel g_lod_tiles], 0
+    jne .clear                          ; (lod_reset: the tables exist)
     lea rcx, [rel g_arena_perm]
     INVOKE arena_alloc, rcx, MAX_LOD_TILES * LODTILE_size, 64
     test rax, rax
     jz .oom
     mov [rel g_lod_tiles], rax
-    mov rdi, rax
-    xor eax, eax
-    mov ecx, MAX_LOD_TILES * LODTILE_size / 8
-    rep stosq
     lea rcx, [rel g_arena_perm]
     INVOKE arena_alloc, rcx, MAX_LOD_TILES * 4, 16
     test rax, rax
@@ -166,7 +164,12 @@ PROC lod_init, 0, rbx
     test rax, rax
     jz .oom
     mov [rel g_lod_hash], rax
-    mov rdi, rax
+.clear:
+    mov rdi, [rel g_lod_tiles]
+    xor eax, eax
+    mov ecx, MAX_LOD_TILES * LODTILE_size / 8
+    rep stosq
+    mov rdi, [rel g_lod_hash]
     mov eax, HASH_EMPTY
     mov ecx, HASH_SIZE
     rep stosd
@@ -183,6 +186,19 @@ PROC lod_init, 0, rbx
 .oom:
     LOG_ERROR "lod: out of memory"
     xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; lod_reset — drop every tile (another world comes next; milestone 17).
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC lod_reset, 0
+    call lod_shutdown
+    mov dword [rel g_lod_done_logged], 0
+    mov qword [rel g_lod_quads], 0
+    mov qword [rel g_lod_inflight], 0
+    call lod_init
     RETURN
 ENDPROC
 
