@@ -36,7 +36,7 @@ jobs:
             ver=$(echo "$ver" | xargs); sha=$(echo "$sha" | xargs); title=$(echo "$title" | xargs)
             [ -z "$ver" ] && continue
             case "$ver" in \#*) continue;; esac
-            if echo "$existing" | grep -qx "v$ver"; then echo "v$ver exists"; continue; fi
+            if echo "$existing" | grep -qx -e "v$ver" -e "history/v$ver"; then echo "v$ver exists"; continue; fi
             items=$(echo "$items" | jq -c --arg v "$ver" --arg s "$sha" --arg t "$title" '. + [{version:$v, sha:$s, title:$t}]')
           done < tools/release_history.txt
           echo "matrix={\"include\":$items}" >> "$GITHUB_OUTPUT"
@@ -112,12 +112,12 @@ jobs:
             case "$ver" in \#*) continue;; esac
             zip="zips/v$ver/voxelb-v$ver-windows.zip"
             [ -f "$zip" ] || { echo "no build for v$ver (skipped or failed)"; continue; }
-            if gh release view "v$ver" >/dev/null 2>&1; then continue; fi
+            if gh release view "history/v$ver" >/dev/null 2>&1; then continue; fi
             date=$(git log -1 --format=%ad --date=short "$sha" 2>/dev/null || echo "")
-            gh release create "v$ver" "$zip" \
-              --target "$sha" \
+            gh release create "history/v$ver" "$zip" \
+              --target "${{ github.sha }}" \
               --title "VoxelB v$ver - $title" \
-              --notes "Milestone version $ver: **$title** (commit ${sha:0:7}, $date). Rebuilt from that commit for the version history. Download the zip, unzip it and run VoxelB\\voxelb.exe. What each milestone added: PROGRESS.md." \
+              --notes "Milestone version $ver: **$title**, built from commit ${sha:0:7} ($date): [source](https://github.com/${{ github.repository }}/tree/$sha). Download voxelb-v$ver-windows.zip, unzip it and run VoxelB\\voxelb.exe. What each milestone added: PROGRESS.md." \
               --latest=false
             echo "published v$ver"
           done < tools/release_history.txt
