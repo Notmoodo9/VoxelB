@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 17, part 2b: World list, world creation, deleting worlds: DONE** (Windows CI: see below)
+**Milestone 17, part 2b: World list, world creation, deleting worlds: DONE** (Windows CI green: run #85)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
