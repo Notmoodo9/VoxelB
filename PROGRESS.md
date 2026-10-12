@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 12: LOD system: DONE** (Windows CI: see below)
+**Milestone 12: LOD system: DONE** (Windows CI green: run #64)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
