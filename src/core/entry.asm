@@ -49,7 +49,7 @@ global main_entry
 extern str_find, str_parse_u64, str_copy, str_append_dec, str_parse_float
 extern renderer_init, renderer_frame, renderer_shutdown
 extern camera_init, camera_update
-extern overlay_draw, overlay_toggle
+extern overlay_draw, overlay_toggle, hud_draw
 extern cpu_detect, selftest_run
 extern world_init, world_render_init, world_render_shutdown
 extern terrain_survey
@@ -518,6 +518,9 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     mov ecx, [rel g_client_w]
     mov edx, [rel g_client_h]
     call renderer_frame
+    mov ecx, [rel g_client_w]
+    mov edx, [rel g_client_h]
+    call hud_draw
     mov ecx, [rel g_client_w]
     mov edx, [rel g_client_h]
     call overlay_draw

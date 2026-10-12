@@ -5,7 +5,7 @@
 %define WORLD_API_INC
 %include "world.inc"
 %ifndef WORLD_IMPL
-extern world_init, world_column, world_section_at, world_block_at
+extern world_init, world_column, world_section_at, world_block_at, world_set_block
 extern world_column_alloc, world_column_free, world_column_insert, world_column_remove
 extern gen_column_job, atomic_max, world_hash_selftest
 extern world_spawn, g_generator, g_seed_override, g_seed_override_set, g_force_flat

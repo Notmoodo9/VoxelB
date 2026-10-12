@@ -31,6 +31,15 @@ endstruc
 ; ---- client -> simulation -----------------------------------------------------
 %define PKT_C_INPUT         1           ; INPUT_PKT: movement keys and view
 %define PKT_C_TOGGLE_FLY    2           ; ask to start / stop flying (Creative)
+%define PKT_C_BREAK         3           ; BLOCK_PKT: break the block at x, y, z
+%define PKT_C_PLACE         4           ; BLOCK_PKT: place id at x, y, z
+
+struc BLOCK_PKT
+    .x          resd 1                  ; i32 world block position
+    .y          resd 1
+    .z          resd 1
+    .id         resd 1                  ; the block (place; S_BLOCK: the new block)
+endstruc
 
 struc INPUT_PKT
     .forward    resd 1                  ; f32 -1..1
@@ -48,6 +57,7 @@ endstruc
 ; ---- simulation -> client ------------------------------------------------------
 %define PKT_S_PLAYER        64          ; PLAYER_PKT, every tick
 %define PKT_S_TIME          65          ; TIME_PKT, every tick
+%define PKT_S_BLOCK         66          ; BLOCK_PKT: a block changed
 
 struc PLAYER_PKT
     .pos        resq 3                  ; f64 feet (x, y, z); x, z = centre
@@ -55,6 +65,7 @@ struc PLAYER_PKT
     .eye        resd 1                  ; f32 eye height above the feet
     .flags      resd 1                  ; PF_*
     .mode       resd 1                  ; GAMEMODE_*
+    .reach      resd 1                  ; f32 how far blocks can be reached
 endstruc
 %define PF_ON_GROUND        1
 %define PF_FLYING           2

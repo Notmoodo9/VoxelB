@@ -65,6 +65,7 @@ extern g_smooth_lighting, g_ambient_occlusion, g_held_light, g_height_fog
 extern g_sun_dir, g_sea_level, g_scene_fbo
 extern g_shadows, g_shadow_res, g_shadow_distance, g_water_quality
 extern world_block_at, g_block_water
+extern g_target_valid, g_target
 
 global g_lod_tint_tex, g_lod_records
 
@@ -159,6 +160,8 @@ section .rdata
 str_vs:         db "shaders/chunk.vert", 0
 str_fs:         db "shaders/chunk.frag", 0
 str_cull:       db "shaders/cull.comp", 0
+str_outline_vs: db "shaders/outline.vert", 0
+str_outline_fs: db "shaders/outline.frag", 0
 str_hiz:        db "shaders/hiz.comp", 0
 str_shadow_fs:  db "shaders/shadow.frag", 0
 str_shadow_cs:  db "shaders/shadow_setup.comp", 0
@@ -186,6 +189,7 @@ g_daylight:         dd 1.0              ; sky light strength 0..1 (M14: day/nigh
 section .bss
 alignb 4
 g_world_prog:       resd 1
+g_outline_prog:     resd 1              ; the targeted block's outline (M16)
 g_world_vao:        resd 1
 g_quad_buffer:      resd 1
 g_light_buffer:     resd 1              ; light words, one per quad (M13)
@@ -279,6 +283,12 @@ PROC world_render_init, 0, rbx
     cmp eax, -1
     je .fail
     mov [rel g_hiz_prog], eax
+    lea rcx, [rel str_outline_vs]
+    lea rdx, [rel str_outline_fs]
+    call shader_create
+    cmp eax, -1
+    je .fail
+    mov [rel g_outline_prog], eax
     lea rdx, [rel g_world_vao]
     GL glCreateVertexArrays, 1, rdx
     call gpu_draw_init
@@ -1461,6 +1471,7 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     GL glEnable, GL_CULL_FACE
     inc qword [rel g_world_draws]
 .p3_done:
+    call outline_draw
     ; the depth pyramid for the next frame's occlusion test
     cmp dword [rel g_gpu_culling], 0
     je .no_hiz
@@ -1969,6 +1980,44 @@ PROC refraction_copy, 0, rbx, rsi
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; outline_draw — thin lines around the targeted block (milestone 16).
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC outline_draw, 32, rbx
+    cmp dword [rel g_target_valid], 0
+    je .done
+    ; corner (camera-relative), a hair outside the cell
+    xor ebx, ebx
+.corner:
+    lea rax, [rel g_target]
+    cvtsi2sd xmm0, dword [rax + rbx * 4]
+    lea rax, [rel g_cam_pos]
+    subsd xmm0, [rax + rbx * 8]
+    subsd xmm0, [rel c_outline_pad]
+    cvtsd2ss xmm0, xmm0
+    movss [LOCAL(0) + rbx * 4], xmm0
+    inc ebx
+    cmp ebx, 3
+    jb .corner
+    mov ecx, [rel g_outline_prog]
+    call shader_program
+    mov ebx, eax
+    GL glUseProgram, rbx
+    lea rax, [rel g_cam_viewproj]
+    mov [rsp + 32], rax
+    GL glProgramUniformMatrix4fv, rbx, 0, 1, GL_FALSE
+    lea r9, [LOCAL(0)]
+    GL glProgramUniform3fv, rbx, 1, 1, r9
+    lea r9, [rel c_outline_size]
+    GL glProgramUniform3fv, rbx, 2, 1, r9
+    GL glDepthMask, GL_FALSE
+    GL glDrawArrays, GL_LINES, 0, 24
+    GL glDepthMask, GL_TRUE
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 ; water_camera — is the camera's block water? (g_cam_in_water)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
@@ -1989,3 +2038,9 @@ PROC water_camera, 0
     mov [rel g_cam_in_water], ecx
     RETURN
 ENDPROC
+
+section .rdata
+align 8
+c_outline_pad:  dq 0.002
+align 4
+c_outline_size: dd 1.004, 1.004, 1.004

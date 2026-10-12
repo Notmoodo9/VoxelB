@@ -11,7 +11,8 @@
 ;
 ; Public API:
 ;   client_init(ecx = 1 for --flytest: always move forward)
-;   client_input()                      before sim_update
+;   client_input()                      before sim_update (also targeting and
+;                                       block editing: interact.asm)
 ;   client_view()                       after sim_update: g_cam_pos, time
 ;   g_cl_player                         the latest PLAYER_PKT (overlay)
 ; =============================================================================
@@ -23,6 +24,7 @@ global client_init, client_input, client_view, g_cl_player
 
 extern g_cam_yaw, g_cam_pitch, g_cam_pos, g_sim_alpha
 extern daycycle_set, timer_elapsed_us
+extern interact_init, interact_update, stream_block_changed
 
 %define DOUBLE_TAP_US   300000          ; move_up twice within this: fly
 
@@ -51,16 +53,18 @@ section .text
 ; -----------------------------------------------------------------------------
 ; client_init — reset the link state.
 ;   in:  ecx = 1: always move forward (--flytest)
-;   clobbers: rax
+;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-client_init:
+PROC client_init, 0
     mov [rel g_cl_flytest], ecx
     xor eax, eax
     mov [rel g_cl_have], eax
     mov [rel g_cl_time_have], eax
     mov [rel g_cl_seq], eax
     mov [rel g_cl_last_jump], rax
-    ret
+    call interact_init
+    RETURN
+ENDPROC
 
 ; -----------------------------------------------------------------------------
 ; axis — +1 / -1 / 0 from two actions.
@@ -137,6 +141,7 @@ PROC client_input, 0, rbx
     lea rcx, [rel g_to_sim]
     INVOKE pkt_send, rcx, PKT_C_TOGGLE_FLY, 0, 0
 .done:
+    call interact_update                ; target, break / place / pick
     RETURN
 ENDPROC
 
@@ -170,6 +175,15 @@ PROC client_view, 0, rsi, rdi
     mov dword [rel g_cl_have], 1
     jmp .packet
 .not_player:
+    cmp eax, PKT_S_BLOCK
+    jne .not_block
+    ; a block changed: its column (and neighbours in light range) mesh again
+    mov ecx, [rel g_cl_pkt + PKT.data + BLOCK_PKT.x]
+    mov edx, [rel g_cl_pkt + PKT.data + BLOCK_PKT.y]
+    mov r8d, [rel g_cl_pkt + PKT.data + BLOCK_PKT.z]
+    call stream_block_changed
+    jmp .packet
+.not_block:
     cmp eax, PKT_S_TIME
     jne .packet
     mov eax, [rel g_cl_pkt + PKT.data + TIME_PKT.time]

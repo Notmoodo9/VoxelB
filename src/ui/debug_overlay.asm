@@ -44,6 +44,8 @@ extern g_time_of_day, g_day_length, g_shadow_records
 extern g_block_names
 extern g_cl_player, g_sim_tick, g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us
 extern g_pkt_sent_sim, g_pkt_sent_client, g_pkt_dropped
+extern g_target_valid, g_target, g_target_id, g_held_block, g_edit_applied, g_edit_rejected
+extern g_stream_remeshes
 
 %define TEXT_CAP        6144
 %define PAD             6               ; panel padding (unscaled pixels)
@@ -151,6 +153,13 @@ s_s_us:         db "  tick avg ", 0
 s_s_packets:    db " us   packets to sim ", 0
 s_s_to_cl:      db "  to client ", 0
 s_s_dropped:    db "  dropped ", 0
+s_target:       db "target  ", 0
+s_t_none:       db "none", 0
+s_t_at:         db " at ", 0
+s_t_held:       db "   held ", 0
+s_t_edits:      db "   edits ", 0
+s_t_rej:        db "  rejected ", 0
+s_t_remesh:     db "  remeshed columns ", 0
 align 4
 c_ten:          dd 10.0
 s_sp:           db " ", 0
@@ -552,6 +561,38 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
     PUTNUM [rel g_pkt_sent_client], 0
     PUT s_s_dropped
     PUTNUM [rel g_pkt_dropped], 0
+    PUT s_nl
+    ; the targeted block, the held block, edits (milestone 16)
+    PUT s_target
+    cmp dword [rel g_target_valid], 0
+    jne .has_target
+    PUT s_t_none
+    jmp .target_done
+.has_target:
+    mov eax, [rel g_target_id]
+    lea rcx, [rel g_block_names]
+    mov rdx, [rcx + rax * 8]
+    PUTP rdx
+    PUT s_t_at
+%assign i 0
+%rep 3
+    movsxd rax, dword [rel g_target + i * 4]
+    PUTSNUM rax, 0
+    PUT s_sp
+%assign i i + 1
+%endrep
+.target_done:
+    PUT s_t_held
+    mov eax, [rel g_held_block]
+    lea rcx, [rel g_block_names]
+    mov rdx, [rcx + rax * 8]
+    PUTP rdx
+    PUT s_t_edits
+    PUTNUM [rel g_edit_applied], 0
+    PUT s_t_rej
+    PUTNUM [rel g_edit_rejected], 0
+    PUT s_t_remesh
+    PUTNUM [rel g_stream_remeshes], 0
     PUT s_nl
     ; distant terrain tiles (milestone 12)
     PUT s_lod

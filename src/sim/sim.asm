@@ -18,6 +18,7 @@
 ;   g_sim_alpha         f32 0..1: how far the frame is past the last tick
 ;   g_sim_tick          ticks run
 ;   g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us   statistics (overlay)
+; Block edits: edit.asm (PKT_C_BREAK / PKT_C_PLACE -> PKT_S_BLOCK).
 ; =============================================================================
 %include "macros.inc"
 %include "log.inc"
@@ -28,6 +29,7 @@ global sim_init, sim_update, g_sim_alpha, g_sim_tick
 global g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us
 
 extern player_load, player_spawn, player_tick, player_toggle_fly, player_fill
+extern edit_request, edit_tick
 extern timer_elapsed_us, g_frame_us, g_time_of_day, g_day_length
 
 %define TICK_US             50000       ; 20 TPS
@@ -145,14 +147,26 @@ PROC sim_tick, 16, rbx, rsi, rdi
     or [rel g_pressed], eax
     jmp .packet
 .not_input:
+    cmp eax, PKT_C_BREAK
+    je .edit
+    cmp eax, PKT_C_PLACE
+    je .edit
     cmp eax, PKT_C_TOGGLE_FLY
     jne .packet                         ; (unknown packets are ignored)
     call player_toggle_fly
+    jmp .packet
+.edit:
+    xor edx, edx
+    cmp eax, PKT_C_PLACE
+    sete dl
+    lea rcx, [rel g_pkt + PKT.data]
+    call edit_request
     jmp .packet
 .packets_done:
     lea rcx, [rel g_input]
     mov edx, [rel g_pressed]
     call player_tick
+    call edit_tick                      ; block changes (they wait for busy columns)
 
     ; the clock: one tick of the day (faster while time_forward is held)
     cvtss2sd xmm1, [rel g_day_length]

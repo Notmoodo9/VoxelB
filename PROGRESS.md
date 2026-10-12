@@ -1,16 +1,65 @@
 # Progress
 
 ## Current state
-**Milestone 16, part 1: Simulation/client split + player physics: DONE** (Windows CI green: run #76)
+**Milestone 16, part 2: Breaking and placing blocks: DONE** (Windows CI: see below)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
 `design/BACKLOG.md`). Progressive LOD is planned as Milestone 34.
 
-Next: **Milestone 16, part 2: breaking and placing blocks** (requests and
-change notices through the packet queues, remeshing and relighting the
-touched sections, a block outline, Creative instant break), then
-**part 3: flowing water** (M15 part 2, D84).
+Next: **Milestone 16, part 3: flowing water** (M15 part 2, D84): water
+spreads from sources into the holes you dig, on the simulation tick.
+
+---
+
+## Milestone 16, part 2 — done (2026-10-12): breaking and placing blocks
+
+### What was built (D86)
+* **Targeting:** the block under the crosshair (within 5 blocks) gets a
+  thin dark outline; a crosshair and the held block's name are drawn on
+  screen (`src/ui/hud.asm`).
+* **Creative editing:** left click breaks instantly, right click places
+  the held block against the face you look at, middle click picks the
+  targeted block as the held block (starts as stone). Holding a button
+  repeats it 4 times a second.
+  * Doors and tall plants break as a whole; a flower or grass on a block
+    breaks with it.
+  * You can't place a solid block inside yourself; liquids and plants can
+    be built into.
+* **Through the simulation:** the client only sends requests; the
+  simulation checks and applies them (when no worker reads that column)
+  and announces each change.
+* **Instant remeshing and relighting:** the changed column, and the
+  neighbours within light range, are meshed and lit again on the workers
+  while the old mesh stays on screen (no flicker), then swapped in.
+* New controls: `break_block`, `place_block`, `pick_block`; `reach` in
+  player.cfg.
+* Debug overlay: a `target` line (block, position, held block, edits,
+  rejected requests, remeshed columns).
+
+### Verified (scripted mouse clicks with xdotool)
+* Looking down at the sand: two clicks dig a two-deep hole (2 edits, the
+  column and its neighbours remeshed, the hole's sides are shaded by the
+  new light), a right click puts stone into it, a middle click picks it.
+* Holding the break button with the target out of reach does nothing (no
+  request).
+* Debug build with asserts: 25 s of held clicks, no warnings or asserts.
+* Debug and release headless tests pass.
+
+### Performance
+* A remesh is one normal column mesh job (light ~16 ms + meshing ~20 ms on
+  the test machine, on a worker); the change shows within one or two
+  frames after the job. Ticks stay at a few microseconds.
+
+### Known issues
+* Edits are lost when their column unloads (more than render distance + 4
+  chunks away); saving comes with milestone 17.
+* Placed stairs, doors etc. keep the state they were picked with (no
+  facing from the player's view yet).
+* The outline is always the whole cell, also for slabs and plants.
+
+### Deferred
+* Survival breaking (time, tools, drops): milestones 18 and 20.
 
 ---
 

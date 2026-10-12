@@ -105,6 +105,20 @@ struc COLUMN
     .vqueue     resd SECTIONS_PER_COLUMN ; visibility walk: queue slot this frame
     .tint       resd 3 * 64             ; biome colours, 8 x 8 per layer (grass,
                                         ;  foliage, water), RGBA8 factors (64 = 1.0, up to 4x); 0 = unset
+    ; block edits (milestone 16): the mesh job writes its results here, and
+    ; the upload swaps them in, so a READY column keeps drawing its old mesh
+    ; while it is remeshed
+    .dirty      resd 1                  ; a block changed: mesh again (main thread)
+    .remesh     resd 1                  ; REMESH_* (READY columns)
+    .minfo      resd 4 * SECTIONS_PER_COLUMN  ; per section: quads, opaque,
+                                        ;  cut-out, first quad in mesh_buf
 endstruc
+%define REMESH_NONE     0
+%define REMESH_RUNNING  1               ; a mesh job is working on it
+%define REMESH_DONE     2               ; the new mesh waits for its upload
+%define MINFO_COUNT     0
+%define MINFO_OPAQUE    4
+%define MINFO_CUTOUT    8
+%define MINFO_FIRST     12
 
 %endif

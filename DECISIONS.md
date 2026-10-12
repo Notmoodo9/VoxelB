@@ -1416,3 +1416,42 @@ block for their upper half (mossy cobblestone boulders).
   `--flytest` is noclip flight at `flytest_speed`.
 * All movement numbers are in `data/entities/player.cfg` (Minecraft-like
   defaults; the owner can tune the feel).
+
+## D86 — Breaking and placing blocks (M16 part 2)
+* **Requests, not edits, from the client.** `interact.asm` casts a ray
+  (Amanatides–Woo voxel walk, doubles) from the eyes each frame and finds
+  the first block within `reach` (plain liquids are looked through,
+  shaped blocks and plants count as their whole cell). Break / place send
+  `PKT_C_BREAK` / `PKT_C_PLACE` with the cell (place: the cell beside the
+  hit face); holding repeats every 0.25 s. The click that captures the
+  mouse is not an action.
+* **The simulation decides** (`src/sim/edit.asm`): within reach + 1 of the
+  eyes, column generated; break anything but air and plain liquids
+  (Creative: instantly), taking the other half of a door or tall plant and
+  a plant standing on top along; place into air, a liquid or a plant, not
+  inside the player's body unless the block has no collision. Accepted
+  changes go into an ordered queue.
+* **Applying safely:** `world_set_block` only touches a column while no
+  job reads it (`busy == 0`: no mesh job of it or of a neighbour, which
+  raise its counter), so `section_set` may rebuild the section storage;
+  an all-air section is created on demand. Otherwise the change waits in
+  the queue (order kept) for up to 5 s. Each applied change is announced
+  with `PKT_S_BLOCK`.
+* **Remeshing (client):** `stream_block_changed` marks the column dirty,
+  and each neighbour the change can reach with light (the change within 15
+  blocks of that side). A dirty READY column runs the normal mesh job
+  (light volume + mesh) while it **keeps drawing its old mesh**: the job
+  writes its per-section results into the column (`COLUMN.minfo`) instead
+  of the sections, and the upload frees the old GPU ranges and swaps the
+  new ones in on the main thread. Edits during a remesh set dirty again.
+* **Outline:** 12 edges of the target cell as `GL_LINES` (vertex pulling),
+  drawn into the scene after the water pass with a tiny depth bias, no
+  depth writes. **HUD** (`src/ui/hud.asm`): a crosshair and the held
+  block's name.
+* The held block is a stand-in for the hotbar (items, milestone 18):
+  `stone` at start, `pick_block` copies the target (with its state, so
+  stairs keep their facing). Placement doesn't orient blocks by the
+  player's facing yet.
+* Edits live in the loaded columns only: a column that unloads (beyond
+  render distance + 4) is generated fresh when it comes back. Saving
+  edited columns arrives with region files (milestone 17).

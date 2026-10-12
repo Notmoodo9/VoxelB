@@ -34,7 +34,7 @@
 %include "physics.inc"
 
 global player_load, player_spawn, player_tick, player_toggle_fly, player_fill
-global g_pl_pos, g_pl_vel, g_pl_flags
+global g_pl_pos, g_pl_vel, g_pl_flags, g_pl_eye, g_pl_reach, g_pl_width, g_pl_height
 
 extern str_ieq, str_parse_float, sincosf, g_gravity
 
@@ -72,12 +72,14 @@ k_fly_sprint:   db "fly_sprint_multiplier", 0
 k_fly_vert:     db "fly_vertical", 0
 k_fly_acc:      db "fly_accel", 0
 k_flytest:      db "flytest_speed", 0
+k_reach:        db "reach", 0
 align 8
 key_table:      dq k_width, k_height, k_eye, k_sneak_eye, k_walk, k_sprint, k_sneak
                 dq k_jump, k_ground_acc, k_air_acc, k_terminal, k_step, k_swim
                 dq k_swim_sprint, k_swim_up, k_sink, k_water_acc, k_lava, k_climb
                 dq k_climb_down, k_fly, k_fly_sprint, k_fly_vert, k_fly_acc, k_flytest
-%define KEY_COUNT 25
+                dq k_reach
+%define KEY_COUNT 26
 align 8
 c_dt:           dq TICK_DT
 c_half:         dq 0.5
@@ -94,7 +96,9 @@ section .data
 align 4
 ; settings (f32), same order as key_table
 s_values:
+g_pl_width:
 s_width:        dd 0.6
+g_pl_height:
 s_height:       dd 1.8
 s_eye:          dd 1.62
 s_sneak_eye:    dd 1.27
@@ -119,6 +123,8 @@ s_fly_sprint:   dd 5.0
 s_fly_vert:     dd 0.6
 s_fly_acc:      dd 0.35
 s_flytest:      dd 60.0
+g_pl_reach:
+s_reach:        dd 5.0
 
 section .bss
 alignb 16
@@ -261,6 +267,8 @@ player_fill:
     mov eax, [rel g_pl_flags]
     mov [rcx + PLAYER_PKT.flags], eax
     mov dword [rcx + PLAYER_PKT.mode], GAMEMODE_CREATIVE
+    mov eax, [rel s_reach]
+    mov [rcx + PLAYER_PKT.reach], eax
     ret
 
 ; -----------------------------------------------------------------------------

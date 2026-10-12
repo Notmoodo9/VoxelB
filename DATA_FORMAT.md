@@ -52,7 +52,10 @@ warnings, as above.
 
 Actions: `move_forward`, `move_back`, `move_left`, `move_right`, `move_up`,
 `move_down`, `sprint`, `toggle_debug_overlay`, `toggle_vsync`,
-`reload_shaders`, `menu`, `toggle_held_light`, `time_forward` (hold: the clock runs 240× faster). Each takes one or two key names (the list of
+`reload_shaders`, `menu`, `toggle_held_light`, `time_forward` (hold: the clock runs 240× faster),
+`break_block` (Mouse1), `place_block` (Mouse2), `pick_block` (Mouse3: the
+targeted block becomes the held block); holding break or place repeats it
+every 0.25 s. Each takes one or two key names (the list of
 names is at the top of the file).
 
 Settings: `mouse_sensitivity` (degrees per mouse count), `invert_mouse_y`
@@ -219,6 +222,7 @@ blocks per second.
 | `fly_speed`, `fly_sprint_multiplier` | 12, 5 | Creative flight |
 | `fly_vertical` | 0.6 | share of the flight speed for going up and down |
 | `fly_accel` | 0.35 | like `ground_accel`, flying |
+| `reach` | 5 | how far away (from the eyes) blocks can be broken and placed |
 | `flytest_speed` | 60 | `--flytest` (streaming test): flies north through everything |
 
 ### `terrain.cfg` (Milestone 8)

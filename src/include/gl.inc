@@ -33,6 +33,7 @@
 %define GL_DONT_CARE                    0x1100
 %define GL_FALSE                        0
 %define GL_TRUE                         1
+%define GL_LINES                        0x0001
 %define GL_TRIANGLES                    0x0004
 %define GL_DEPTH_TEST                   0x0B71
 %define GL_CULL_FACE                    0x0B44

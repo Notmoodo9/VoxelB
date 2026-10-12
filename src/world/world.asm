@@ -12,6 +12,9 @@
 ;   world_column_insert(col) / world_column_remove(col)   (main thread)
 ;   world_column(cx, cz) -> rax COLUMN* or 0   (main thread)
 ;   world_section_at(cx, sy, cz) / world_block_at(wx, wy, wz)   (main thread)
+;   world_set_block(wx, wy, wz, id) -> eax 1 done, 0 not now (the column is
+;       not generated or a job reads it: try again later), -1 impossible
+;       (main thread; the simulation's edits, milestone 16)
 ;   gen_column_job(COLUMN*, WORKER*)     job: fills the 40 sections, then
 ;                                        publishes COL_GENERATED
 ;   g_world_gen_count / _total_us / _max_us   generation timing
@@ -26,7 +29,7 @@
 %include "section.inc"
 %include "world_api.inc"
 
-global world_init, world_column, world_section_at, world_block_at
+global world_init, world_column, world_section_at, world_block_at, world_set_block
 global world_column_alloc, world_column_free, world_column_insert, world_column_remove
 global gen_column_job, atomic_max, world_hash_selftest
 global g_gravity
@@ -594,6 +597,97 @@ PROC world_block_at, 0, rbx
     call section_get
     RETURN
 .air:
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; world_set_block — change one block (the simulation's edits). Only while no
+; job reads the column (busy == 0: no mesh job of it or of a neighbour, which
+; would read it), so the section storage can be rebuilt safely.
+;   in:  ecx = wx, edx = wy, r8d = wz, r9d = id
+;   out: eax = 1 done, 0 not now (retry), -1 impossible
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC world_set_block, 16, rbx, rsi, rdi, r12, r13, r14
+    mov r14d, r9d                       ; id
+    add edx, -WORLD_MIN_Y
+    js .impossible
+    cmp edx, SECTIONS_PER_COLUMN * SECTION_SIZE
+    jae .impossible
+    ; idx = (y&31)<<10 | (z&31)<<5 | (x&31)
+    mov ebx, edx
+    and ebx, 31
+    shl ebx, 10
+    mov eax, r8d
+    and eax, 31
+    shl eax, 5
+    or ebx, eax
+    mov eax, ecx
+    and eax, 31
+    or ebx, eax
+    mov esi, edx
+    shr esi, 5                          ; sy
+    mov edi, ecx
+    sar edi, 5                          ; cx
+    mov r12d, r8d
+    sar r12d, 5                         ; cz
+    mov ecx, edi
+    mov edx, r12d
+    call world_column
+    test rax, rax
+    jz .not_now
+    mov r13, rax
+    cmp dword [r13 + COLUMN.state], COL_GENERATED
+    jb .not_now
+    cmp dword [r13 + COLUMN.busy], 0
+    jne .not_now
+    mov rcx, [r13 + COLUMN.sections + rsi * 8]
+    test rcx, rcx
+    jz .new_section
+    lea r9, [rel g_arena_scratch]
+    INVOKE section_set, rcx, rbx, r14, r9
+    test eax, eax
+    jz .impossible
+    mov eax, 1
+    RETURN
+.new_section:
+    ; an all-air section: build one holding just this block
+    test r14d, r14d
+    jz .done                            ; (air into air)
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [LOCAL(0)], rax
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_alloc, rcx, SECTION_VOLUME * 2, 16
+    test rax, rax
+    jz .reset_fail
+    mov [LOCAL(8)], rax
+    mov rdi, rax
+    xor eax, eax
+    mov ecx, SECTION_VOLUME * 2 / 8
+    rep stosq
+    mov rax, [LOCAL(8)]
+    mov [rax + rbx * 2], r14w
+    mov edx, [r13 + COLUMN.cx]
+    mov r9d, [r13 + COLUMN.cz]
+    INVOKE section_build, rax, rdx, rsi, r9
+    mov rdi, rax
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(0)]
+    test rdi, rdi
+    jz .impossible
+    mov [r13 + COLUMN.sections + rsi * 8], rdi
+.done:
+    mov eax, 1
+    RETURN
+.reset_fail:
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(0)]
+.impossible:
+    mov eax, -1
+    RETURN
+.not_now:
     xor eax, eax
     RETURN
 ENDPROC

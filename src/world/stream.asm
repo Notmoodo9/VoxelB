@@ -11,6 +11,10 @@
 ;      8 surrounding columns are generated (so borders mesh correctly the
 ;      first time). In-flight jobs are capped so the queue stays short and
 ;      priorities follow the camera.
+; Block edits (milestone 16): stream_block_changed marks the column and the
+; neighbours the change can reach (light spreads 15 blocks) dirty; a dirty
+; READY column is meshed again by a normal mesh job, keeps drawing its old
+; mesh meanwhile, and swaps in the new one at upload (remesh_step).
 ; Workers never touch the column map: a mesh job gets its neighbours'
 ; pointers at submit time, and the busy counters keep those columns alive.
 ;
@@ -18,6 +22,7 @@
 ;   stream_init() -> eax 1/0       (settings_load must have run)
 ;   stream_update()                once per frame, after camera_update
 ;   stream_shutdown()              waits for in-flight jobs, frees everything
+;   stream_block_changed(ecx=x, edx=y, r8d=z)   a block changed: remesh
 ;   g_loaded / g_loaded_count      columns (for drawing: state COL_READY)
 ;   g_stream_* statistics (render distance: settings.asm)
 ; =============================================================================
@@ -31,12 +36,12 @@
 %include "section.inc"
 %include "world_api.inc"
 
-global stream_init, stream_update, stream_shutdown
+global stream_init, stream_update, stream_shutdown, stream_block_changed
 global g_loaded, g_loaded_count
 global g_stream_ready, g_stream_gen_inflight, g_stream_mesh_inflight
 global g_stream_update_us, g_stream_update_max_us, g_stream_upload_frame
 global g_stream_quads, g_stream_mesh_count, g_stream_mesh_total_us
-global g_stream_mesh_max_us, g_stream_cpu_mesh_bytes, g_stream_view_ms
+global g_stream_mesh_max_us, g_stream_cpu_mesh_bytes, g_stream_view_ms, g_stream_remeshes
 
 extern timer_elapsed_us, g_render_distance, g_frame_us
 extern mesh_section, tint_upload, light_init, light_build, g_light_buffer
@@ -88,6 +93,7 @@ g_stream_update_max_us: resq 1
 g_stream_upload_frame:  resq 1
 g_stream_quads:         resq 1          ; quads on the GPU
 g_stream_view_ms:       resq 1          ; time until the first full view
+g_stream_remeshes:      resq 1          ; columns meshed again after block edits
 g_upd_total_us:         resq 1          ; since the last stats line
 g_upd_frames:           resq 1
 g_upl_total_us:         resq 1          ; time inside upload_column
@@ -275,6 +281,9 @@ PROC mesh_column_job, 96, rbx, rsi, rdi, r12, r13, r14, r15
     mov qword [LOCAL(MC_TOTAL)], 0
     xor r12d, r12d                      ; sy
 .section:
+    mov eax, r12d
+    shl eax, 4
+    mov dword [rbx + COLUMN.minfo + rax + MINFO_COUNT], 0
     mov r13, [rbx + COLUMN.sections + r12 * 8]
     test r13, r13
     jz .next
@@ -317,9 +326,11 @@ PROC mesh_column_job, 96, rbx, rsi, rdi, r12, r13, r14, r15
     lea rax, [rsi + MESH_MAX_QUADS * 8] ; light words
     INVOKE mesh_section, r13, rdx, rsi, r15, [LOCAL(MC_LVOL)], rax
     mov rdi, rax                        ; count
-    mov [r13 + SECT.quad_opaque], edx
+    mov eax, r12d
+    shl eax, 4
+    mov [rbx + COLUMN.minfo + rax + MINFO_OPAQUE], edx
     shr rdx, 32
-    mov [r13 + SECT.quad_cutout], edx
+    mov [rbx + COLUMN.minfo + rax + MINFO_CUTOUT], edx
     ; light words right after the quads
     mov rcx, rdi
     mov [LOCAL(MC_SY)], rsi
@@ -331,14 +342,18 @@ PROC mesh_column_job, 96, rbx, rsi, rdi, r12, r13, r14, r15
     mov rdi, rax
     mov rsi, [LOCAL(MC_SY)]
     INVOKE arena_reset_to, r15, [LOCAL(MC_MARK)]
-    mov [r13 + SECT.quad_count], edi
+    mov eax, r12d
+    shl eax, 4
+    mov [rbx + COLUMN.minfo + rax + MINFO_COUNT], edi
     test rdi, rdi
     jz .timed
     mov rdx, rdi
     shl rdx, 4
     INVOKE arena_alloc, r15, rdx, 8     ; keeps exactly this output
     mov rax, [LOCAL(MC_TOTAL)]
-    mov [r13 + SECT.cpu_first], eax     ; offset within the column buffer
+    mov ecx, r12d
+    shl ecx, 4
+    mov [rbx + COLUMN.minfo + rcx + MINFO_FIRST], eax   ; offset within the column buffer
     add [LOCAL(MC_TOTAL)], rdi
 .timed:
     call timer_elapsed_us
@@ -388,7 +403,12 @@ PROC mesh_column_job, 96, rbx, rsi, rdi, r12, r13, r14, r15
     cmp ecx, 8
     jb .release
     lock dec dword [rbx + COLUMN.busy]
+    cmp dword [rbx + COLUMN.remesh], REMESH_RUNNING
+    je .remeshed
     mov dword [rbx + COLUMN.state], COL_MESHED
+    RETURN
+.remeshed:
+    mov dword [rbx + COLUMN.remesh], REMESH_DONE   ; (the column stays READY)
     RETURN
 ENDPROC
 
@@ -425,6 +445,28 @@ ENDPROC
 PROC upload_column, 32, rbx, rsi, rdi, r12, r13
     mov rbx, rcx
     xor r12d, r12d                      ; bytes
+    ; a remeshed column: drop the old mesh now, then take the new one
+    mov rcx, rbx
+    call free_column_gpu
+    xor esi, esi
+.take:
+    mov rdi, [rbx + COLUMN.sections + rsi * 8]
+    test rdi, rdi
+    jz .take_next
+    mov eax, esi
+    shl eax, 4
+    mov ecx, [rbx + COLUMN.minfo + rax + MINFO_COUNT]
+    mov [rdi + SECT.quad_count], ecx
+    mov ecx, [rbx + COLUMN.minfo + rax + MINFO_OPAQUE]
+    mov [rdi + SECT.quad_opaque], ecx
+    mov ecx, [rbx + COLUMN.minfo + rax + MINFO_CUTOUT]
+    mov [rdi + SECT.quad_cutout], ecx
+    mov ecx, [rbx + COLUMN.minfo + rax + MINFO_FIRST]
+    mov [rdi + SECT.cpu_first], ecx
+.take_next:
+    inc esi
+    cmp esi, SECTIONS_PER_COLUMN
+    jb .take
     mov qword [rbx + COLUMN.geo_mask], 0
     mov r13, [rbx + COLUMN.mesh_buf]
     test r13, r13
@@ -480,6 +522,7 @@ PROC upload_column, 32, rbx, rsi, rdi, r12, r13
     mov rcx, rbx
     call tint_upload
     mov dword [rbx + COLUMN.state], COL_READY
+    mov dword [rbx + COLUMN.remesh], REMESH_NONE
     mov eax, r12d
     RETURN
 .full:
@@ -587,6 +630,113 @@ PROC neighbors_ready, 0, rbx, rsi, rdi
     RETURN
 .no:
     xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; stream_block_changed — a block changed: mark its column, and the
+; neighbours within light range of it (15 blocks), to be meshed again.
+;   in:  ecx = x, edx = y (unused: whole columns are meshed), r8d = z
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC stream_block_changed, 16, rbx, rsi, rdi, r12, r13
+    mov ebx, ecx
+    sar ebx, 5                          ; cx
+    mov esi, r8d
+    sar esi, 5                          ; cz
+    ; x range of columns: -1 if lx <= 14, +1 if lx >= 17
+    and ecx, 31
+    xor eax, eax
+    cmp ecx, 14
+    jg .x0
+    mov eax, -1
+.x0:
+    mov [LOCAL(0)], eax                 ; dx from
+    xor eax, eax
+    cmp ecx, 17
+    jl .x1
+    mov eax, 1
+.x1:
+    mov [LOCAL(4)], eax                 ; dx to
+    and r8d, 31
+    xor eax, eax
+    cmp r8d, 14
+    jg .z0
+    mov eax, -1
+.z0:
+    mov r12d, eax                       ; dz from
+    xor eax, eax
+    cmp r8d, 17
+    jl .z1
+    mov eax, 1
+.z1:
+    mov [LOCAL(8)], eax                 ; dz to
+.dz:
+    mov edi, [LOCAL(0)]
+.dx:
+    lea ecx, [ebx + edi]
+    lea edx, [esi + r12d]
+    call world_column
+    test rax, rax
+    jz .next
+    mov dword [rax + COLUMN.dirty], 1
+.next:
+    inc edi
+    cmp edi, [LOCAL(4)]
+    jle .dx
+    inc r12d
+    cmp r12d, [LOCAL(8)]
+    jle .dz
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; remesh_step — a READY column whose blocks changed (milestone 16): start
+; its mesh job (it keeps drawing the old mesh meanwhile), or upload the new
+; mesh once the job is done.
+;   in:  rbx = COLUMN* (READY); [budget] = the frame's upload budget
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC remesh_step, 0, rsi
+    mov eax, [rbx + COLUMN.remesh]
+    cmp eax, REMESH_RUNNING
+    jne .not_running
+    inc qword [rel g_stream_mesh_inflight]
+    RETURN
+.not_running:
+    cmp eax, REMESH_DONE
+    jne .not_done
+    mov rcx, rbx
+    call upload_column                  ; (-1: GPU full, retried next frame)
+    cmp eax, -1
+    je .done
+    add [rel g_stream_upload_frame], rax
+    inc qword [rel g_stream_remeshes]
+    RETURN
+.not_done:
+    cmp dword [rbx + COLUMN.dirty], 0
+    je .done
+    cmp dword [rbx + COLUMN.busy], 0
+    jne .done
+    mov rcx, rbx
+    call neighbors_ready
+    test eax, eax
+    jz .done
+    mov dword [rbx + COLUMN.dirty], 0
+    mov dword [rbx + COLUMN.remesh], REMESH_RUNNING
+    lock inc dword [rbx + COLUMN.busy]
+    xor esi, esi
+.reserve:
+    mov rax, [rbx + COLUMN.nb + rsi * 8]
+    lock inc dword [rax + COLUMN.busy]
+    inc esi
+    cmp esi, 8
+    jb .reserve
+    inc qword [rel g_stream_mesh_inflight]
+    lea rcx, [rel mesh_column_job]
+    lea r8, [rel g_stream_inflight]
+    INVOKE job_submit, rcx, rbx, r8
+.done:
     RETURN
 ENDPROC
 
@@ -703,6 +853,8 @@ PROC stream_update, 80, rbx, rsi, rdi, r12, r13, r14, r15
 .not_meshed:
     cmp eax, COL_READY
     jne .maybe_unload
+    call remesh_step
+.ready_count:
     inc qword [rel g_stream_ready]
     cmp r13, [LOCAL(SU_R2)]
     ja .maybe_unload
