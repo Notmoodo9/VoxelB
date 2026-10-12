@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 13: Lighting: DONE** (Windows CI: see below)
+**Milestone 13: Lighting: DONE** (Windows CI green: run #68)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
