@@ -1,7 +1,12 @@
 ; =============================================================================
 ; menu.asm — the menu screens (milestone 17, design/ui/menus.md):
 ;   main      the title over the flyover; Play, Settings, Credits, Quit
-;   worlds    the saved worlds (saves/*); choose one and Play, or New world
+;   worlds    the saved worlds (saves/*), newest first: a picture, the name,
+;             mode, difficulty, last played and size on disk; Play world,
+;             New world, Delete (asks first), Back
+;   create    a new world: name, seed (a number, any text, or empty for a
+;             random one), game mode, difficulty, hardcore (what isn't built
+;             yet is shown greyed out)
 ;   credits   data/ui/credits.txt
 ;   pause     Resume, Settings, Save & quit to menu, Save & quit game
 ; Screens slide and fade in (~150 ms). The menus only ask; game.asm acts
@@ -11,33 +16,52 @@
 ;   menu_open(ecx = SCREEN_*)
 ;   menu_back()                         Esc: the previous screen
 ;   menu_frame(ecx = w, edx = h) -> eax MA_*, rdx = world name, r8d = seed
+;   g_new_mode, g_new_difficulty, g_new_hardcore: the rules of the world
+;   MA_CREATE asks for (save.inc MODE_* / DIFF_*)
 ; =============================================================================
 %include "macros.inc"
 %include "log.inc"
 %include "file.inc"
 %include "memory.inc"
+%include "gl.inc"
 %include "ui.inc"
 %include "menu.inc"
+%include "save.inc"
 
 global menu_open, menu_back, menu_frame
+global g_new_mode, g_new_difficulty, g_new_hardcore
 
 extern ui_frame, ui_end, ui_button, ui_panel, ui_label, ui_rect, ui_text
+extern ui_image, ui_textfield, ui_focus
 extern g_ui_vw, g_ui_vh, g_ui_alpha, g_ui_oy, g_ui_dt, g_ui_click, g_ui_mx
-extern g_ui_my, g_menu_fade, g_game_state, g_mouse_wheel
-extern str_copy, str_append_dec, str_ieq, timer_elapsed_us
+extern g_ui_my, g_menu_fade, g_game_state, g_mouse_wheel, g_ui_images_tex
+extern str_copy, str_append_dec, str_ieq, str_len, str_parse_u64
+extern timer_elapsed_us, save_peek, png_decode
 
-IMPORT FindFirstFileA, FindNextFileA, FindClose
+IMPORT FindFirstFileA, FindNextFileA, FindClose, DeleteFileA, RemoveDirectoryA
 
-%define MAX_WORLDS      64
+%define MAX_WORLDS      64              ; (8 x 8 pictures in the atlas)
 %define NAME_CAP        64
+%define NAME_TYPED      33              ; the name field: 32 characters
+%define SEED_TYPED      33
+%define DETAILS_CAP     96
 %define MAX_CREDIT_LINES 32
-%define ROWS_VISIBLE    7
-%define ROW_H           50
+%define ROWS_VISIBLE    5
+%define ROW_H           88
 %define FIND_DATA_SIZE  320
 %define FD_ATTR         0
+%define FD_SIZE_HIGH    28
+%define FD_SIZE_LOW     32
 %define FD_NAME         44
 %define ATTR_DIRECTORY  0x10
 %define TRANSITION_S    0.15
+%define THUMB_W         256             ; (thumb.asm)
+%define THUMB_H         144
+%define ATLAS_COLS      8
+%define ATLAS_W         (THUMB_W * ATLAS_COLS)
+%define ATLAS_H         (THUMB_H * ATLAS_COLS)
+%define FIELD_NAME      30              ; widget ids
+%define FIELD_SEED      31
 
 section .rdata
 s_title:        db "VoxelB", 0
@@ -50,18 +74,53 @@ s_back:         db "Back", 0
 s_worlds:       db "Worlds", 0
 s_new_world:    db "New world", 0
 s_play_world:   db "Play world", 0
+s_delete:       db "Delete", 0
+s_cancel:       db "Cancel", 0
 s_no_worlds:    db "No worlds yet: make a new one", 0
+s_confirm:      db "Delete this world?", 0
+s_confirm2:     db "It will be gone for good.", 0
+s_create_title: db "New world", 0
+s_create:       db "Create world", 0
+s_l_name:       db "Name", 0
+s_l_seed:       db "Seed", 0
+s_seed_hint:    db "Empty: a random seed", 0
+s_l_mode:       db "Game mode", 0
+s_mode_note:    db "Survival, Adventure and Spectator are coming later", 0
+s_l_diff:       db "Difficulty", 0
+s_hardcore_off: db "Hardcore: off", 0
+s_diff_note:    db "Difficulty and Hardcore arrive with Survival", 0
 s_paused:       db "Paused", 0
 s_resume:       db "Resume", 0
 s_to_menu:      db "Save & quit to menu", 0
 s_save_quit:    db "Save & quit game", 0
 s_version:      db "Milestone 17", 0
-s_settings_soon: db "(settings arrive with the next update)", 0
 s_world_n:      db "World ", 0
 s_saves_glob:   db "saves\*", 0
+s_saves_bs:     db "saves\", 0
+s_thumb:        db "\thumb.png", 0
+s_star:         db "\*", 0
 s_dot:          db ".", 0
 s_dotdot:       db "..", 0
+s_empty:        db 0
+s_sep:          db "   -   ", 0
+s_kb:           db " KB", 0
+s_mb:           db " MB", 0
+s_hardcore:     db " Hardcore", 0
+s_paren:        db " (", 0
+s_paren_end:    db ")", 0
 s_credits_file: db "data/ui/credits.txt", 0
+mode_0:         db "Creative", 0
+mode_1:         db "Survival", 0
+mode_2:         db "Adventure", 0
+mode_3:         db "Spectator", 0
+diff_0:         db "Peaceful", 0
+diff_1:         db "Normal", 0
+diff_2:         db "Hard", 0
+diff_3:         db "Extreme", 0
+diff_4:         db "Ultra", 0
+align 8
+mode_names:     dq mode_0, mode_1, mode_2, mode_3
+diff_names:     dq diff_0, diff_1, diff_2, diff_3, diff_4
 align 4
 c_trans:        dd TRANSITION_S
 c_one:          dd 1.0
@@ -69,6 +128,14 @@ c_offset:       dd 24.0
 c_three:        dd 3.0
 c_two:          dd 2.0
 c_255:          dd 255.0
+c_cell:         dd 0.125                ; 1 / ATLAS_COLS
+c_inset:        dd 0.0005               ; (half a texel: no bleeding)
+
+section .data
+align 4
+g_new_mode:       dd MODE_CREATIVE
+g_new_difficulty: dd DIFF_NORMAL
+g_new_hardcore:   dd 0
 
 section .bss
 alignb 4
@@ -78,14 +145,23 @@ g_trans_t:      resd 1                  ; f32 0..1 since the screen opened
 g_world_count:  resd 1
 g_selected:     resd 1                  ; -1 none
 g_scroll:       resd 1
+g_confirm:      resd 1                  ; the delete question is open
 g_credit_n:     resd 1
 g_credits_done: resd 1
+g_atlas:        resd 1                  ; the pictures' texture
+alignb 16
+g_worlds:       resb MAX_WORLDS * WORLD_INFO_size
+g_tmp_info:     resb WORLD_INFO_size
+g_details:      resb MAX_WORLDS * DETAILS_CAP
 alignb 8
 g_credit_lines: resq MAX_CREDIT_LINES
-g_world_names:  resb MAX_WORLDS * NAME_CAP
 g_new_name:     resb NAME_CAP
+g_folder:       resb NAME_CAP + 8
+g_seed_text:    resb SEED_TYPED
 g_find:         resb FIND_DATA_SIZE
+g_png_info:     resd 4
 g_path:         resb PATH_CAP
+g_walk:         resb PATH_CAP
 
 section .text
 
@@ -99,30 +175,54 @@ PROC menu_open, 0
     mov [rel g_prev_screen], eax
     mov [rel g_screen], ecx
     mov dword [rel g_trans_t], 0
+    mov dword [rel g_confirm], 0
     cmp ecx, SCREEN_WORLDS
-    jne .done
+    jne .not_worlds
     call list_worlds
+    RETURN
+.not_worlds:
+    cmp ecx, SCREEN_CREATE
+    jne .done
+    ; a fresh form: "World N", no seed, the name field typing
+    call new_world_name
+    mov byte [rel g_seed_text], 0
+    mov ecx, FIELD_NAME + 1
+    call ui_focus
+    RETURN
 .done:
+    xor ecx, ecx
+    call ui_focus
     RETURN
 ENDPROC
 
-; menu_back — Esc on a menu screen: back to the main menu
+; menu_back — Esc on a menu screen: close the question, or go back a screen
 PROC menu_back, 0
-    cmp dword [rel g_screen], SCREEN_MAIN
+    cmp dword [rel g_confirm], 0
+    je .screen
+    mov dword [rel g_confirm], 0
+    RETURN
+.screen:
+    mov eax, [rel g_screen]
+    cmp eax, SCREEN_MAIN
     je .done
-    cmp dword [rel g_screen], SCREEN_PAUSE
+    cmp eax, SCREEN_PAUSE
     je .done
     mov ecx, SCREEN_MAIN
+    cmp eax, SCREEN_CREATE
+    jne .open
+    mov ecx, SCREEN_WORLDS
+.open:
     call menu_open
 .done:
     RETURN
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; list_worlds — the folders in saves\ (each a world).
+; list_worlds — the folders in saves\ (each a world): their details
+; (save_peek), size on disk, newest first, and their pictures.
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC list_worlds, 0, rbx, rsi
+PROC list_worlds, 0, rbx, rsi, rdi
     mov dword [rel g_world_count], 0
     mov dword [rel g_selected], -1
     mov dword [rel g_scroll], 0
@@ -133,7 +233,7 @@ PROC list_worlds, 0, rbx, rsi
     lea rdx, [rel g_find]
     API FindFirstFileA, rcx, rdx
     cmp rax, -1
-    je .done
+    je .sort
     mov rbx, rax
 .entry:
     test dword [rel g_find + FD_ATTR], ATTR_DIRECTORY
@@ -152,59 +252,367 @@ PROC list_worlds, 0, rbx, rsi
     cmp eax, MAX_WORLDS
     jae .next
     inc dword [rel g_world_count]
-    shl eax, 6                          ; * NAME_CAP
-    lea rcx, [rel g_world_names]
-    add rcx, rax
-    ; (names longer than NAME_CAP - 1 are cut)
+    imul eax, eax, WORLD_INFO_size
+    lea rdi, [rel g_worlds]
+    add rdi, rax
+    ; the name (longer names are cut: such a folder is not ours)
     lea rsi, [rel g_find + FD_NAME]
     xor edx, edx
 .copy:
     mov al, [rsi + rdx]
-    mov [rcx + rdx], al
+    mov [rdi + WORLD_INFO.name + rdx], al
     test al, al
-    jz .next
+    jz .copied
     inc edx
     cmp edx, NAME_CAP - 1
     jb .copy
-    mov byte [rcx + rdx], 0
+    mov byte [rdi + WORLD_INFO.name + rdx], 0
+.copied:
+    mov dword [rdi + WORLD_INFO.thumb], 0
+    mov rcx, rdi
+    mov rdx, rdi
+    call save_peek
+    mov rcx, rdi
+    call world_folder                   ; rax = end of g_walk
+    xor edx, edx
+    mov rcx, rax
+    call walk
+    mov [rdi + WORLD_INFO.size], rax
 .next:
     lea rdx, [rel g_find]
     API FindNextFileA, rbx, rdx
     test eax, eax
     jnz .entry
     API FindClose, rbx
+.sort:
+    call sort_worlds
+    xor ebx, ebx
+.details:
+    cmp ebx, [rel g_world_count]
+    jae .pictures
+    mov ecx, ebx
+    call make_details
+    inc ebx
+    jmp .details
+.pictures:
+    call load_pictures
+    RETURN
+ENDPROC
+
+; world_folder — g_walk = the world's folder (no trailing separator)
+;   in:  rcx = WORLD_INFO*
+;   out: rax = the terminator of g_walk
+;   clobbers: volatile registers
+PROC world_folder, 0, rbx
+    mov rbx, rcx
+    lea rcx, [rel g_walk]
+    lea rdx, [rel s_saves_bs]
+    call path_make
+    mov rcx, rax
+    lea rdx, [rbx + WORLD_INFO.name]
+    call str_copy
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; walk — the bytes of every file under a folder; optionally delete them all
+; (files, then each emptied subfolder; not the folder itself).
+;   in:  rcx = the terminator of the folder's path in g_walk, edx = 1 delete
+;   out: rax = bytes (before deleting)
+;   clobbers: volatile registers (g_walk is restored)
+; -----------------------------------------------------------------------------
+%define K_FIND      0
+%define K_TOTAL     FIND_DATA_SIZE
+PROC walk, FIND_DATA_SIZE + 16, rbx, rsi, rdi, r12
+    mov rsi, rcx
+    mov r12d, edx
+    mov qword [LOCAL(K_TOTAL)], 0
+    mov rcx, rsi
+    lea rdx, [rel s_star]
+    call str_copy
+    lea rcx, [rel g_walk]
+    lea rdx, [LOCAL(K_FIND)]
+    API FindFirstFileA, rcx, rdx
+    cmp rax, -1
+    je .done
+    mov rbx, rax
+.entry:
+    lea rcx, [LOCAL(K_FIND + FD_NAME)]
+    lea rdx, [rel s_dot]
+    call str_ieq
+    test eax, eax
+    jnz .next
+    lea rcx, [LOCAL(K_FIND + FD_NAME)]
+    lea rdx, [rel s_dotdot]
+    call str_ieq
+    test eax, eax
+    jnz .next
+    ; g_walk = folder\entry
+    lea rcx, [rsi + 1]
+    lea rdx, [LOCAL(K_FIND + FD_NAME)]
+    call str_copy
+    mov rdi, rax
+    test dword [LOCAL(K_FIND + FD_ATTR)], ATTR_DIRECTORY
+    jz .file
+    mov rcx, rdi
+    mov edx, r12d
+    call walk
+    add [LOCAL(K_TOTAL)], rax
+    test r12d, r12d
+    jz .next
+    lea rcx, [rel g_walk]
+    API RemoveDirectoryA, rcx
+    jmp .next
+.file:
+    mov eax, [LOCAL(K_FIND + FD_SIZE_HIGH)]
+    shl rax, 32
+    mov ecx, [LOCAL(K_FIND + FD_SIZE_LOW)]
+    or rax, rcx
+    add [LOCAL(K_TOTAL)], rax
+    test r12d, r12d
+    jz .next
+    lea rcx, [rel g_walk]
+    API DeleteFileA, rcx
+.next:
+    lea rdx, [LOCAL(K_FIND)]
+    API FindNextFileA, rbx, rdx
+    test eax, eax
+    jnz .entry
+    API FindClose, rbx
+.done:
+    mov byte [rsi], 0
+    mov rax, [LOCAL(K_TOTAL)]
+    RETURN
+ENDPROC
+
+; copy_info — copy a WORLD_INFO: rcx = dst, rdx = src   clobbers: xmm0
+copy_info:
+%assign i 0
+%rep WORLD_INFO_size / 16
+    movups xmm0, [rdx + i]
+    movups [rcx + i], xmm0
+%assign i i + 16
+%endrep
+    ret
+
+; played_after — eax = 1 if [rcx] (a last_played text) sorts after [rdx]
+;   clobbers: rax, rcx, rdx, r8
+played_after:
+.cmp:
+    movzx eax, byte [rcx]
+    movzx r8d, byte [rdx]
+    cmp eax, r8d
+    ja .yes
+    jb .no
+    test eax, eax
+    jz .no
+    inc rcx
+    inc rdx
+    jmp .cmp
+.yes:
+    mov eax, 1
+    ret
+.no:
+    xor eax, eax
+    ret
+
+; sort_worlds — newest last_played first (insertion sort; a few worlds)
+;   clobbers: volatile registers
+PROC sort_worlds, 0, rbx, rsi, rdi
+    mov ebx, 1
+.outer:
+    cmp ebx, [rel g_world_count]
+    jae .done
+    imul eax, ebx, WORLD_INFO_size
+    lea rdx, [rel g_worlds]
+    add rdx, rax
+    lea rcx, [rel g_tmp_info]
+    call copy_info
+    mov esi, ebx                        ; the hole
+.inner:
+    test esi, esi
+    jz .place
+    lea eax, [esi - 1]
+    imul eax, eax, WORLD_INFO_size
+    lea rdi, [rel g_worlds]
+    add rdi, rax                        ; the one before the hole
+    lea rcx, [rel g_tmp_info + WORLD_INFO.played]
+    lea rdx, [rdi + WORLD_INFO.played]
+    call played_after
+    test eax, eax
+    jz .place
+    lea rcx, [rdi + WORLD_INFO_size]
+    mov rdx, rdi
+    call copy_info
+    dec esi
+    jmp .inner
+.place:
+    imul eax, esi, WORLD_INFO_size
+    lea rcx, [rel g_worlds]
+    add rcx, rax
+    lea rdx, [rel g_tmp_info]
+    call copy_info
+    inc ebx
+    jmp .outer
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; make_details — world ecx's second line: "Creative - Normal - 2026-10-12
+; 21:20 - 3.2 MB" (with " Hardcore" after the difficulty when it is on).
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC make_details, 0, rbx, rsi, rdi
+    mov eax, ecx
+    imul eax, eax, DETAILS_CAP
+    lea rdi, [rel g_details]
+    add rdi, rax
+    imul ecx, ecx, WORLD_INFO_size
+    lea rbx, [rel g_worlds]
+    add rbx, rcx
+    mov eax, [rbx + WORLD_INFO.mode]
+    lea rcx, [rel mode_names]
+    mov rdx, [rcx + rax * 8]
+    mov rcx, rdi
+    call str_copy
+    lea rdx, [rel s_sep]
+    mov rcx, rax
+    call str_copy
+    mov ecx, [rbx + WORLD_INFO.difficulty]
+    lea rdx, [rel diff_names]
+    mov rdx, [rdx + rcx * 8]
+    mov rcx, rax
+    call str_copy
+    cmp dword [rbx + WORLD_INFO.hardcore], 0
+    je .played
+    lea rdx, [rel s_hardcore]
+    mov rcx, rax
+    call str_copy
+.played:
+    cmp byte [rbx + WORLD_INFO.played], 0
+    je .size
+    lea rdx, [rel s_sep]
+    mov rcx, rax
+    call str_copy
+    lea rdx, [rbx + WORLD_INFO.played]
+    mov rcx, rax
+    call str_copy
+.size:
+    lea rdx, [rel s_sep]
+    mov rcx, rax
+    call str_copy
+    mov rsi, rax
+    mov rax, [rbx + WORLD_INFO.size]
+    cmp rax, 1024 * 1024
+    jae .mb
+    add rax, 1023
+    shr rax, 10
+    INVOKE str_append_dec, rsi, rax, 0
+    lea rdx, [rel s_kb]
+    jmp .unit
+.mb:
+    imul rax, rax, 10
+    shr rax, 20                         ; tenths of a MB
+    INVOKE str_append_dec, rsi, rax, 1
+    lea rdx, [rel s_mb]
+.unit:
+    mov rcx, rax
+    call str_copy
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; load_pictures — each world's thumb.png into its cell of the picture atlas
+; (made the first time).
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define L_MARK      0
+PROC load_pictures, 16, rbx, rsi, rdi
+    cmp dword [rel g_atlas], 0
+    jne .have
+    lea r8, [rel g_atlas]
+    GL glCreateTextures, GL_TEXTURE_2D, 1, r8
+    GL glTextureStorage2D, [rel g_atlas], 1, GL_RGBA8, ATLAS_W, ATLAS_H
+    GL glTextureParameteri, [rel g_atlas], GL_TEXTURE_MIN_FILTER, GL_LINEAR
+    GL glTextureParameteri, [rel g_atlas], GL_TEXTURE_MAG_FILTER, GL_LINEAR
+    GL glTextureParameteri, [rel g_atlas], GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE
+    GL glTextureParameteri, [rel g_atlas], GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE
+    mov eax, [rel g_atlas]
+    mov [rel g_ui_images_tex], eax
+.have:
+    xor ebx, ebx
+.world:
+    cmp ebx, [rel g_world_count]
+    jae .done
+    imul eax, ebx, WORLD_INFO_size
+    lea rsi, [rel g_worlds]
+    add rsi, rax
+    mov rcx, rsi
+    call world_folder
+    mov rcx, rax
+    lea rdx, [rel s_thumb]
+    call str_copy
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [LOCAL(L_MARK)], rax
+    lea rcx, [rel g_walk]
+    lea rdx, [rel g_arena_scratch]
+    call file_load
+    test rax, rax
+    jz .reset
+    lea r8, [rel g_png_info]
+    lea r9, [rel g_arena_scratch]
+    mov rcx, rax
+    call png_decode
+    test rax, rax
+    jz .reset
+    cmp dword [rel g_png_info], THUMB_W
+    jne .reset
+    cmp dword [rel g_png_info + 4], THUMB_H
+    jne .reset
+    mov [rsp + 64], rax                 ; pixels
+    mov qword [rsp + 56], GL_UNSIGNED_BYTE
+    mov qword [rsp + 48], GL_RGBA
+    mov qword [rsp + 40], THUMB_H
+    mov qword [rsp + 32], THUMB_W
+    mov eax, ebx
+    and eax, ATLAS_COLS - 1
+    imul r8d, eax, THUMB_W
+    mov eax, ebx
+    shr eax, 3
+    imul r9d, eax, THUMB_H
+    mov ecx, [rel g_atlas]
+    xor edx, edx
+    call [rel glTextureSubImage2D]
+    lea eax, [ebx + 1]
+    mov [rsi + WORLD_INFO.thumb], eax
+.reset:
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(L_MARK)]
+    inc ebx
+    jmp .world
 .done:
     RETURN
 ENDPROC
 
 ; world_name — rax = name of world ecx
 world_name:
-    mov eax, ecx
-    shl eax, 6
-    lea rcx, [rel g_world_names]
+    imul eax, ecx, WORLD_INFO_size
+    lea rcx, [rel g_worlds]
     add rax, rcx
     ret
 
-; -----------------------------------------------------------------------------
-; new_world_name — "World N" with the first N not taken; a seed from the
-; clock.
-;   out: rax = name, edx = seed
-;   clobbers: volatile registers
-; -----------------------------------------------------------------------------
-PROC new_world_name, 0, rbx, rsi
-    mov ebx, 1
-.try:
-    lea rcx, [rel g_new_name]
-    lea rdx, [rel s_world_n]
-    call str_copy
-    INVOKE str_append_dec, rax, rbx, 0
+; name_taken — eax = 1 if a world folder is called [rcx] (ignoring case)
+PROC name_taken, 0, rbx, rsi
+    mov rbx, rcx
     xor esi, esi
 .cmp:
     cmp esi, [rel g_world_count]
     jae .free
     mov ecx, esi
     call world_name
-    lea rcx, [rel g_new_name]
+    mov rcx, rbx
     mov rdx, rax
     call str_ieq
     test eax, eax
@@ -212,19 +620,280 @@ PROC new_world_name, 0, rbx, rsi
     inc esi
     jmp .cmp
 .taken:
+    mov eax, 1
+    RETURN
+.free:
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; new_world_name — g_new_name = "World N" with the first N not taken.
+;   out: rax = g_new_name
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC new_world_name, 0, rbx
+    mov ebx, 1
+.try:
+    lea rcx, [rel g_new_name]
+    lea rdx, [rel s_world_n]
+    call str_copy
+    INVOKE str_append_dec, rax, rbx, 0
+    lea rcx, [rel g_new_name]
+    call name_taken
+    test eax, eax
+    jz .free
     inc ebx
     jmp .try
 .free:
+    lea rax, [rel g_new_name]
+    RETURN
+ENDPROC
+
+; random_seed — eax = a seed from the clock (positive, 31 bits)
+PROC random_seed, 0, rbx
     rdtsc
     mov ebx, eax
     call timer_elapsed_us
     xor eax, ebx
     imul eax, eax, 0x9E3779B1
-    shr eax, 1                          ; (a positive 31-bit seed)
-    mov edx, eax
-    lea rax, [rel g_new_name]
+    shr eax, 1
     RETURN
 ENDPROC
+
+; -----------------------------------------------------------------------------
+; seed_from_text — the seed field: empty = random; a whole number (optional
+; '-') = that number; any other text = its FNV-1a hash (so "mountains" is
+; always the same world).
+;   in:  rcx = text
+;   out: eax = seed
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC seed_from_text, 0, rbx, rsi
+    mov rbx, rcx
+.skip:
+    cmp byte [rbx], ' '
+    jne .skipped
+    inc rbx
+    jmp .skip
+.skipped:
+    cmp byte [rbx], 0
+    jne .given
+    call random_seed
+    RETURN
+.given:
+    ; a number?
+    mov rcx, rbx
+    xor esi, esi                        ; negative
+    cmp byte [rcx], '-'
+    jne .digits
+    inc rcx
+    mov esi, 1
+.digits:
+    call str_parse_u64                  ; rdx = after, r8 = digits
+    test r8, r8
+    jz .hash
+.trail:
+    cmp byte [rdx], ' '
+    jne .end
+    inc rdx
+    jmp .trail
+.end:
+    cmp byte [rdx], 0
+    jne .hash
+    test esi, esi
+    jz .number
+    neg eax
+.number:
+    RETURN
+.hash:
+    mov eax, 0x811C9DC5
+.byte:
+    movzx ecx, byte [rbx]
+    test ecx, ecx
+    jz .hashed
+    xor eax, ecx
+    imul eax, eax, 0x01000193
+    inc rbx
+    jmp .byte
+.hashed:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; sanitize_name — a typed world name as a safe folder name: printable ASCII
+; without < > : " / \ | ? *, no spaces or dots at the ends, not a reserved
+; device name (CON, PRN, AUX, NUL, COM1.., LPT1..).
+;   in:  rcx = typed name, rdx = destination (NAME_CAP)
+;   out: eax = length
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC sanitize_name, 0, rbx, rsi, rdi
+    mov rsi, rcx
+    mov rdi, rdx
+    xor ebx, ebx                        ; length
+.lead:
+    cmp byte [rsi], ' '
+    jne .copy
+    inc rsi
+    jmp .lead
+.copy:
+    movzx eax, byte [rsi]
+    test eax, eax
+    jz .trim
+    inc rsi
+    cmp eax, ' '
+    jb .copy
+    cmp eax, 126
+    ja .copy
+    cmp eax, '<'
+    je .copy
+    cmp eax, '>'
+    je .copy
+    cmp eax, ':'
+    je .copy
+    cmp eax, '"'
+    je .copy
+    cmp eax, '/'
+    je .copy
+    cmp eax, '\'
+    je .copy
+    cmp eax, '|'
+    je .copy
+    cmp eax, '?'
+    je .copy
+    cmp eax, '*'
+    je .copy
+    cmp ebx, NAME_TYPED - 1
+    jae .trim
+    mov [rdi + rbx], al
+    inc ebx
+    jmp .copy
+.trim:
+    test ebx, ebx
+    jz .end
+    movzx eax, byte [rdi + rbx - 1]
+    cmp eax, ' '
+    je .cut
+    cmp eax, '.'
+    jne .end
+.cut:
+    dec ebx
+    jmp .trim
+.end:
+    mov byte [rdi + rbx], 0
+    ; reserved device names get a '_'
+    cmp ebx, 3
+    je .three
+    cmp ebx, 4
+    jne .done
+    movzx eax, byte [rdi + 3]
+    cmp eax, '1'
+    jb .done
+    cmp eax, '9'
+    ja .done
+    mov eax, [rdi]
+    and eax, 0x00DFDFDF                 ; (upper case)
+    cmp eax, 'COM'
+    je .reserved
+    cmp eax, 'LPT'
+    je .reserved
+    jmp .done
+.three:
+    mov eax, [rdi]
+    and eax, 0x00DFDFDF
+    cmp eax, 'CON'
+    je .reserved
+    cmp eax, 'PRN'
+    je .reserved
+    cmp eax, 'AUX'
+    je .reserved
+    cmp eax, 'NUL'
+    jne .done
+.reserved:
+    mov byte [rdi + rbx], '_'
+    inc ebx
+    mov byte [rdi + rbx], 0
+.done:
+    mov eax, ebx
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; create_world — the creation form's answer: the folder name (sanitised,
+; "World N" if nothing is left, " (2)", " (3)".. if taken), the seed and the
+; rules (only what is built so far: creative, normal, no hardcore).
+;   out: rax = folder name, edx = seed
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC create_world, 0, rbx, rsi
+    lea rcx, [rel g_new_name]
+    lea rdx, [rel g_folder]
+    call sanitize_name
+    test eax, eax
+    jnz .named
+    call new_world_name
+    lea rcx, [rel g_new_name]
+    lea rdx, [rel g_folder]
+    call sanitize_name
+.named:
+    mov esi, eax                        ; base length
+    mov ebx, 2
+.unique:
+    lea rcx, [rel g_folder]
+    call name_taken
+    test eax, eax
+    jz .seed
+    lea rcx, [rel g_folder]
+    add rcx, rsi
+    lea rdx, [rel s_paren]
+    call str_copy
+    INVOKE str_append_dec, rax, rbx, 0
+    lea rdx, [rel s_paren_end]
+    mov rcx, rax
+    call str_copy
+    inc ebx
+    jmp .unique
+.seed:
+    mov dword [rel g_new_mode], MODE_CREATIVE
+    mov dword [rel g_new_difficulty], DIFF_NORMAL
+    mov dword [rel g_new_hardcore], 0
+    lea rcx, [rel g_seed_text]
+    call seed_from_text
+    mov edx, eax
+    lea rax, [rel g_folder]
+    RETURN
+ENDPROC
+
+; delete_selected — remove the selected world's folder, list again
+PROC delete_selected, 0, rbx
+    mov ecx, [rel g_selected]
+    test ecx, ecx
+    js .done
+    call world_name
+    mov rbx, rax
+    mov ecx, LOG_LEVEL_INFO
+    call log_begin
+    lea rcx, [rel s_log_delete]
+    call log_append_str
+    mov rcx, rbx
+    call log_append_str
+    call log_end
+    mov rcx, rbx
+    call world_folder
+    mov rcx, rax
+    mov edx, 1
+    call walk
+    lea rcx, [rel g_walk]
+    API RemoveDirectoryA, rcx
+    call list_worlds
+.done:
+    RETURN
+ENDPROC
+
+section .rdata
+s_log_delete:   db "menu: deleted world ", 0
+section .text
 
 ; -----------------------------------------------------------------------------
 ; load_credits — data/ui/credits.txt into lines (once).
@@ -285,7 +954,9 @@ ENDPROC
 %define M_W         20
 %define M_H         24
 %define M_CX        28                  ; canvas centre x (units)
-PROC menu_frame, 32, rbx, rsi, rdi, r12, r13
+%define M_SAVE_MX   32                  ; (the delete question: the real mouse)
+%define M_SAVE_CLICK 36
+PROC menu_frame, 48, rbx, rsi, rdi, r12, r13, r14, r15
     mov [LOCAL(M_W)], ecx
     mov [LOCAL(M_H)], edx
     mov dword [LOCAL(M_ACTION)], MA_NONE
@@ -351,6 +1022,8 @@ PROC menu_frame, 32, rbx, rsi, rdi, r12, r13
     je .worlds
     cmp eax, SCREEN_CREDITS
     je .credits
+    cmp eax, SCREEN_CREATE
+    je .create
     jmp .pause
 
     ; ---- main ---------------------------------------------------------------------------
@@ -427,12 +1100,23 @@ PROC menu_frame, 32, rbx, rsi, rdi, r12, r13
 
     ; ---- worlds ----------------------------------------------------------------------
 .worlds:
+    ; with the delete question open, the screen behind it takes no mouse
+    mov dword [LOCAL(M_SAVE_MX)], -100000
+    cmp dword [rel g_confirm], 0
+    je .w_live
+    mov eax, [rel g_ui_mx]
+    mov [LOCAL(M_SAVE_MX)], eax
+    mov eax, [rel g_ui_click]
+    mov [LOCAL(M_SAVE_CLICK)], eax
+    mov dword [rel g_ui_mx], -100000
+    mov dword [rel g_ui_click], 0
+.w_live:
     mov edi, [LOCAL(M_CX)]
-    sub edi, 320                        ; panel left
+    sub edi, 380                        ; panel left
     mov esi, [rel g_ui_vh]
-    sub esi, 600
-    sar esi, 1                          ; panel top (600 tall)
-    INVOKE ui_panel, rdi, rsi, 640, 600
+    sub esi, 620
+    sar esi, 1                          ; panel top (620 tall)
+    INVOKE ui_panel, rdi, rsi, 760, 620
     lea r8d, [esi + 22]
     mov dword [rsp + 32], COL_TEXT
     mov qword [rsp + 40], UI_CENTER | UI_BOLD
@@ -464,7 +1148,7 @@ PROC menu_frame, 32, rbx, rsi, rdi, r12, r13
 .w_scrolled:
     cmp dword [rel g_world_count], 0
     jne .w_rows
-    lea r8d, [esi + 200]
+    lea r8d, [esi + 240]
     mov dword [rsp + 32], COL_TEXT_DIM
     mov qword [rsp + 40], UI_CENTER
     lea rcx, [rel s_no_worlds]
@@ -479,8 +1163,11 @@ PROC menu_frame, 32, rbx, rsi, rdi, r12, r13
     add r12d, [rel g_scroll]            ; world index
     cmp r12d, [rel g_world_count]
     jae .w_buttons
-    mov ecx, r12d
-    call world_name
+    imul r13d, ebx, ROW_H
+    add r13d, esi
+    add r13d, 82                        ; row top
+    ; the row is a button: a click selects, a click on the selected plays
+    lea rax, [rel s_empty]
     mov [rsp + 40], rax
     mov qword [rsp + 32], ROW_H - 6
     xor eax, eax
@@ -489,41 +1176,91 @@ PROC menu_frame, 32, rbx, rsi, rdi, r12, r13
     mov eax, UIW_SELECTED
 .w_flags:
     mov [rsp + 48], rax
-    imul r8d, ebx, ROW_H
-    add r8d, esi
-    add r8d, 84
-    lea edx, [edi + 40]
+    lea edx, [edi + 30]
     lea ecx, [ebx + 10]
-    INVOKE ui_button, rcx, rdx, r8, 560
+    INVOKE ui_button, rcx, rdx, r13, 700
     test eax, eax
-    jz .w_next
-    ; a click selects; a click on the selected world plays it
+    jz .w_draw
     cmp r12d, [rel g_selected]
     jne .w_select
     mov ecx, r12d
     call world_name
     mov [LOCAL(M_ARG)], rax
     mov dword [LOCAL(M_ACTION)], MA_PLAY
-    jmp .w_next
+    jmp .w_draw
 .w_select:
     mov [rel g_selected], r12d
-.w_next:
+.w_draw:
+    mov ecx, r12d
+    call world_name
+    mov r14, rax                        ; WORLD_INFO*
+    ; the picture (or a dark frame)
+    lea r15d, [r13d + 7]
+    mov eax, [r14 + WORLD_INFO.thumb]
+    test eax, eax
+    jz .w_no_pic
+    dec eax
+    mov ecx, eax
+    and ecx, ATLAS_COLS - 1
+    shr eax, 3
+    cvtsi2ss xmm0, ecx
+    mulss xmm0, [rel c_cell]
+    cvtsi2ss xmm1, eax
+    mulss xmm1, [rel c_cell]
+    movss xmm2, xmm0
+    addss xmm2, [rel c_cell]
+    movss xmm3, xmm1
+    addss xmm3, [rel c_cell]
+    addss xmm0, [rel c_inset]
+    addss xmm1, [rel c_inset]
+    subss xmm2, [rel c_inset]
+    subss xmm3, [rel c_inset]
+    movss [rsp + 32], xmm0
+    movss [rsp + 40], xmm1
+    movss [rsp + 48], xmm2
+    movss [rsp + 56], xmm3
+    mov dword [rsp + 64], 0xFFFFFFFF
+    lea ecx, [edi + 40]
+    INVOKE ui_image, rcx, r15, 128, 72
+    jmp .w_text
+.w_no_pic:
+    mov dword [rsp + 32], 0x60000000
+    mov dword [rsp + 40], 0x30FFFFFF
+    mov qword [rsp + 48], 6
+    mov qword [rsp + 56], 1
+    lea ecx, [edi + 40]
+    INVOKE ui_rect, rcx, r15, 128, 72
+.w_text:
+    lea r8d, [r13d + 14]
+    lea edx, [edi + 190]
+    mov dword [rsp + 32], COL_TEXT
+    mov qword [rsp + 40], UI_BOLD
+    lea rcx, [r14 + WORLD_INFO.name]
+    INVOKE ui_label, rcx, rdx, r8, 25
+    imul eax, r12d, DETAILS_CAP
+    lea rcx, [rel g_details]
+    add rcx, rax
+    lea r8d, [r13d + 50]
+    lea edx, [edi + 190]
+    mov dword [rsp + 32], COL_TEXT_DIM
+    mov qword [rsp + 40], 0
+    INVOKE ui_label, rcx, rdx, r8, 17
     inc ebx
     jmp .w_row
 .w_buttons:
-    ; Play world / New world / Back along the bottom
-    lea r12d, [esi + 600 - 24 - 52]
+    ; Play world / New world / Delete / Back along the bottom
+    lea r12d, [esi + 620 - 24 - 52]
+    mov r10d, UIW_PRIMARY
+    cmp dword [rel g_selected], 0
+    jge .w_play_ok
+    mov r10d, UIW_DISABLED
+.w_play_ok:
+    mov [rsp + 48], r10
     mov qword [rsp + 32], 52
     lea rax, [rel s_play_world]
     mov [rsp + 40], rax
-    mov eax, UIW_PRIMARY
-    cmp dword [rel g_selected], 0
-    jge .w_play_ok
-    mov eax, UIW_DISABLED
-.w_play_ok:
-    mov [rsp + 48], rax
     lea edx, [edi + 40]
-    INVOKE ui_button, 4, rdx, r12, 180
+    INVOKE ui_button, 4, rdx, r12, 160
     test eax, eax
     jz .w_new
     mov ecx, [rel g_selected]
@@ -535,24 +1272,245 @@ PROC menu_frame, 32, rbx, rsi, rdi, r12, r13
     lea rax, [rel s_new_world]
     mov [rsp + 40], rax
     mov qword [rsp + 48], 0
-    lea edx, [edi + 230]
-    INVOKE ui_button, 5, rdx, r12, 180
+    lea edx, [edi + 40 + 173]
+    INVOKE ui_button, 5, rdx, r12, 160
+    test eax, eax
+    jz .w_delete
+    mov ecx, SCREEN_CREATE
+    call menu_open
+    jmp .end
+.w_delete:
+    mov r10d, 0
+    cmp dword [rel g_selected], 0
+    jge .w_del_ok
+    mov r10d, UIW_DISABLED
+.w_del_ok:
+    mov [rsp + 48], r10
+    mov qword [rsp + 32], 52
+    lea rax, [rel s_delete]
+    mov [rsp + 40], rax
+    lea edx, [edi + 40 + 2 * 173]
+    INVOKE ui_button, 8, rdx, r12, 160
     test eax, eax
     jz .w_back
-    call new_world_name
-    mov [LOCAL(M_ARG)], rax
-    mov [LOCAL(M_SEED)], edx
-    mov dword [LOCAL(M_ACTION)], MA_CREATE
+    mov dword [rel g_confirm], 1
 .w_back:
     mov qword [rsp + 32], 52
     lea rax, [rel s_back]
     mov [rsp + 40], rax
     mov qword [rsp + 48], 0
-    lea edx, [edi + 420]
-    INVOKE ui_button, 6, rdx, r12, 180
+    lea edx, [edi + 40 + 3 * 173]
+    INVOKE ui_button, 6, rdx, r12, 160
+    test eax, eax
+    jz .w_confirm
+    mov ecx, SCREEN_MAIN
+    call menu_open
+    jmp .end
+.w_confirm:
+    ; ---- the delete question, over the dimmed list ----
+    cmp dword [rel g_confirm], 0
+    je .end
+    cmp dword [LOCAL(M_SAVE_MX)], -100000
+    je .end                             ; (opened this frame: from next frame)
+    mov eax, [LOCAL(M_SAVE_MX)]
+    mov [rel g_ui_mx], eax
+    mov eax, [LOCAL(M_SAVE_CLICK)]
+    mov [rel g_ui_click], eax
+    mov dword [rsp + 32], 0x80000000
+    mov dword [rsp + 40], 0x80000000
+    mov qword [rsp + 48], 0
+    mov qword [rsp + 56], 0
+    mov r8d, [rel g_ui_vw]
+    add r8d, 16
+    mov r9d, [rel g_ui_vh]
+    add r9d, 16
+    INVOKE ui_rect, -8, -8, r8, r9
+    mov edi, [LOCAL(M_CX)]
+    sub edi, 260
+    mov esi, [rel g_ui_vh]
+    sub esi, 250
+    sar esi, 1
+    INVOKE ui_panel, rdi, rsi, 520, 250
+    lea r8d, [esi + 26]
+    mov dword [rsp + 32], COL_TEXT
+    mov qword [rsp + 40], UI_CENTER | UI_BOLD
+    lea rcx, [rel s_confirm]
+    INVOKE ui_label, rcx, [LOCAL(M_CX)], r8, 30
+    mov ecx, [rel g_selected]
+    call world_name
+    mov rcx, rax
+    lea r8d, [esi + 78]
+    mov dword [rsp + 32], COL_ACCENT
+    mov qword [rsp + 40], UI_CENTER
+    INVOKE ui_label, rcx, [LOCAL(M_CX)], r8, 24
+    lea r8d, [esi + 114]
+    mov dword [rsp + 32], COL_TEXT_DIM
+    mov qword [rsp + 40], UI_CENTER
+    lea rcx, [rel s_confirm2]
+    INVOKE ui_label, rcx, [LOCAL(M_CX)], r8, 19
+    lea r12d, [esi + 250 - 24 - 52]
+    mov qword [rsp + 32], 52
+    lea rax, [rel s_delete]
+    mov [rsp + 40], rax
+    mov qword [rsp + 48], UIW_DANGER
+    lea edx, [edi + 30]
+    INVOKE ui_button, 40, rdx, r12, 220
+    test eax, eax
+    jz .w_cancel
+    mov dword [rel g_confirm], 0
+    call delete_selected
+    jmp .end
+.w_cancel:
+    mov qword [rsp + 32], 52
+    lea rax, [rel s_cancel]
+    mov [rsp + 40], rax
+    mov qword [rsp + 48], 0
+    lea edx, [edi + 270]
+    INVOKE ui_button, 41, rdx, r12, 220
     test eax, eax
     jz .end
-    mov ecx, SCREEN_MAIN
+    mov dword [rel g_confirm], 0
+    jmp .end
+
+    ; ---- create ----------------------------------------------------------------------
+.create:
+    mov edi, [LOCAL(M_CX)]
+    sub edi, 360                        ; panel left (720 wide)
+    mov esi, [rel g_ui_vh]
+    sub esi, 616
+    sar esi, 1                          ; panel top (616 tall)
+    INVOKE ui_panel, rdi, rsi, 720, 616
+    lea r8d, [esi + 22]
+    mov dword [rsp + 32], COL_TEXT
+    mov qword [rsp + 40], UI_CENTER | UI_BOLD
+    lea rcx, [rel s_create_title]
+    INVOKE ui_label, rcx, [LOCAL(M_CX)], r8, 34
+    lea r12d, [edi + 40]                ; content left
+    xor r15d, r15d                      ; Enter pressed in a field
+%macro CAPTION 2                        ; text, y offset
+    lea r8d, [esi + %2]
+    mov dword [rsp + 32], COL_TEXT_DIM
+    mov qword [rsp + 40], 0
+    lea rcx, [rel %1]
+    INVOKE ui_label, rcx, r12, r8, 18
+%endmacro
+    ; name
+    CAPTION s_l_name, 84
+    mov qword [rsp + 32], 50
+    lea rax, [rel g_new_name]
+    mov [rsp + 40], rax
+    mov qword [rsp + 48], NAME_TYPED
+    mov qword [rsp + 56], 0
+    lea r8d, [esi + 110]
+    INVOKE ui_textfield, FIELD_NAME, r12, r8, 640
+    cmp eax, 2
+    jne .c_seed
+    mov r15d, 1
+.c_seed:
+    CAPTION s_l_seed, 174
+    mov qword [rsp + 32], 50
+    lea rax, [rel g_seed_text]
+    mov [rsp + 40], rax
+    mov qword [rsp + 48], SEED_TYPED
+    lea rax, [rel s_seed_hint]
+    mov [rsp + 56], rax
+    lea r8d, [esi + 200]
+    INVOKE ui_textfield, FIELD_SEED, r12, r8, 640
+    cmp eax, 2
+    jne .c_mode
+    mov r15d, 1
+.c_mode:
+    ; game mode: Creative; the others are coming later
+    CAPTION s_l_mode, 266
+    xor ebx, ebx
+.c_mode_b:
+    cmp ebx, MODE_COUNT
+    jae .c_mode_note
+    lea rax, [rel mode_names]
+    mov rax, [rax + rbx * 8]
+    mov [rsp + 40], rax
+    mov qword [rsp + 32], 46
+    mov r10d, UIW_DISABLED
+    cmp ebx, [rel g_new_mode]
+    jne .c_mode_f
+    mov r10d, UIW_SELECTED
+.c_mode_f:
+    mov [rsp + 48], r10
+    imul edx, ebx, 162
+    add edx, r12d
+    lea r8d, [esi + 292]
+    lea ecx, [ebx + 32]
+    INVOKE ui_button, rcx, rdx, r8, 152
+    inc ebx
+    jmp .c_mode_b
+.c_mode_note:
+    lea r8d, [esi + 344]
+    mov dword [rsp + 32], COL_TEXT_OFF
+    mov qword [rsp + 40], 0
+    lea rcx, [rel s_mode_note]
+    INVOKE ui_label, rcx, r12, r8, 15
+    ; difficulty: Normal (fixed until survival exists)
+    CAPTION s_l_diff, 374
+    xor ebx, ebx
+.c_diff_b:
+    cmp ebx, DIFF_COUNT
+    jae .c_hardcore
+    lea rax, [rel diff_names]
+    mov rax, [rax + rbx * 8]
+    mov [rsp + 40], rax
+    mov qword [rsp + 32], 44
+    mov r10d, UIW_DISABLED
+    cmp ebx, [rel g_new_difficulty]
+    jne .c_diff_f
+    mov r10d, UIW_DISABLED | UIW_SELECTED
+.c_diff_f:
+    mov [rsp + 48], r10
+    imul edx, ebx, 130
+    add edx, r12d
+    lea r8d, [esi + 400]
+    lea ecx, [ebx + 48]
+    INVOKE ui_button, rcx, rdx, r8, 120
+    inc ebx
+    jmp .c_diff_b
+.c_hardcore:
+    mov qword [rsp + 32], 40
+    lea rax, [rel s_hardcore_off]
+    mov [rsp + 40], rax
+    mov qword [rsp + 48], UIW_DISABLED
+    lea r8d, [esi + 456]
+    INVOKE ui_button, 53, r12, r8, 200
+    lea r8d, [esi + 467]
+    lea edx, [r12d + 220]
+    mov dword [rsp + 32], COL_TEXT_OFF
+    mov qword [rsp + 40], 0
+    lea rcx, [rel s_diff_note]
+    INVOKE ui_label, rcx, rdx, r8, 15
+    ; Create world / Cancel
+    lea r13d, [esi + 616 - 24 - 52]
+    mov qword [rsp + 32], 52
+    lea rax, [rel s_create]
+    mov [rsp + 40], rax
+    mov qword [rsp + 48], UIW_PRIMARY
+    INVOKE ui_button, 54, r12, r13, 310
+    or eax, r15d
+    jz .c_cancel
+    call create_world
+    mov [LOCAL(M_ARG)], rax
+    mov [LOCAL(M_SEED)], edx
+    mov dword [LOCAL(M_ACTION)], MA_CREATE
+    xor ecx, ecx
+    call ui_focus
+    jmp .end
+.c_cancel:
+    mov qword [rsp + 32], 52
+    lea rax, [rel s_cancel]
+    mov [rsp + 40], rax
+    mov qword [rsp + 48], 0
+    lea edx, [r12d + 330]
+    INVOKE ui_button, 55, rdx, r13, 310
+    test eax, eax
+    jz .end
+    mov ecx, SCREEN_WORLDS
     call menu_open
     jmp .end
 

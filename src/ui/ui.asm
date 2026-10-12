@@ -12,6 +12,10 @@
 ;   ui_panel(x, y, w, h)                a glass panel with a soft shadow
 ;   ui_label(str, x, y, size, color, flags) -> eax width (text with shadow)
 ;   ui_hover(x, y, w, h) -> eax 1 if the mouse is over it
+;   ui_textfield(id, x, y, w, h, buf, cap, placeholder) -> eax 1 if the text
+;       changed, 2 if Enter was pressed in it (a click focuses it; typed
+;       characters and Backspace edit it while it has the focus)
+;   ui_focus(ecx = id + 1, 0 = none)    give a text field the keyboard
 ;   g_ui_mx, g_ui_my (units), g_ui_click (left button went down this
 ;   frame), g_ui_dt (f32 seconds), g_ui_time (f32 seconds, for effects)
 ; =============================================================================
@@ -20,10 +24,12 @@
 %include "ui.inc"
 
 global ui_frame, ui_end, ui_button, ui_panel, ui_label, ui_hover
+global ui_textfield, ui_focus
 global g_ui_mx, g_ui_my, g_ui_click, g_ui_dt, g_ui_time
 
 extern ui_draw_begin, ui_draw_flush, ui_rect, ui_glass, ui_glow, ui_text
-extern g_ui_scale, g_frame_us, g_mouse_captured
+extern ui_text_width, str_len
+extern g_ui_scale, g_frame_us, g_mouse_captured, g_chars, g_char_count
 
 %define UI_IDS          64
 %define HOVER_RATE      12.0            ; hover animation: per second
@@ -44,6 +50,7 @@ g_ui_click:     resd 1
 g_ui_dt:        resd 1
 g_ui_time:      resd 1
 g_anim:         resd UI_IDS             ; hover 0..1 per widget id
+g_focus:        resd 1                  ; text field with the keyboard: id + 1
 
 section .text
 
@@ -188,10 +195,16 @@ PROC ui_button, 32, rbx, rsi, rdi, r12, r13, r14
     INVOKE ui_glow, rsi, rdi, r12, r13
 .no_glow:
     ; fill: dark glass, or teal when primary / selected
+    mov eax, COL_DANGER
+    test r14d, UIW_DANGER
+    jnz .fill
     mov eax, COL_BUTTON
     test r14d, UIW_PRIMARY | UIW_SELECTED
     jz .fill
     mov eax, COL_ACCENT2 & 0x00FFFFFF | 0xC0000000
+    test r14d, UIW_DISABLED
+    jz .fill
+    mov eax, COL_ACCENT2 & 0x00FFFFFF | 0x50000000  ; (chosen, but fixed)
 .fill:
     mov [LOCAL(B_FILL)], eax
     ; border: teal, brighter on hover; grey when disabled
@@ -288,6 +301,156 @@ PROC ui_label, 0
     or eax, UI_SHADOW
     mov [rsp + 48], rax
     call ui_text
+    RETURN
+ENDPROC
+
+; ui_focus — ecx = text field id + 1 (0: none) gets the keyboard
+ui_focus:
+    mov [rel g_focus], ecx
+    ret
+
+; -----------------------------------------------------------------------------
+; ui_textfield — a one-line text field.
+;   in:  ecx = id, edx = x, r8d = y, r9d = w, ARG5 = h, ARG6 = buffer
+;        (zero-terminated), ARG7 = capacity (bytes incl. terminator),
+;        ARG8 = placeholder shown while empty (0: none)
+;   out: eax = 0, 1 the text changed, 2 Enter was pressed in the field
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define T_RESULT    0
+%define T_LEN       4
+%define T_FOCUSED   8
+PROC ui_textfield, 16, rbx, rsi, rdi, r12, r13, r14
+    lea ebx, [ecx + 1]                  ; id + 1
+    mov esi, edx
+    mov edi, r8d
+    mov r12d, r9d
+    mov r13d, [ARG(5)]
+    mov r14, [ARG(6)]
+    mov dword [LOCAL(T_RESULT)], 0
+    ; a click focuses it (or takes the focus away)
+    cmp dword [rel g_ui_click], 0
+    je .focus_known
+    mov ecx, esi
+    mov edx, edi
+    mov r8d, r12d
+    mov r9d, r13d
+    call ui_hover
+    test eax, eax
+    jz .clicked_off
+    mov [rel g_focus], ebx
+    jmp .focus_known
+.clicked_off:
+    cmp [rel g_focus], ebx
+    jne .focus_known
+    mov dword [rel g_focus], 0
+.focus_known:
+    xor eax, eax
+    cmp [rel g_focus], ebx
+    sete al
+    mov [LOCAL(T_FOCUSED)], eax
+    mov rcx, r14
+    call str_len
+    mov [LOCAL(T_LEN)], eax
+    ; typing
+    cmp dword [LOCAL(T_FOCUSED)], 0
+    je .draw
+    xor ecx, ecx
+.char:
+    cmp ecx, [rel g_char_count]
+    jae .draw
+    lea rax, [rel g_chars]
+    movzx eax, byte [rax + rcx]
+    mov edx, [LOCAL(T_LEN)]
+    cmp eax, 8
+    jne .not_bs
+    test edx, edx
+    jz .char_next
+    dec edx
+    mov byte [r14 + rdx], 0
+    mov [LOCAL(T_LEN)], edx
+    mov dword [LOCAL(T_RESULT)], 1
+    jmp .char_next
+.not_bs:
+    cmp eax, 13
+    jne .not_enter
+    mov dword [LOCAL(T_RESULT)], 2
+    jmp .char_next
+.not_enter:
+    cmp eax, 32
+    jb .char_next
+    cmp eax, 126                        ; (the font has printable ASCII)
+    ja .char_next
+    lea r8d, [edx + 1]
+    cmp r8d, [ARG(7)]
+    jae .char_next
+    mov [r14 + rdx], al
+    mov byte [r14 + rdx + 1], 0
+    mov [LOCAL(T_LEN)], r8d
+    cmp dword [LOCAL(T_RESULT)], 0
+    jne .char_next
+    mov dword [LOCAL(T_RESULT)], 1
+.char_next:
+    inc ecx
+    jmp .char
+.draw:
+    ; the box: dark, a teal border while it has the focus
+    mov eax, 0x40FFFFFF
+    cmp dword [LOCAL(T_FOCUSED)], 0
+    je .border
+    mov eax, COL_ACCENT
+.border:
+    mov [rsp + 40], rax
+    mov dword [rsp + 32], COL_FIELD
+    mov qword [rsp + 48], 10
+    mov qword [rsp + 56], 2
+    INVOKE ui_rect, rsi, rdi, r12, r13
+    ; the text (or the placeholder)
+    mov eax, r13d
+    sub eax, 24
+    sar eax, 1
+    lea r8d, [edi + eax - 2]
+    lea edx, [esi + 16]
+    mov rcx, r14
+    mov eax, COL_TEXT
+    cmp dword [LOCAL(T_LEN)], 0
+    jne .text
+    mov rcx, [ARG(8)]
+    mov eax, COL_TEXT_OFF
+    test rcx, rcx
+    jz .caret
+    cmp dword [LOCAL(T_FOCUSED)], 0
+    jne .caret                          ; (typing: no placeholder)
+.text:
+    mov [rsp + 32], rax
+    mov [rsp + 40], rax
+    mov qword [rsp + 48], 0
+    mov r9d, 22
+    call ui_text
+.caret:
+    ; a blinking caret after the text
+    cmp dword [LOCAL(T_FOCUSED)], 0
+    je .done
+    movss xmm0, [rel g_ui_time]
+    addss xmm0, xmm0
+    cvttss2si eax, xmm0
+    test eax, 1
+    jnz .done
+    mov rcx, r14
+    mov edx, 22
+    call ui_text_width
+    lea ecx, [esi + eax + 18]
+    mov eax, r13d
+    sub eax, 28
+    sar eax, 1
+    lea edx, [edi + eax]
+    mov dword [rsp + 32], COL_ACCENT
+    mov dword [rsp + 40], COL_ACCENT
+    mov qword [rsp + 48], 1
+    mov qword [rsp + 56], 0
+    INVOKE ui_rect, rcx, rdx, 2, 28
+.done:
+    mov eax, [LOCAL(T_RESULT)]
     RETURN
 ENDPROC
 

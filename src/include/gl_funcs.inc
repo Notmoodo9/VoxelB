@@ -88,3 +88,4 @@ GLFN glVertexArrayVertexBuffer,     1
 GLFN glEnableVertexArrayAttrib,     1
 GLFN glProgramUniform2i,            1
 GLFN glClearNamedBufferSubData,     1
+GLFN glGetTextureImage,       1

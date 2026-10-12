@@ -43,3 +43,6 @@ EXPORTS
     CreateDirectoryA
     MoveFileExA
     SetFilePointerEx
+    GetLocalTime
+    DeleteFileA
+    RemoveDirectoryA

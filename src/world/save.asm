@@ -3,7 +3,9 @@
 ;
 ; A world lives in saves/<name>/ (next to data/):
 ;   world.dat               text (DATA_FORMAT.md): format_version, name,
-;                           seed, generator, game_mode, time
+;                           seed, generator, game_mode, difficulty,
+;                           hardcore, last_played, time
+;   thumb.png               a recent view of the world (thumb.asm)
 ;   player.dat              text: eye position, look, flying, held block
 ;   overworld/region/r.<rx>.<rz>.vxr   region files (the overworld realm)
 ; Only columns that changed (block edits, flowing liquids) are saved: every
@@ -36,6 +38,10 @@
 ;   save_load_column(rcx = COLUMN*, rdx = ARENA*)   (generation job)
 ;   save_all() -> eax 1                    world, player, changed columns
 ;   save_update()                           once per frame: autosave
+;   save_peek(rcx = folder name, rdx = WORLD_INFO*) -> eax 1 if world.dat
+;       was read: the world list's details (save.inc)
+;   g_world_mode, g_world_difficulty, g_world_hardcore (MODE_*, DIFF_*):
+;       the world's rules, from world.dat (defaults: creative, normal, off)
 ;   g_save_enabled (0 with --nosave), g_save_exists, g_save_player_flags,
 ;   g_save_held (block id, 0 = none), statistics g_save_*
 ; =============================================================================
@@ -47,24 +53,26 @@
 %include "section.inc"
 %include "world_api.inc"
 %include "packet.inc"
+%include "save.inc"
 
 global save_open, save_load_player, save_column, save_load_column, save_all
 global save_update
 global g_save_enabled, g_save_exists, g_save_player_flags, g_save_held
 global g_save_columns, g_save_bytes, g_save_loaded, g_save_last_ms
-global g_world_name, g_autosave_minutes
+global g_world_name, g_autosave_minutes, save_peek
+global g_world_mode, g_world_difficulty, g_world_hardcore
 
 extern str_copy, str_append_dec, str_append_sdec, str_ieq, str_parse_u64
 extern str_parse_float, str_len
 extern lz_bound, lz_compress, lz_decompress
-extern block_find, timer_elapsed_us
+extern block_find, timer_elapsed_us, thumb_write
 extern g_seed_override, g_seed_override_set, g_force_flat, g_generator
 extern g_world_seed, g_time_override, g_sim_time
 extern g_cam_pos, g_cam_yaw, g_cam_pitch, g_held_block, g_block_names
 extern g_pl_pos, g_pl_eye, g_pl_flags, g_loaded, g_loaded_count
 
 IMPORT CreateFileA, ReadFile, WriteFile, CloseHandle, SetFilePointerEx
-IMPORT GetFileSizeEx, CreateDirectoryA, MoveFileExA
+IMPORT GetFileSizeEx, CreateDirectoryA, MoveFileExA, GetLocalTime
 IMPORT AcquireSRWLockExclusive, ReleaseSRWLockExclusive
 
 %define GENERIC_READ            0x80000000
@@ -113,6 +121,8 @@ str_vxr:        db ".vxr", 0
 str_world_lbl:  db "world.dat", 0
 str_player_lbl: db "player.dat", 0
 str_default:    db "world", 0
+str_thumb:      db "thumb.png", 0
+str_saves_bs:   db "saves\", 0
 ; keys
 k_version:      db "format_version", 0
 k_name:         db "name", 0
@@ -124,9 +134,23 @@ k_eye:          db "eye_position", 0
 k_look:         db "look", 0
 k_flying:       db "flying", 0
 k_held:         db "held_block", 0
+k_difficulty:   db "difficulty", 0
+k_hardcore:     db "hardcore", 0
+k_played:       db "last_played", 0
 v_terrain:      db "terrain", 0
 v_flat:         db "flat_test", 0
-v_creative:     db "creative", 0
+mode_0:         db "creative", 0
+mode_1:         db "survival", 0
+mode_2:         db "adventure", 0
+mode_3:         db "spectator", 0
+diff_0:         db "peaceful", 0
+diff_1:         db "normal", 0
+diff_2:         db "hard", 0
+diff_3:         db "extreme", 0
+diff_4:         db "ultra", 0
+align 8
+mode_names:     dq mode_0, mode_1, mode_2, mode_3
+diff_names:     dq diff_0, diff_1, diff_2, diff_3, diff_4
 ; text pieces
 t_head_world:   db "# VoxelB world (written by the game; DATA_FORMAT.md)", 10, 0
 t_head_player:  db "# VoxelB player (written by the game; DATA_FORMAT.md)", 10, 0
@@ -134,7 +158,10 @@ t_version:      db "format_version = ", 0
 t_name:         db 10, "name = ", 0
 t_seed:         db 10, "seed = ", 0
 t_gen:          db 10, "generator = ", 0
-t_mode:         db 10, "game_mode = creative", 0
+t_mode:         db 10, "game_mode = ", 0
+t_difficulty:   db 10, "difficulty = ", 0
+t_hardcore:     db 10, "hardcore = ", 0
+t_played:       db 10, "last_played = ", 0
 t_time:         db 10, "time = ", 0
 t_eye:          db 10, "eye_position = ", 0
 t_look:         db 10, "look = ", 0
@@ -161,6 +188,9 @@ section .data
 align 4
 g_save_enabled:     dd 1
 g_autosave_minutes: dd 5
+g_world_mode:       dd MODE_CREATIVE
+g_world_difficulty: dd DIFF_NORMAL
+g_world_hardcore:   dd 0
 
 section .bss
 alignb 8
@@ -178,6 +208,8 @@ g_world_name:       resb 64
 g_dir:              resb PATH_CAP       ; saves\<name>\  (absolute)
 g_rdir:             resb PATH_CAP       ; ...\overworld\region\  (absolute)
 g_path:             resb PATH_CAP
+g_peek_path:        resb PATH_CAP
+g_systime:          resw 8              ; SYSTEMTIME
 g_path2:            resb PATH_CAP
 g_cfg_mark:         resq 1
 alignb 16
@@ -428,7 +460,10 @@ PROC save_open, 0, rbx
     add rcx, rax
     lea rdx, [rel str_bs]
     call str_copy
-    ; world.dat
+    ; world.dat (a world without the keys: creative, normal, no hardcore)
+    mov dword [rel g_world_mode], MODE_CREATIVE
+    mov dword [rel g_world_difficulty], DIFF_NORMAL
+    mov dword [rel g_world_hardcore], 0
     lea rdx, [rel str_world_dat]
     call load_dat
     test rax, rax
@@ -534,6 +569,13 @@ PROC world_pair, 0, rbx, rsi
     mov dword [rel g_force_flat], 1
     RETURN
 .not_gen:
+    lea r8, [rel g_world_mode]
+    lea r9, [rel g_world_difficulty]
+    lea rax, [rel g_world_hardcore]
+    mov [rsp + 32], rax
+    INVOKE rules_pair, rbx, rsi
+    test eax, eax
+    jnz .done
     lea rdx, [rel k_time]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
@@ -1269,6 +1311,29 @@ PROC write_world_dat, 16, rbx
     lea rdx, [rel t_mode]
     mov rcx, rax
     call str_copy
+    mov edx, [rel g_world_mode]
+    lea rcx, [rel mode_names]
+    mov rdx, [rcx + rdx * 8]
+    mov rcx, rax
+    call str_copy
+    lea rdx, [rel t_difficulty]
+    mov rcx, rax
+    call str_copy
+    mov edx, [rel g_world_difficulty]
+    lea rcx, [rel diff_names]
+    mov rdx, [rcx + rdx * 8]
+    mov rcx, rax
+    call str_copy
+    lea rdx, [rel t_hardcore]
+    mov rcx, rax
+    call str_copy
+    mov edx, [rel g_world_hardcore]
+    INVOKE str_append_dec, rax, rdx, 0
+    lea rdx, [rel t_played]
+    mov rcx, rax
+    call str_copy
+    mov rcx, rax
+    call append_now
     lea rdx, [rel t_time]
     mov rcx, rax
     call str_copy
@@ -1389,6 +1454,14 @@ PROC save_all, 16, rbx, rsi, rdi
     call write_world_dat
     call write_player_dat
     mov dword [rel g_save_exists], 1
+    lea rcx, [rel g_path]
+    lea rdx, [rel g_dir]
+    call str_copy
+    lea rdx, [rel str_thumb]
+    mov rcx, rax
+    call str_copy
+    lea rcx, [rel g_path]
+    call thumb_write                    ; (nothing yet in a new world: skipped)
     xor ebx, ebx
 .col:
     cmp rbx, [rel g_loaded_count]
@@ -1460,6 +1533,216 @@ PROC save_update, 0
     cmp rax, [rsp + 32]
     jb .done
     call save_all
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; rules_pair — the world's rules keys (game_mode, difficulty, hardcore), for
+; world.dat and save_peek.
+;   in:  rcx = name, rdx = value, r8 = mode*, r9 = difficulty*,
+;        ARG5 = hardcore* (dwords)
+;   out: eax = 1 if the key was one of them
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC rules_pair, 0, rbx, rsi, rdi, r12
+    mov rbx, rcx
+    mov rsi, rdx
+    mov rdi, r8
+    mov r12, r9
+    lea rdx, [rel k_mode]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_mode
+    lea rdx, [rel mode_names]
+    INVOKE name_index, rsi, rdx, MODE_COUNT
+    test eax, eax
+    js .yes
+    mov [rdi], eax
+    jmp .yes
+.not_mode:
+    lea rdx, [rel k_difficulty]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_diff
+    lea rdx, [rel diff_names]
+    INVOKE name_index, rsi, rdx, DIFF_COUNT
+    test eax, eax
+    js .yes
+    mov [r12], eax
+    jmp .yes
+.not_diff:
+    lea rdx, [rel k_hardcore]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .no
+    mov rcx, rsi
+    call str_parse_u64
+    xor ecx, ecx
+    test rax, rax
+    setnz cl
+    mov rax, [ARG(5)]
+    mov [rax], ecx
+.yes:
+    mov eax, 1
+    RETURN
+.no:
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; name_index — eax = index of string rcx in the table rdx (r8d entries,
+; ignoring case), -1 if absent.   clobbers: volatile registers
+PROC name_index, 0, rbx, rsi, rdi, r12
+    mov rbx, rcx
+    mov rsi, rdx
+    mov edi, r8d
+    xor r12d, r12d
+.next:
+    cmp r12d, edi
+    jae .none
+    mov rdx, [rsi + r12 * 8]
+    mov rcx, rbx
+    call str_ieq
+    test eax, eax
+    jnz .found
+    inc r12d
+    jmp .next
+.found:
+    mov eax, r12d
+    RETURN
+.none:
+    mov eax, -1
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; append_now — the local date and time as "YYYY-MM-DD HH:MM".
+;   in:  rcx = cursor
+;   out: rax = new cursor (at the terminator)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC append_now, 0, rbx
+    mov rbx, rcx
+    lea rcx, [rel g_systime]
+    API GetLocalTime, rcx
+    movzx edx, word [rel g_systime]     ; year
+    INVOKE str_append_dec, rbx, rdx, 0
+    mov byte [rax], '-'
+    lea rcx, [rax + 1]
+    movzx edx, word [rel g_systime + 2] ; month
+    call two_digits
+    mov byte [rax], '-'
+    lea rcx, [rax + 1]
+    movzx edx, word [rel g_systime + 6] ; day (+4 is the weekday)
+    call two_digits
+    mov byte [rax], ' '
+    lea rcx, [rax + 1]
+    movzx edx, word [rel g_systime + 8] ; hour
+    call two_digits
+    mov byte [rax], ':'
+    lea rcx, [rax + 1]
+    movzx edx, word [rel g_systime + 10] ; minute
+    call two_digits
+    RETURN
+ENDPROC
+
+; two_digits — write edx (0..99) as two digits at rcx; rax = cursor after
+;   them (zero-terminated).   clobbers: rax, rcx, rdx, r8
+two_digits:
+    mov r8, rcx
+    mov eax, edx
+    xor edx, edx
+    mov ecx, 10
+    div ecx
+    add al, '0'
+    add dl, '0'
+    mov [r8], al
+    mov [r8 + 1], dl
+    mov byte [r8 + 2], 0
+    lea rax, [r8 + 2]
+    ret
+
+; -----------------------------------------------------------------------------
+; save_peek — what the world list shows about a saved world: its rules,
+; seed and last_played from world.dat. (Size and picture: menu.asm.)
+;   in:  rcx = folder name in saves\, rdx = WORLD_INFO* (.name is not set)
+;   out: eax = 1 if world.dat was read
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC save_peek, 16, rbx, rsi
+    mov rsi, rcx
+    mov rbx, rdx
+    mov dword [rbx + WORLD_INFO.mode], MODE_CREATIVE
+    mov dword [rbx + WORLD_INFO.difficulty], DIFF_NORMAL
+    mov dword [rbx + WORLD_INFO.hardcore], 0
+    mov dword [rbx + WORLD_INFO.seed], 0
+    mov byte [rbx + WORLD_INFO.played], 0
+    lea rcx, [rel g_peek_path]
+    lea rdx, [rel str_saves_bs]
+    call path_make
+    mov rcx, rax
+    mov rdx, rsi
+    call str_copy
+    mov byte [rax], '\'
+    lea rcx, [rax + 1]
+    lea rdx, [rel str_world_dat]
+    call str_copy
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [LOCAL(0)], rax
+    lea rcx, [rel g_peek_path]
+    lea rdx, [rel g_arena_scratch]
+    call file_load
+    test rax, rax
+    jz .missing
+    lea rdx, [rel peek_pair]
+    lea r9, [rel str_world_lbl]
+    INVOKE cfg_parse, rax, rdx, rbx, r9
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(0)]
+    mov eax, 1
+    RETURN
+.missing:
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; save_peek's callback: rcx = name, rdx = value, r8 = WORLD_INFO*
+PROC peek_pair, 0, rbx, rsi, rdi
+    mov rbx, rcx
+    mov rsi, rdx
+    mov rdi, r8
+    lea rax, [rdi + WORLD_INFO.hardcore]
+    mov [rsp + 32], rax
+    lea r8, [rdi + WORLD_INFO.mode]
+    lea r9, [rdi + WORLD_INFO.difficulty]
+    INVOKE rules_pair, rbx, rsi
+    test eax, eax
+    jnz .done
+    lea rdx, [rel k_seed]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_seed
+    mov rcx, rsi
+    call str_parse_u64
+    mov [rdi + WORLD_INFO.seed], eax
+    jmp .done
+.not_seed:
+    lea rdx, [rel k_played]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .done
+    xor ecx, ecx
+.copy:
+    mov al, [rsi + rcx]
+    mov [rdi + WORLD_INFO.played + rcx], al
+    test al, al
+    jz .done
+    inc ecx
+    cmp ecx, 23
+    jb .copy
+    mov byte [rdi + WORLD_INFO.played + rcx], 0
 .done:
     RETURN
 ENDPROC

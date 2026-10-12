@@ -1,15 +1,58 @@
 # Progress
 
 ## Current state
-**Milestone 17, part 2a: Main menu, flyover, pause menu, world switching: DONE** (Windows CI green: run #84)
+**Milestone 17, part 2b: World list, world creation, deleting worlds: DONE** (Windows CI: see below)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
 `design/BACKLOG.md`). Progressive LOD is planned as Milestone 34.
 
-Next: **Milestone 17, part 2b: the full world list (thumbnails, mode,
-last played, size) and the world creation screen** (name, seed, mode,
-difficulty, hardcore; design/ui/menus.md), then **part 2c: settings**.
+Next: **Milestone 17, part 2c: settings** (tabs with presets: graphics,
+controls with rebinding, game; live apply; written back to the cfg files;
+design/ui/menus.md).
+
+---
+
+## Milestone 17, part 2b — done (2026-10-12): world list and creation (D90)
+
+### What was built
+* **World list:** each world is a row with its picture, its name and
+  "Creative - Normal - 2026-10-12 21:35 - 109 KB" (mode, difficulty,
+  Hardcore if on, last played, size on disk); newest first; scrolls with
+  the wheel. Buttons: Play world, New world, Delete, Back.
+* **Pictures:** a recent view of the world (no HUD) is kept while playing
+  and saved as `thumb.png` with the world.
+* **Delete** asks "Delete this world?" (red Delete / Cancel) and removes
+  the world's folder.
+* **New world screen:** Name (prefilled "World N") and Seed text fields
+  (empty = random, a number, or any text, which is hashed); game mode
+  (Creative; Survival, Adventure, Spectator greyed "coming later");
+  difficulty (Normal, the rest greyed) and Hardcore (greyed), stored in
+  `world.dat` for later; Create world (or Enter) / Cancel.
+* Names are made safe for folders; a taken name gets " (2)".
+* `world.dat` gains `difficulty`, `hardcore`, `last_played`.
+
+### Verified (scripted clicks and typing with xdotool)
+* New world named "My Valley?" with seed "mountains": folder "My Valley",
+  seed 4243777795 (the text's hash), `world.dat` with all keys, a 256 × 144
+  `thumb.png` (checked with PIL).
+* A second "My Valley" became "My Valley (2)" (random seed); the list
+  showed both with pictures, newest first; Delete → question → Delete
+  removed "My Valley" and its folder.
+* Seed "12345" gave seed 12345; selecting a world and Play world loaded it
+  ("loaded" in the log).
+* Debug and release headless tests pass.
+
+### Performance
+* Thumbnail capture: one 256 × 144 blit every 2 s. Opening the world list:
+  reading `world.dat`, walking the folder and decoding one 110 KB PNG per
+  world (a few ms each under Wine).
+
+### Deferred
+* Settings screens (part 2c).
+* Survival/Adventure/Spectator, difficulties and hardcore are selectable
+  once those milestones exist (20, 32).
+* Renaming worlds; text field cursor movement (arrow keys) and selection.
 
 ---
 

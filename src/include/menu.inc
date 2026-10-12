@@ -8,6 +8,8 @@
 %define MA_RESUME       2               ; close the pause menu
 %define MA_PLAY         3               ; rdx = world name: load it
 %define MA_CREATE       4               ; rdx = name, r8d = seed: a new world
+                                        ; (its rules: g_new_mode, g_new_difficulty,
+                                        ; g_new_hardcore)
 %define MA_TO_MENU      5               ; save and go to the main menu
 %define MA_SAVE_QUIT    6               ; save and leave the game
 
@@ -15,4 +17,5 @@
 %define SCREEN_WORLDS   1
 %define SCREEN_CREDITS  2
 %define SCREEN_PAUSE    3
+%define SCREEN_CREATE   4
 %endif

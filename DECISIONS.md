@@ -1551,3 +1551,39 @@ block for their upper half (mossy cobblestone boulders).
   development options still start straight in a world, so tests and
   screenshots are unchanged.
 * The HUD (crosshair, held block on a glass pill) moved to the same renderer.
+
+## D90 — World list, thumbnails, world creation, deleting (M17 part 2b)
+* **Thumbnails:** while a world is played (not paused) the finished frame,
+  before the HUD, is blitted every 2 s into a 256 × 144 texture
+  (`thumb.asm`); every save reads it back (`glGetTextureImage`) and writes
+  `thumb.png` into the world folder. Our own PNG writer (`png_write.asm`)
+  uses *stored* deflate blocks: no compressor needed, any viewer opens it,
+  and the 110 KB per world is cheap next to region files. The world list
+  decodes each picture with the existing PNG decoder into one 2048 × 1152
+  atlas (8 × 8 cells, `g_ui_images_tex`), so the whole list is still one
+  UI draw.
+* **World metadata** lives in `world.dat` (new keys `difficulty`,
+  `hardcore`, `last_played`; `game_mode` now read back). The world list
+  reads only `world.dat` per world (`save_peek`), walks the folder for its
+  size on disk and sorts newest `last_played` first (ISO-like
+  `YYYY-MM-DD HH:MM` sorts as text). Older saves without the keys show as
+  Creative / Normal and sort last.
+* **Rules not built yet** (survival modes, difficulties, hardcore) are
+  shown greyed out as the design asks, but the world still stores them, so
+  worlds made now keep their settings when those modes arrive.
+* **Folder names:** the typed name becomes the folder name: printable
+  ASCII without `< > : " / \ | ? *`, no leading/trailing spaces or
+  trailing dots, at most 32 characters, Windows device names (`CON`,
+  `COM1` …) get a `_`; an empty name becomes "World N"; a taken name gets
+  " (2)", " (3)" ….
+* **Seeds:** empty = random (clock); a whole number (optionally negative)
+  = that number (32 bits); any other text = its FNV-1a hash, so a word
+  always gives the same world.
+* **Deleting** asks first (a modal question over the dimmed list; the list
+  behind it takes no mouse), then removes every file and folder of the
+  world recursively (`DeleteFileA` / `RemoveDirectoryA`).
+* **Text fields** (`ui_textfield`): immediate mode like the buttons; a
+  click gives the keyboard focus, typed characters (WM_CHAR, printable
+  ASCII = the font's range) and Backspace edit, Enter reports back; a
+  blinking caret.
+

@@ -22,6 +22,7 @@
 %define UIW_DISABLED    1               ; greyed out, no clicks
 %define UIW_SELECTED    2               ; drawn as chosen (toggles, tabs)
 %define UIW_PRIMARY     4               ; filled with the accent colour
+%define UIW_DANGER      8               ; filled red (Delete)
 
 ; the look (design/ui/menus.md): teal accent, glass panels (0xAABBGGRR)
 %define COL_ACCENT      0xFFD8C21E      ; teal / turquoise #1EC2D8
@@ -33,5 +34,7 @@
 %define COL_GLASS_EDGE  0x50FFFFFF
 %define COL_BUTTON      0x50000000
 %define COL_SHADOW      0x70000000
+%define COL_DANGER      0xD03838D8      ; warm red #D83838
+%define COL_FIELD       0x70000000      ; text field fill
 
 %endif

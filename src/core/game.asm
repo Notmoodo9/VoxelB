@@ -32,6 +32,9 @@ global g_game_state, g_game_paused, g_menu_fade
 extern camera_update, client_init, client_input, client_view
 extern sim_init, sim_update, save_update, save_all, save_open, save_load_player
 extern stream_update, stream_reset, lod_update, lod_reset, fluid_reset, edit_reset
+extern thumb_update, thumb_reset
+extern g_world_mode, g_world_difficulty, g_world_hardcore
+extern g_new_mode, g_new_difficulty, g_new_hardcore
 extern renderer_frame, hud_draw, overlay_draw, menu_frame, menu_open, menu_back
 extern daycycle_init, daycycle_set, world_spawn
 extern pkt_recv, g_to_sim, g_to_client
@@ -420,6 +423,16 @@ PROC game_begin_world, 0, rbx, rsi, rdi
     mov dword [rel g_time_override], 0xBF800000     ; -1: world.dat / world.cfg
     mov rcx, rbx
     call save_open
+    call thumb_reset
+    test esi, esi
+    jz .rules                           ; (a loaded world: from world.dat)
+    mov eax, [rel g_new_mode]
+    mov [rel g_world_mode], eax
+    mov eax, [rel g_new_difficulty]
+    mov [rel g_world_difficulty], eax
+    mov eax, [rel g_new_hardcore]
+    mov [rel g_world_hardcore], eax
+.rules:
     mov eax, [rel g_default_seed]
     cmp dword [rel g_seed_override_set], 0
     je .seed
@@ -548,6 +561,7 @@ PROC game_frame, 16, rbx, rsi, rdi
     jne .menus
     cmp dword [rel g_game_paused], 0
     jne .menus
+    call thumb_update                   ; (the world list's picture, no HUD)
     mov ecx, esi
     mov edx, edi
     call hud_draw

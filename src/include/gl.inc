@@ -63,6 +63,7 @@
 %define GL_RED                          0x1903
 %define GL_R8                           0x8229
 %define GL_UNSIGNED_BYTE                0x1401
+%define GL_PACK_ALIGNMENT               0x0D05
 %define GL_FRAGMENT_SHADER              0x8B30
 %define GL_VERTEX_SHADER                0x8B31
 %define GL_COMPILE_STATUS               0x8B81

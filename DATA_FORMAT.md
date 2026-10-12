@@ -496,12 +496,18 @@ Text in the format above (the game rewrites them on every save, via a
 |---|---|---|
 | world.dat | `format_version` | 1 (a newer version is logged as a warning) |
 | | `name`, `seed`, `generator` | the world; `seed` and `generator` override world.cfg and `--seed` |
-| | `game_mode` | `creative` (the only mode so far) |
+| | `game_mode` | `creative`, `survival`, `adventure` or `spectator` (only creative is playable so far) |
+| | `difficulty` | `peaceful`, `normal`, `hard`, `extreme` or `ultra` (default `normal`) |
+| | `hardcore` | `0`/`1` |
+| | `last_played` | local date and time of the last save, `YYYY-MM-DD HH:MM` (the world list sorts by it) |
 | | `time` | time of day, 0–1 (0 = midnight); `--time` overrides it |
 | player.dat | `eye_position` | x, y, z of the eyes (blocks, 4 decimals) |
 | | `look` | yaw, pitch in radians |
 | | `flying` | `0`/`1` |
 | | `held_block` | block name |
+
+`thumb.png` (256 × 144 RGB) in the world folder is the picture shown in
+the world list; the game rewrites it on every save.
 
 ### Region files (`overworld/region/r.<rx>.<rz>.vxr`)
 
