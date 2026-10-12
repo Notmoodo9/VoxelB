@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 15, part 1: Water rendering: DONE** (Windows CI: see below)
+**Milestone 15, part 1: Water rendering: DONE** (Windows CI green: run #74)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
