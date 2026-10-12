@@ -30,6 +30,24 @@ layout(location = 8) uniform vec3 u_cam_delta;   // camera now - camera then
 layout(location = 9) uniform int u_hiz_levels;   // 0: no pyramid yet
 layout(location = 10) uniform ivec2 u_hiz_size;  // level 0 size
 layout(location = 11) uniform uint u_stats;      // this slot's first counter
+layout(location = 12) uniform int u_cascade;     // > 0: shadow cascade + 1 (light-space test)
+
+// shadow cascades (shaders/shadow_setup.comp)
+struct ShadowData { mat4 m[4]; vec4 splits; vec4 light; vec4 texel; vec4 origin[4]; };
+layout(std430, binding = 7) readonly buffer Shadow { ShadowData sd; };
+
+// the box overlaps cascade c's square (any depth: depth clamping keeps it)
+bool in_cascade(vec3 lo, vec3 hi, int c) {
+    vec2 mn = vec2(1e9), mx = vec2(-1e9);
+    for (int i = 0; i < 8; ++i) {
+        vec3 p = vec3((i & 1) != 0 ? hi.x : lo.x, (i & 2) != 0 ? hi.y : lo.y,
+                      (i & 4) != 0 ? hi.z : lo.z);
+        vec2 q = (sd.m[c] * vec4(p, 1.0)).xy;
+        mn = min(mn, q);
+        mx = max(mx, q);
+    }
+    return mx.x >= -1.0 && mn.x <= 1.0 && mx.y >= -1.0 && mn.y <= 1.0;
+}
 
 layout(binding = 5) uniform sampler2D u_hiz;     // farthest depth (reverse-Z: min)
 
@@ -88,6 +106,15 @@ void main() {
     if (level > 0u) {       // a LOD tile: 32 << level wide, world.y high
         float size = float(32u << level);
         hi = r.rel + vec3(size, max(r.world.y, 1.0), size);
+    }
+    if (u_cascade > 0) {               // shadow pass: no stats, no Hi-Z
+        Command sc;
+        sc.count = quads * 6u;
+        sc.instances = in_cascade(lo, hi, u_cascade - 1) ? 1u : 0u;
+        sc.first = r.first * 6u;
+        sc.base_instance = u_base + i;
+        commands[i] = sc;
+        return;
     }
     bool visible = in_frustum(lo, hi);
     if (visible && occluded(lo, hi)) {

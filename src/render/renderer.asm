@@ -22,7 +22,7 @@
 %include "gl.inc"
 
 global renderer_init, renderer_frame, renderer_shutdown
-global g_scene_depth, g_scene_color, g_viewport_w, g_viewport_h
+global g_scene_depth, g_scene_color, g_scene_fbo, g_viewport_w, g_viewport_h
 
 extern world_render_draw, sky_init, sky_draw, sky_shutdown
 extern post_init, post_frame, post_shutdown

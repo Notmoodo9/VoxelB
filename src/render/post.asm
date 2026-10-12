@@ -7,6 +7,8 @@
 ; 2 x 2 downsamples, then back up adding each smaller level into the next
 ; larger one. The final pass (shaders/fullscreen.vert + post.frag) adds the
 ; bloom, applies exposure, ACES tonemapping, the colour grade and gamma.
+; Part 2: it also marches the cloud layer per pixel up to the scene depth
+; (world.cfg's cloud_cover and cloud_height, graphics.cfg's clouds).
 ;
 ; Public API:
 ;   post_init() -> eax 1/0     post_frame(ecx = width, edx = height)
@@ -19,7 +21,9 @@
 
 global post_init, post_frame, post_shutdown
 
-extern g_scene_color, g_bloom
+extern g_scene_color, g_scene_depth, g_bloom, g_clouds
+extern g_cam_viewproj, g_cam_pos, g_sun_dir, g_cloud_cover, g_cloud_height
+extern timer_elapsed_us
 
 %define BLOOM_LEVELS    6
 %define B_MODE          0               ; bloom.comp uniforms
@@ -28,6 +32,12 @@ extern g_scene_color, g_bloom
 %define B_THRESHOLD     3
 %define P_FLAGS         1               ; post.frag uniforms
 %define P_EXPOSURE      2
+%define P_VIEWPROJ      0
+%define P_SUN           3
+%define P_TIME          4
+%define P_CAM           5
+%define P_CLOUD         6
+%define CLOUD_THICKNESS 48.0
 
 section .rdata
 str_vs:         db "shaders/fullscreen.vert", 0
@@ -36,6 +46,10 @@ str_bloom:      db "shaders/bloom.comp", 0
 align 4
 c_threshold:    dd 1.0                  ; bloom: only what is brighter than white
 c_exposure:     dd 1.0
+c_thickness:    dd CLOUD_THICKNESS
+c_million:      dd 1000000.0
+align 8
+c_wrap_us:      dq 3600000000
 
 section .bss
 alignb 4
@@ -46,6 +60,8 @@ g_bloom_tex:    resd 1
 g_bloom_w:      resd 1                  ; level 0 size
 g_bloom_h:      resd 1
 g_bloom_levels: resd 1
+alignb 16
+g_post_tmp:     resd 4
 
 section .text
 
@@ -259,9 +275,45 @@ PROC post_frame, 32, rbx
     call shader_program
     mov ebx, eax
     GL glUseProgram, rbx
-    GL glProgramUniform1i, rbx, P_FLAGS, [rel g_bloom]
+    mov eax, [rel g_clouds]
+    add eax, eax
+    or eax, [rel g_bloom]
+    GL glProgramUniform1i, rbx, P_FLAGS, rax
     movss xmm2, [rel c_exposure]
     GL glProgramUniform1f, rbx, P_EXPOSURE
+    ; clouds: camera, sun, wind clock, the layer
+    lea rax, [rel g_cam_viewproj]
+    mov [rsp + 32], rax
+    GL glProgramUniformMatrix4fv, rbx, P_VIEWPROJ, 1, GL_FALSE
+    lea r9, [rel g_sun_dir]
+    GL glProgramUniform3fv, rbx, P_SUN, 1, r9
+    call timer_elapsed_us
+    xor edx, edx
+    div qword [rel c_wrap_us]
+    cvtsi2ss xmm2, rdx
+    divss xmm2, [rel c_million]
+    GL glProgramUniform1f, rbx, P_TIME
+    lea rax, [rel g_cam_pos]
+    lea rcx, [rel g_post_tmp]
+    cvtsd2ss xmm0, [rax]
+    movss [rcx], xmm0
+    cvtsd2ss xmm0, [rax + 8]
+    movss [rcx + 4], xmm0
+    cvtsd2ss xmm0, [rax + 16]
+    movss [rcx + 8], xmm0
+    lea r9, [rel g_post_tmp]
+    GL glProgramUniform3fv, rbx, P_CAM, 1, r9
+    lea rcx, [rel g_post_tmp]
+    movss xmm0, [rel g_cloud_cover]
+    movss [rcx], xmm0
+    movss xmm0, [rel g_cloud_height]
+    movss [rcx + 4], xmm0
+    movss xmm0, [rel c_thickness]
+    movss [rcx + 8], xmm0
+    mov dword [rcx + 12], 0
+    lea r9, [rel g_post_tmp]
+    GL glProgramUniform4fv, rbx, P_CLOUD, 1, r9
+    GL glBindTextureUnit, 2, [rel g_scene_depth]
     GL glBindTextureUnit, 0, [rel g_scene_color]
     cmp dword [rel g_bloom_tex], 0
     je .no_bloom_tex

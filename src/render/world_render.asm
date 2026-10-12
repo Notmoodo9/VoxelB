@@ -24,6 +24,11 @@
 ; before the sorted translucent ones. A record's quad count carries the
 ; tile's level in its top byte (0 = a section); the shaders decode LOD
 ; quads and keep each level to its ring around the camera.
+; Shadows (milestone 14 part 2, D83): shaders/shadow_setup.comp works out 3
+; cascade matrices into a small buffer each frame; the sections within the
+; shadow distance get draw records after the frame's own, which cull.comp
+; tests against each cascade's square, and chunk.vert + shadow.frag draw
+; them into one layer of a depth texture array each. chunk.frag samples it.
 ;
 ; Public API:
 ;   world_render_init() -> eax 1/0      world_render_shutdown()
@@ -42,7 +47,7 @@
 
 global world_render_init, world_render_draw, world_render_shutdown, tint_upload
 global g_world_visible, g_world_drawn_quads, g_world_gpu_bytes, g_quad_buffer
-global g_light_buffer, g_held_on, g_daylight
+global g_light_buffer, g_held_on, g_daylight, g_shadow_records
 global g_world_draws, g_vis_visited, g_world_gpu_visible, g_world_occluded
 
 extern g_cam_viewproj, g_cam_pos
@@ -52,7 +57,8 @@ extern timer_elapsed_us, world_column, vis_pair_bit
 extern g_scene_depth, g_viewport_w, g_viewport_h
 extern g_gpu_culling, g_occlusion_culling
 extern g_smooth_lighting, g_ambient_occlusion, g_held_light, g_height_fog
-extern g_sun_dir, g_sea_level
+extern g_sun_dir, g_sea_level, g_scene_fbo
+extern g_shadows, g_shadow_res, g_shadow_distance
 
 global g_lod_tint_tex, g_lod_records
 
@@ -96,6 +102,22 @@ endstruc
 %define U_CAM_Y             13          ; camera height (height fog)
 %define U_SUN_DIR           14          ; towards the sun (daycycle.asm)
 %define U_FOG_BASE          15          ; height fog base (world y)
+%define U_CASCADE           16          ; chunk.vert: shadow cascade + 1 (0: camera)
+%define U_SHADOWS           17          ; chunk.frag: cascades in use
+%define C_CASCADE           12          ; cull.comp: shadow cascade + 1
+; shadows (milestone 14 part 2)
+%define SHADOW_CASCADES     3
+%define SHADOW_UNIT         7           ; texture unit of the shadow map
+%define SHADOW_SSBO         7           ; binding of the shadow data
+%define SHADOW_DATA_BYTES   368         ; mat4[4], splits, light, texel, origin[4]
+%define S_VIEWPROJ          0           ; shadow_setup.comp uniforms
+%define S_SUN               4
+%define S_SPLITS            5
+%define S_RES               6
+%define S_CAM_MOD           7
+%define S_CASCADES          8
+%define S_UPDATE            9           ; cascades redrawn this frame (bits)
+%define U_CAM_MOD           18          ; chunk.frag: camera position mod 4096
 %define LOD_TINT_SIZE       1024        ; LOD tint map texels per side (16 blocks each)
 %define FOG_DEFAULT         0.0013      ; without LOD
 %define FOG_LOD             1.8         ; / the LOD radius: the far edge ~85% fog
@@ -129,6 +151,8 @@ str_vs:         db "shaders/chunk.vert", 0
 str_fs:         db "shaders/chunk.frag", 0
 str_cull:       db "shaders/cull.comp", 0
 str_hiz:        db "shaders/hiz.comp", 0
+str_shadow_fs:  db "shaders/shadow.frag", 0
+str_shadow_cs:  db "shaders/shadow_setup.comp", 0
 align 4
 c_half:         dd 16.0                 ; section half size
 c_radius:       dd 27.7128129           ; 16 * sqrt(3)
@@ -138,6 +162,9 @@ c_fog_default:  dd FOG_DEFAULT
 c_fog_lod:      dd FOG_LOD
 c_fade_in:      dd 0.92                 ; 1 - FADE (shaders/chunk.frag)
 c_fog_lift:     dd 8.0                  ; height fog base above the sea level
+align 16
+c_split:        dd 0.12, 0.38, 1.0, 1.0 ; cascade far distances / shadow distance
+c_mod4096:      dq 4096.0
 align 16
 c_abs_mask:     times 4 dd 0x7FFFFFFF
 align 8
@@ -156,6 +183,21 @@ g_light_buffer:     resd 1              ; light words, one per quad (M13)
 g_tint_tex:         resd 1              ; biome tint map (2D array, 3 layers)
 g_lod_tint_tex:     resd 1              ; the LOD tiles' tint map (same layers)
 g_held_on:          resd 1              ; the held light is on (toggle_held_light)
+g_shadow_prog:      resd 1              ; chunk.vert + shadow.frag
+g_shadow_setup:     resd 1              ; shadow_setup.comp
+g_shadow_tex:       resd 1              ; depth array, one layer per cascade
+g_shadow_fbo:       resd 1
+g_shadow_ssbo:      resd 1
+g_shadow_cmd:       resd SHADOW_CASCADES
+g_shadow_on:        resd 1              ; cascades in use (0: off)
+g_shadow_frame:     resd 1              ; frames drawn (the far cascades alternate)
+g_shadow_mask:      resd 1              ; cascades drawn this frame
+alignb 8
+g_shadow_records:   resq 1              ; shadow casters this frame
+g_shadow_base:      resq 1              ; their first record in the slot
+alignb 16
+g_shadow_tmp:       resd 8
+g_cam_mod:          resd 4              ; camera position mod 4096 (this frame)
 alignb 8
 g_world_visible:    resq 1
 g_world_drawn_quads: resq 1
@@ -227,6 +269,9 @@ PROC world_render_init, 0, rbx
     call gpu_draw_init
     test eax, eax
     jz .fail
+    call shadow_init
+    test eax, eax
+    jz .fail
 
     ; quads: one buffer for the whole streamed world
     mov qword [rel g_world_gpu_bytes], QUAD_BUFFER_BYTES
@@ -295,6 +340,7 @@ PROC world_render_shutdown, 0
     GL glDeleteBuffers, 1, rdx
     lea rdx, [rel g_light_buffer]
     GL glDeleteBuffers, 1, rdx
+    call shadow_shutdown
     lea rdx, [rel g_world_vao]
     GL glDeleteVertexArrays, 1, rdx
     RETURN
@@ -689,6 +735,7 @@ PROC gpu_cull, 32, rbx, rsi, rdi
     mov ebx, eax
     GL glUseProgram, rbx
     GL glProgramUniform1ui, rbx, C_COUNT, rsi
+    GL glProgramUniform1i, rbx, C_CASCADE, 0
     mov eax, [rel g_slot]
     imul eax, eax, MAX_DRAWS
     GL glProgramUniform1ui, rbx, C_BASE, rax
@@ -933,6 +980,8 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     cvtsi2ss xmm2, dword [rel g_sea_level]
     addss xmm2, [rel c_fog_lift]
     GL glProgramUniform1f, rbx, U_FOG_BASE
+    GL glProgramUniform1i, rbx, U_SHADOWS, [rel g_shadow_on]
+    GL glProgramUniform1i, rbx, U_CASCADE, 0
     movss xmm2, [rel g_daylight]
     GL glProgramUniform1f, rbx, U_DAYLIGHT
     mov eax, [rel g_held_light]
@@ -956,6 +1005,11 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     call block_textures_bind
     GL glBindTextureUnit, 3, [rel g_tint_tex]
     GL glBindTextureUnit, 4, [rel g_lod_tint_tex]
+    GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, SHADOW_SSBO, [rel g_shadow_ssbo]
+    cmp dword [rel g_shadow_tex], 0
+    je .no_shadow_tex
+    GL glBindTextureUnit, SHADOW_UNIT, [rel g_shadow_tex]
+.no_shadow_tex:
     mov qword [rel g_lod_records], 0
 
     ; ---- pass 1: visibility walk from the camera's section (cave culling) -------
@@ -1335,6 +1389,9 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
 
     ; ---- GPU culling, then one indirect multi-draw per pass -------------------------------
 .gpu:
+    call shadow_pass
+    lea r9, [rel g_cam_mod]
+    GL glProgramUniform3fv, rbx, U_CAM_MOD, 1, r9
     call gpu_cull
     GL glUseProgram, rbx
     GL glBindVertexArray, [rel g_world_vao]
@@ -1542,3 +1599,294 @@ tile_ring_test:
 .skip:
     xor eax, eax
     ret
+
+; -----------------------------------------------------------------------------
+; shadow_init — the shadow programs, the shadow data buffer, and (shadows
+; on) the depth array, its framebuffer and the cascades' command buffers.
+;   out: eax = 1/0
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC shadow_init, 0, rbx
+    lea rcx, [rel str_shadow_cs]
+    call shader_create_compute
+    cmp eax, -1
+    je .fail
+    mov [rel g_shadow_setup], eax
+    lea rdx, [rel g_shadow_ssbo]
+    GL glCreateBuffers, 1, rdx
+    GL glNamedBufferStorage, [rel g_shadow_ssbo], SHADOW_DATA_BYTES, 0, 0
+    mov dword [rel g_shadow_on], 0
+    cmp dword [rel g_shadows], 0
+    je .done
+    lea rcx, [rel str_vs]
+    lea rdx, [rel str_shadow_fs]
+    call shader_create
+    cmp eax, -1
+    je .fail
+    mov [rel g_shadow_prog], eax
+    ; depth array: one layer per cascade, compared on sampling (reverse-Z:
+    ; lit where the fragment is at least as near the light as the map)
+    lea r8, [rel g_shadow_tex]
+    GL glCreateTextures, GL_TEXTURE_2D_ARRAY, 1, r8
+    mov qword [rsp + 40], SHADOW_CASCADES
+    GL glTextureStorage3D, [rel g_shadow_tex], 1, GL_DEPTH_COMPONENT32F, [rel g_shadow_res], [rel g_shadow_res]
+    GL glTextureParameteri, [rel g_shadow_tex], GL_TEXTURE_MIN_FILTER, GL_LINEAR
+    GL glTextureParameteri, [rel g_shadow_tex], GL_TEXTURE_MAG_FILTER, GL_LINEAR
+    GL glTextureParameteri, [rel g_shadow_tex], GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE
+    GL glTextureParameteri, [rel g_shadow_tex], GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE
+    GL glTextureParameteri, [rel g_shadow_tex], GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE
+    GL glTextureParameteri, [rel g_shadow_tex], GL_TEXTURE_COMPARE_FUNC, GL_GEQUAL
+    lea rdx, [rel g_shadow_fbo]
+    GL glCreateFramebuffers, 1, rdx
+    xor ebx, ebx
+.cmd:
+    lea rdx, [rel g_shadow_cmd]
+    lea rdx, [rdx + rbx * 4]
+    GL glCreateBuffers, 1, rdx
+    lea rax, [rel g_shadow_cmd]
+    GL glNamedBufferStorage, [rax + rbx * 4], MAX_DRAWS * CMD_SIZE, 0, 0
+    inc ebx
+    cmp ebx, SHADOW_CASCADES
+    jb .cmd
+    mov dword [rel g_shadow_on], SHADOW_CASCADES
+    mov eax, [rel g_shadow_res]
+    LOG_VAL LOG_LEVEL_INFO, "shadows: cascades 3, map size", rax
+.done:
+    mov eax, 1
+    RETURN
+.fail:
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; shadow_shutdown — free the shadow resources.   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC shadow_shutdown, 0
+    lea rdx, [rel g_shadow_ssbo]
+    GL glDeleteBuffers, 1, rdx
+    cmp dword [rel g_shadow_tex], 0
+    je .done
+    lea rdx, [rel g_shadow_tex]
+    GL glDeleteTextures, 1, rdx
+    lea rdx, [rel g_shadow_fbo]
+    GL glDeleteFramebuffers, 1, rdx
+    lea rdx, [rel g_shadow_cmd]
+    GL glDeleteBuffers, SHADOW_CASCADES, rdx
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; shadow_pass — the cascade matrices (always: chunk.frag's sun-facing
+; shading reads the light from them), then (shadows on) the casters within
+; the shadow distance into each cascade's depth layer. Runs after the
+; frame's own records are written and before they are culled; leaves
+; g_rec_count as it found it.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define SP_CX       0
+%define SP_CZ       4
+%define SP_R        8                   ; shadow distance in chunks
+%define SP_MAIN     16                  ; the frame's own record count
+%define SP_C        24                  ; cascade
+%define SP_TMP      32                  ; 16 bytes
+PROC shadow_pass, 48, rbx, rsi, rdi, r12, r13
+    ; ---- 1. cascade matrices ----
+    mov ecx, [rel g_shadow_setup]
+    call shader_program
+    mov ebx, eax
+    GL glUseProgram, rbx
+    lea rax, [rel g_cam_viewproj]
+    mov [rsp + 32], rax
+    GL glProgramUniformMatrix4fv, rbx, S_VIEWPROJ, 1, GL_FALSE
+    lea r9, [rel g_sun_dir]
+    GL glProgramUniform3fv, rbx, S_SUN, 1, r9
+    ; split distances
+    cvtsi2ss xmm0, dword [rel g_shadow_distance]
+    shufps xmm0, xmm0, 0
+    mulps xmm0, [rel c_split]
+    movaps [rel g_shadow_tmp], xmm0
+    lea r9, [rel g_shadow_tmp]
+    GL glProgramUniform4fv, rbx, S_SPLITS, 1, r9
+    cvtsi2ss xmm2, dword [rel g_shadow_res]
+    GL glProgramUniform1f, rbx, S_RES
+    ; camera position mod 4096 (texel snapping anchored to the world)
+    xor esi, esi
+.mod:
+    lea rax, [rel g_cam_pos]
+    movsd xmm0, [rax + rsi * 8]
+    movsd xmm1, xmm0
+    divsd xmm1, [rel c_mod4096]
+    roundsd xmm1, xmm1, 9
+    mulsd xmm1, [rel c_mod4096]
+    subsd xmm0, xmm1
+    cvtsd2ss xmm0, xmm0
+    lea rax, [rel g_cam_mod]
+    movss [rax + rsi * 4], xmm0
+    inc esi
+    cmp esi, 3
+    jb .mod
+    lea r9, [rel g_cam_mod]
+    GL glProgramUniform3fv, rbx, S_CAM_MOD, 1, r9
+    GL glProgramUniform1i, rbx, S_CASCADES, SHADOW_CASCADES
+    ; cascade 0 every frame, the other two in turn (all of them at first)
+    mov eax, 7
+    mov ecx, [rel g_shadow_frame]
+    cmp ecx, 2
+    jb .mask
+    mov eax, 1 | 2
+    test ecx, 1
+    jz .mask
+    mov eax, 1 | 4
+.mask:
+    cmp dword [rel g_shadow_on], 0
+    jne .mask_ok
+    mov eax, 7                          ; (shadows off: the light only)
+.mask_ok:
+    mov [rel g_shadow_mask], eax
+    inc dword [rel g_shadow_frame]
+    GL glProgramUniform1i, rbx, S_UPDATE, [rel g_shadow_mask]
+    GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, SHADOW_SSBO, [rel g_shadow_ssbo]
+    GL glDispatchCompute, 1, 1, 1
+    GL glMemoryBarrier, GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT
+    mov qword [rel g_shadow_records], 0
+    cmp dword [rel g_shadow_on], 0
+    je .done
+
+    ; ---- 2. caster records: every section with geometry within reach ----
+    mov rax, [rel g_rec_count]
+    mov [LOCAL(SP_MAIN)], rax
+    mov [rel g_shadow_base], rax
+    movsd xmm0, [rel g_cam_pos]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si rax, xmm0
+    sar rax, 5
+    mov [LOCAL(SP_CX)], eax
+    movsd xmm0, [rel g_cam_pos + 16]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si rax, xmm0
+    sar rax, 5
+    mov [LOCAL(SP_CZ)], eax
+    mov eax, [rel g_shadow_distance]
+    add eax, 31
+    shr eax, 5
+    inc eax                             ; (casters a little beyond)
+    mov [LOCAL(SP_R)], eax
+    xor r12d, r12d                      ; loaded column index
+.col:
+    cmp r12, [rel g_loaded_count]
+    jae .cols_done
+    mov rax, [rel g_loaded]
+    mov rsi, [rax + r12 * 8]
+    inc r12
+    cmp dword [rsi + COLUMN.state], COL_READY
+    jne .col
+    mov eax, [rsi + COLUMN.cx]
+    sub eax, [LOCAL(SP_CX)]
+    mov ecx, eax
+    neg ecx
+    cmovs ecx, eax
+    cmp ecx, [LOCAL(SP_R)]
+    ja .col
+    mov eax, [rsi + COLUMN.cz]
+    sub eax, [LOCAL(SP_CZ)]
+    mov ecx, eax
+    neg ecx
+    cmovs ecx, eax
+    cmp ecx, [LOCAL(SP_R)]
+    ja .col
+    mov r13, [rsi + COLUMN.geo_mask]
+.sect:
+    test r13, r13
+    jz .col
+    bsf rdi, r13
+    btr r13, rdi
+    mov rbx, [rsi + COLUMN.sections + rdi * 8]
+    mov r8d, [rbx + SECT.quad_opaque]
+    add r8d, [rbx + SECT.quad_cutout]   ; (stored first: one range)
+    test r8d, r8d
+    jz .sect
+    mov [LOCAL(SP_TMP)], r8d
+    INVOKE xyz_origins, [rsi + COLUMN.cx], rdi, [rsi + COLUMN.cz]
+    mov edx, [rbx + SECT.quad_first]
+    mov r8d, [LOCAL(SP_TMP)]
+    lea rcx, [rel g_vec_tmp]
+    call add_record
+    jmp .sect
+.cols_done:
+    mov rax, [rel g_rec_count]
+    sub rax, [LOCAL(SP_MAIN)]
+    mov [rel g_shadow_records], rax
+    test rax, rax
+    jz .restore
+
+    ; ---- 3. per cascade: cull, then draw its depth layer ----
+    GL glBindFramebuffer, GL_FRAMEBUFFER, [rel g_shadow_fbo]
+    GL glViewport, 0, 0, [rel g_shadow_res], [rel g_shadow_res]
+    GL glEnable, GL_DEPTH_CLAMP
+    GL glDisable, GL_CULL_FACE
+    GL glBindVertexArray, [rel g_world_vao]
+    GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 0, [rel g_quad_buffer]
+    call block_textures_bind
+    mov dword [LOCAL(SP_C)], 0
+.cascade:
+    mov ecx, [LOCAL(SP_C)]
+    bt dword [rel g_shadow_mask], ecx
+    jnc .cascade_next                   ; (kept from last frame)
+    ; cull against this cascade's square
+    mov ecx, [rel g_cull_prog]
+    call shader_program
+    mov ebx, eax
+    GL glUseProgram, rbx
+    GL glProgramUniform1ui, rbx, C_COUNT, [rel g_shadow_records]
+    mov eax, [rel g_slot]
+    imul eax, eax, MAX_DRAWS
+    add eax, [rel g_shadow_base]
+    GL glProgramUniform1ui, rbx, C_BASE, rax
+    mov eax, [LOCAL(SP_C)]
+    inc eax
+    GL glProgramUniform1i, rbx, C_CASCADE, rax
+    GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 3, [rel g_ring]
+    mov eax, [LOCAL(SP_C)]
+    lea rcx, [rel g_shadow_cmd]
+    mov eax, [rcx + rax * 4]
+    GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 4, rax
+    GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, SHADOW_SSBO, [rel g_shadow_ssbo]
+    mov rax, [rel g_shadow_records]
+    add eax, 63
+    shr eax, 6
+    GL glDispatchCompute, rax, 1, 1
+    GL glMemoryBarrier, GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT
+    ; draw
+    GL glNamedFramebufferTextureLayer, [rel g_shadow_fbo], GL_DEPTH_ATTACHMENT, [rel g_shadow_tex], 0, [LOCAL(SP_C)]
+    GL glClear, GL_DEPTH_BUFFER_BIT
+    mov ecx, [rel g_shadow_prog]
+    call shader_program
+    mov ebx, eax
+    GL glUseProgram, rbx
+    mov eax, [LOCAL(SP_C)]
+    inc eax
+    GL glProgramUniform1i, rbx, U_CASCADE, rax
+    GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 0, [rel g_quad_buffer]
+    mov eax, [LOCAL(SP_C)]
+    lea rcx, [rel g_shadow_cmd]
+    mov eax, [rcx + rax * 4]
+    GL glBindBuffer, GL_DRAW_INDIRECT_BUFFER, rax
+    GL glMultiDrawArraysIndirect, GL_TRIANGLES, 0, [rel g_shadow_records], 0
+    inc qword [rel g_world_draws]
+.cascade_next:
+    inc dword [LOCAL(SP_C)]
+    cmp dword [LOCAL(SP_C)], SHADOW_CASCADES
+    jb .cascade
+    ; back to the scene
+    GL glDisable, GL_DEPTH_CLAMP
+    GL glEnable, GL_CULL_FACE
+    GL glBindFramebuffer, GL_FRAMEBUFFER, [rel g_scene_fbo]
+    GL glViewport, 0, 0, [rel g_viewport_w], [rel g_viewport_h]
+.restore:
+    mov rax, [LOCAL(SP_MAIN)]
+    mov [rel g_rec_count], rax
+.done:
+    RETURN
+ENDPROC

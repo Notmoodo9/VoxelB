@@ -625,8 +625,8 @@ PROC stream_update, 80, rbx, rsi, rdi, r12, r13, r14, r15
     inc eax
     shl eax, 4                          ; 16 jobs per thread in flight: enough
                                         ; to keep workers busy for a frame
-    ; slow frames: allow proportionally more (up to 8x), so streaming does
-    ; not depend on the frame rate
+    ; slow frames: allow proportionally more jobs and uploads (up to 8x), so
+    ; streaming does not depend on the frame rate
     mov rcx, [rel g_frame_us]
     shr rcx, 14                         ; / ~16 ms
     cmp rcx, 1
@@ -639,7 +639,8 @@ PROC stream_update, 80, rbx, rsi, rdi, r12, r13, r14, r15
 .cap_max:
     imul eax, ecx
     mov [LOCAL(SU_CAP)], rax
-    mov qword [LOCAL(SU_BUDGET)], UPLOAD_BUDGET
+    imul rcx, rcx, UPLOAD_BUDGET        ; (the upload budget scales the same way)
+    mov [LOCAL(SU_BUDGET)], rcx
     mov qword [rel g_stream_upload_frame], 0
     xor eax, eax
     mov [rel g_stream_ready], rax

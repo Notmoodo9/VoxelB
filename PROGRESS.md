@@ -1,15 +1,75 @@
 # Progress
 
 ## Current state
-**Milestone 14 part 1 (sky, day/night, fog, HDR, bloom): DONE** (Windows CI green: run #70)
+**Milestone 14: Sky, day/night, fog, shadows, HDR: DONE** (Windows CI: see below)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
 `design/BACKLOG.md`). Progressive LOD is planned as Milestone 34.
 
-Next: **Milestone 14 part 2**: cascaded shadow maps from the sun and moon
-(soft edges) and volumetric-looking clouds. It is technical, so no design
-interview.
+Next: **Milestone 15: Water rendering** (reflections, refraction,
+depth-based colour, shore foam, underwater fog) **and flowing water
+simulation**. It is technical, so no design interview.
+
+---
+
+## Milestone 14, part 2 — done (2026-10-12): cascaded shadows and clouds
+
+### What was built (D83)
+* **Cascaded shadow maps** from the sun (and the moon at night), 3
+  cascades out to 160 blocks.
+  * Soft edges (16-tap hardware PCF); the edges don't shimmer
+    (texel-snapped, world-anchored).
+  * The cascades are worked out on the GPU (`shaders/shadow_setup.comp`);
+    the casters are culled per cascade by `cull.comp` and drawn with
+    `chunk.vert` + `shaders/shadow.frag`.
+  * Leaves and plants cast shadows through their alpha.
+  * The near cascade is drawn every frame, the far two in turn.
+* **Sun direction in the shading**: faces turned away from the sun or
+  moon, and shadowed ground, keep only the sky's fill light. Slopes now
+  read clearly at any time of day.
+* **Clouds**: a drifting layer at y 230–278, raymarched per pixel with
+  sun-lit tops and grey undersides.
+  * Coloured by the time of day: white at noon, orange at sunset, dim at
+    night.
+  * Correctly in front of or behind terrain.
+* **Settings**: `shadows`, `shadow_resolution` (512–4096),
+  `shadow_distance` (32–512), `clouds` (graphics.cfg); `cloud_cover`,
+  `cloud_height` (world.cfg).
+* **Streaming**: the GPU upload budget now grows on slow frames, like
+  the job cap. The view completes in ~20 s on the test machine (was ~29 s).
+* **Debug overlay**: the `sky` line also shows the shadow casters.
+
+### Verified
+* Debug and release headless tests pass, with no GL errors or asserts.
+* Screenshots:
+  * clouds over the valley at 10:00 (`--pos 0 180 0 --look 0 10 --time
+    10`): soft layered clouds behind the mountain;
+  * shadows at 15:30 (`--pos -10 135 30 --look 30 -35 --time 15.5`):
+    soft tree shadows on the sand, shadowed terrain steps, shaded slopes
+    facing away from the sun.
+* Bugs found and fixed on the way:
+  * an unaligned SSE constant crashed the first frame;
+  * the shadow map sampler shared a texture unit with the Hi-Z pyramid;
+  * GL arguments read `rcx` after the macro had overwritten it.
+
+### Performance (llvmpipe software GL, 1280×720, view loaded)
+| | Frame time |
+|---|---|
+| M14 part 1 | ~950 ms |
+| + clouds, shadows off | ~940 ms |
+| + shadows, clouds off | ~1600 ms |
+| + both (default) | ~2200 ms |
+
+A software renderer is slow at shadow-map filling and per-pixel cloud
+marching; on a GPU both cost a few milliseconds. Both can be switched off
+in graphics.cfg.
+
+### Deferred
+* Quality presets that set these together (M33).
+* Clouds casting shadows on the ground; LOD terrain casting shadows.
+* Biome-tinted fog, auto-exposure.
+* Translucent (coloured glass, water) shadows.
 
 ---
 

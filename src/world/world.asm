@@ -37,7 +37,7 @@ extern str_ieq, str_parse_float, str_parse_u64
 extern blocks_load, block_find
 extern terrain_load, terrain_gen_column, terrain_find_spawn, g_world_seed
 extern g_block_count, g_block_shape, g_block_state, g_block_nstates
-extern timer_elapsed_us, g_day_length, g_start_hour
+extern timer_elapsed_us, g_day_length, g_start_hour, g_cloud_cover, g_cloud_height
 
 %define MAX_LAYERS          16
 %define MAX_STRUCT_BLOCKS   8
@@ -60,6 +60,8 @@ k_seed:         db "seed", 0
 k_generator:    db "generator", 0
 k_day_length:   db "day_length", 0
 k_start_time:   db "start_time", 0
+k_cloud_cover:  db "cloud_cover", 0
+k_cloud_height: db "cloud_height", 0
 v_terrain:      db "terrain", 0
 v_flat:         db "flat_test", 0
 str_cfg_label:  db "flat_test.cfg", 0
@@ -1295,6 +1297,28 @@ PROC world_cfg_pair, 0, rbx, rsi
     movss [rel g_start_hour], xmm0
     RETURN
 .not_start:
+    lea rdx, [rel k_cloud_cover]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_cover
+    mov rcx, rsi
+    call str_parse_float
+    test eax, eax
+    jz .bad
+    movss [rel g_cloud_cover], xmm0
+    RETURN
+.not_cover:
+    lea rdx, [rel k_cloud_height]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_cloud_height
+    mov rcx, rsi
+    call str_parse_float
+    test eax, eax
+    jz .bad
+    movss [rel g_cloud_height], xmm0
+    RETURN
+.not_cloud_height:
     lea rdx, [rel k_generator]
     INVOKE str_ieq, rbx, rdx
     test eax, eax

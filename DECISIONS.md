@@ -1271,3 +1271,58 @@ block for their upper half (mossy cobblestone boulders).
 * Not yet: cascaded shadows and clouds (part 2); biome-tinted fog;
   auto-exposure.
 
+## D83 — Cascaded shadows and clouds (M14 part 2)
+* **Cascades.** Three of them, splitting `shadow_distance` (default 160)
+  at 12%, 38% and 100%. `shaders/shadow_setup.comp` (one thread per
+  frame) writes the light-space matrices into a 368-byte storage buffer
+  (binding 7), which chunk.vert, chunk.frag and cull.comp read. No
+  uniform arrays: those failed on Intel (D80).
+  * Each cascade is the bounding sphere of its view slice, so its size
+    never changes with the view.
+  * Its centre is snapped to whole texels in world-anchored light space
+    (camera position mod 4096), so the edges don't shimmer.
+  * Orthographic, reverse-Z (depth 1 nearest the light), ±640 blocks of
+    depth, with depth clamping for casters outside that.
+  * The light is the sun by day and the moon (half strength) by night,
+    kept at least ~7° high, and fades out near the horizon.
+* **Casters.** Every section with geometry within the shadow distance
+  (+1 chunk) gets one draw record after the frame's own records (opaque
+  and cut-out ranges are contiguous, so one record each).
+  * cull.comp has a light-space mode (`u_cascade` > 0): it tests the box's
+    8 corners against the cascade square and writes that cascade's own
+    command buffer. No stats, no Hi-Z.
+  * Each cascade is one `glMultiDrawArraysIndirect` with chunk.vert (it
+    picks the cascade matrix) and `shadow.frag` (alpha test only), face
+    culling off, into one layer of a 2048² DEPTH32F array.
+  * **Alternating cascades:** cascade 0 is drawn every frame, cascades 1
+    and 2 on alternate frames. The buffer keeps each cascade's matrix and
+    the camera position it was drawn from, and chunk.frag shifts into that
+    space (mod-4096 difference). This halves the shadow cost.
+* **Sampling** (chunk.frag): cascade by distance; normal offset of 1.5
+  texels plus a tiny constant bias; 4 taps half a texel apart through
+  `sampler2DArrayShadow` (hardware 2×2 PCF each, so 16 effective taps)
+  for soft edges; fade out over the last 10% of the distance.
+  * Direct light = facing (smoothstep of N·L) × shadow.
+  * The sky-light term is scaled by mix(0.48, 1, direct), so shadowed and
+    averted faces keep the sky's fill light.
+  * This also gives the sun a direction even with `shadows = 0` (the
+    matrices are still computed).
+* **Clouds** (post.frag, before tonemapping): a layer `cloud_height` ..
+  +48 blocks.
+  * 6 jittered steps along each pixel's ray, up to the scene depth (from
+    the depth texture), so terrain hides clouds behind it and clouds hide
+    terrain below.
+  * Density: 3-octave value-noise fbm plus detail, against `cloud_cover`,
+    with a vertical profile; drifting with a constant wind.
+  * Lighting: one sample 18 blocks towards the sun or moon per step
+    (Beer-like), between an underside colour and a sunlit colour that
+    follow the time of day.
+  * They fade into the sky from 2500 to 6000 blocks.
+* **Streaming fix found here:** the per-frame upload budget now scales
+  with slow frames, like the job cap already did, so streaming no longer
+  stalls on slow renderers.
+* Settings: `shadows`, `shadow_resolution`, `shadow_distance`, `clouds`
+  (graphics.cfg); `cloud_cover`, `cloud_height` (world.cfg).
+* Not done: cloud shadows on the ground, LOD tiles casting shadows,
+  translucent coloured shadows.
+

@@ -17,6 +17,10 @@
 ;   g_held_light (u32)           the held light's r | g << 8 | b << 16 (0..15)
 ;   g_bloom (u32)                1 = bloom (milestone 14)
 ;   g_height_fog (u32)           1 = height fog in low ground
+;   g_shadows (u32)              1 = cascaded shadow maps (milestone 14 part 2)
+;   g_clouds (u32)               1 = the cloud layer
+;   g_shadow_res (u32)           shadow map size, 512..4096 (power of two)
+;   g_shadow_distance (u32)      shadows out to this many blocks, 32..512
 ;                                (0 or <= render_distance: no LOD)
 ; =============================================================================
 %include "macros.inc"
@@ -28,6 +32,7 @@
 global settings_load, g_render_distance, g_opaque_leaves
 global g_gpu_culling, g_occlusion_culling, g_lod_distance
 global g_smooth_lighting, g_ambient_occlusion, g_held_light, g_bloom, g_height_fog
+global g_shadows, g_shadow_res, g_shadow_distance, g_clouds
 
 extern str_ieq, str_parse_u64, cfg_next_token
 
@@ -48,6 +53,10 @@ k_ao:           db "ambient_occlusion", 0
 k_held:         db "held_light", 0
 k_bloom:        db "bloom", 0
 k_hfog:         db "height_fog", 0
+k_shadows:      db "shadows", 0
+k_clouds:       db "clouds", 0
+k_shadow_res:   db "shadow_resolution", 0
+k_shadow_dist:  db "shadow_distance", 0
 str_unknown:    db "unknown setting: ", 0
 str_bad:        db "bad value for: ", 0
 
@@ -63,6 +72,10 @@ g_ambient_occlusion: dd 1
 g_held_light:       dd 14 | (11 << 8) | (6 << 16)   ; a warm torch
 g_bloom:            dd 1
 g_height_fog:       dd 1
+g_shadows:          dd 1
+g_clouds:           dd 1
+g_shadow_res:       dd 2048
+g_shadow_distance:  dd 160
 
 section .bss
 alignb 8
@@ -125,6 +138,24 @@ PROC graphics_pair, 0, rbx, rsi, rdi, r12
     lea rdi, [rel g_height_fog]
     test eax, eax
     jnz .flag
+    lea rdx, [rel k_shadows]
+    INVOKE str_ieq, rbx, rdx
+    lea rdi, [rel g_shadows]
+    test eax, eax
+    jnz .flag
+    lea rdx, [rel k_clouds]
+    INVOKE str_ieq, rbx, rdx
+    lea rdi, [rel g_clouds]
+    test eax, eax
+    jnz .flag
+    lea rdx, [rel k_shadow_res]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jnz .shadow_res
+    lea rdx, [rel k_shadow_dist]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jnz .shadow_dist
     lea rcx, [rel str_cfg_label]
     lea rdx, [rel str_unknown]
     INVOKE cfg_warn, rcx, rdx, rbx
@@ -165,6 +196,31 @@ PROC graphics_pair, 0, rbx, rsi, rdi, r12
     RETURN
 .held_bad:
     jmp .bad
+.shadow_res:                            ; 512, 1024, 2048 or 4096
+    mov rcx, rsi
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    cmp rax, 512
+    jb .bad
+    cmp rax, 4096
+    ja .bad
+    lea rcx, [rax - 1]
+    test rax, rcx
+    jnz .bad                            ; (not a power of two)
+    mov [rel g_shadow_res], eax
+    RETURN
+.shadow_dist:
+    mov rcx, rsi
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    cmp rax, 32
+    jb .bad
+    cmp rax, 512
+    ja .bad
+    mov [rel g_shadow_distance], eax
+    RETURN
 .lod:
     mov rcx, rsi
     call str_parse_u64

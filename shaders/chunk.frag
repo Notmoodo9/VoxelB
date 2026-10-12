@@ -28,6 +28,12 @@ layout(location = 12) uniform float u_daylight;    // sky light multiplier (--da
 layout(location = 13) uniform float u_cam_y;       // camera height (height fog)
 layout(location = 14) uniform vec3 u_sun_dir;      // towards the sun (unit)
 layout(location = 15) uniform float u_fog_base;    // height fog: thickest at and below this y
+layout(location = 17) uniform int u_shadows;       // cascades in use (0: off)
+layout(location = 18) uniform vec3 u_cam_mod;      // camera position mod 4096
+layout(binding = 7) uniform sampler2DArrayShadow u_shadow_map;
+// milestone 14 part 2: shadow cascades (shaders/shadow_setup.comp)
+struct ShadowData { mat4 m[4]; vec4 splits; vec4 light; vec4 texel; vec4 origin[4]; };
+layout(std430, binding = 7) readonly buffer Shadow { ShadowData sd; };
 
 in vec3 v_rel;
 in vec2 v_tuv;
@@ -44,6 +50,9 @@ in vec2 v_cuv;
 
 out vec4 o_color;
 
+const float SKY_FILL = 0.48;         // sky light that reaches shadowed / sun-averted faces
+const vec3 FACE_NORMAL[6] = vec3[](vec3(-1, 0, 0), vec3(1, 0, 0), vec3(0, -1, 0),
+                                   vec3(0, 1, 0), vec3(0, 0, -1), vec3(0, 0, 1));
 const float GLOW = 2.5;              // emissive layers: brightness (HDR, blooms)
 const float HFOG_DENSITY = 0.0012;   // height fog per block at the base
 const float HFOG_FALLOFF = 30.0;     // blocks for the height fog to thin by e
@@ -69,6 +78,32 @@ vec3 sky_color(vec3 d, vec3 sun) {
     return c;
 }
 // ------------------------------------------------------------------------------
+
+// direct light (sun or moon) reaching this point, 0..1: the cascade by
+// distance, a normal offset against acne, 4 hardware-filtered taps (PCF)
+float shadow_at(vec3 n, float dist) {
+    if (u_shadows <= 0) return 1.0;
+    int c = 0;
+    while (c < u_shadows - 1 && dist > sd.splits[c]) ++c;
+    float last = sd.splits[u_shadows - 1];
+    if (dist > last) return 1.0;
+    float ts = sd.texel[c];
+    // into the camera-relative space the cascade was drawn in (it may be a
+    // frame old), wrapping the mod-4096 difference
+    vec3 delta = u_cam_mod - sd.origin[c].xyz;
+    delta -= 4096.0 * round(delta / 4096.0);
+    vec3 p = v_rel + delta + n * ts * 1.5;
+    vec4 s = sd.m[c] * vec4(p, 1.0);
+    vec2 uv = s.xy * 0.5 + 0.5;
+    float ref = s.z + ts * 0.25 / 640.0;          // small constant bias (depth units)
+    vec2 o = vec2(0.5) / vec2(textureSize(u_shadow_map, 0).xy);
+    float lit = 0.25 * (texture(u_shadow_map, vec4(uv + vec2(-o.x, -o.y), float(c), ref))
+                      + texture(u_shadow_map, vec4(uv + vec2( o.x, -o.y), float(c), ref))
+                      + texture(u_shadow_map, vec4(uv + vec2(-o.x,  o.y), float(c), ref))
+                      + texture(u_shadow_map, vec4(uv + vec2( o.x,  o.y), float(c), ref)));
+    // fade out over the last tenth of the shadow distance
+    return mix(lit, 1.0, smoothstep(last * 0.9, last, dist));
+}
 
 // colour of the sky's light on surfaces (in the textures' space): white sun
 // by day, warm near the horizon, dim blue moonlight at night
@@ -164,7 +199,22 @@ void main() {
     vec3 block = l.rgb;
     if (u_held.w > 0.0)                  // a light in the player's hand
         block = max(block, max(u_held.rgb - length(v_rel), 0.0) / 15.0);
-    vec3 lit = max(curve(vec3(l.a)) * sky_light(u_sun_dir) * u_daylight, curve(block));
+    // direct sun/moon: facing it and not in shadow; the rest of the sky
+    // light still reaches shadowed and averted faces
+    float direct = 1.0;
+    if (v_level == 0u) {
+        float dist = length(v_rel);
+        vec3 lightd = sd.light.xyz;
+        float facing = 1.0;
+        vec3 n = vec3(0.0, 1.0, 0.0);
+        if (v_face < 6u) {
+            n = FACE_NORMAL[v_face];
+            facing = smoothstep(0.0, 0.12, dot(n, lightd));
+        }
+        direct = mix(1.0, facing * shadow_at(n, dist), sd.light.w);
+    }
+    float sky_part = mix(SKY_FILL, 1.0, direct);
+    vec3 lit = max(curve(vec3(l.a)) * sky_light(u_sun_dir) * u_daylight * sky_part, curve(block));
     color *= (AMBIENT + (1.0 - AMBIENT) * lit) * ao;
     color = pow(max(color, vec3(0.0)), vec3(2.2));    // to linear
     if (v_glow != 0u) {

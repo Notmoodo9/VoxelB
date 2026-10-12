@@ -39,7 +39,7 @@ extern g_gpu_units_used
 extern g_lod_levels, g_lod_ready, g_lod_inflight, g_lod_quads, g_lod_records
 extern g_lod_gen_count, g_lod_gen_total_us, g_lod_gen_max_us, g_lod_distance
 extern g_light_count, g_light_total_us, g_light_max_us, g_held_on
-extern g_time_of_day, g_day_length
+extern g_time_of_day, g_day_length, g_shadow_records
 extern g_block_names
 
 %define TEXT_CAP        6144
@@ -125,6 +125,7 @@ s_sky:          db "sky     time ", 0
 s_colon:        db ":", 0
 s_zero:         db "0", 0
 s_daylen:       db "   day length (min) ", 0
+s_casters:      db "   shadow casters ", 0
 align 4
 c_day_minutes:  dd 1440.0
 s_held_off:     db " us   held light off", 10, 0
@@ -467,6 +468,8 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
     PUT s_daylen
     cvttss2si eax, [rel g_day_length]
     PUTNUM rax, 0
+    PUT s_casters
+    PUTNUM [rel g_shadow_records], 0
     PUT s_nl
     ; distant terrain tiles (milestone 12)
     PUT s_lod

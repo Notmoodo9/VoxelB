@@ -25,6 +25,10 @@ layout(location = 1) in vec3 a_origin_world;      // section origin (mod 65536)
 layout(location = 2) in float a_count;            // quads | LOD level << 24, as a
                                                   // float (exact for the level)
 layout(location = 4) uniform float u_time;        // seconds
+layout(location = 16) uniform int u_cascade;      // shadow pass: cascade + 1 (0: camera)
+// milestone 14 part 2: shadow cascades (shaders/shadow_setup.comp)
+struct ShadowData { mat4 m[4]; vec4 splits; vec4 light; vec4 texel; vec4 origin[4]; };
+layout(std430, binding = 7) readonly buffer Shadow { ShadowData sd; };
 
 out vec3 v_rel;          // camera-relative position (fog)
 out vec2 v_tuv;          // biome tint map coordinates (world x, z / 4096)
@@ -159,5 +163,5 @@ void main() {
         }
     }
     v_rel = rel;
-    gl_Position = u_viewproj * vec4(rel, 1.0);
+    gl_Position = (u_cascade > 0 ? sd.m[u_cascade - 1] : u_viewproj) * vec4(rel, 1.0);
 }

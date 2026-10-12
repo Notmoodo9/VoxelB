@@ -101,6 +101,12 @@
 %define GL_SHADER_IMAGE_ACCESS_BARRIER_BIT 0x00000020
 %define GL_COMMAND_BARRIER_BIT          0x00000040
 %define GL_SHADER_STORAGE_BARRIER_BIT   0x00002000
+%define GL_DEPTH_CLAMP                  0x864F
+%define GL_TEXTURE_COMPARE_MODE         0x884C
+%define GL_TEXTURE_COMPARE_FUNC         0x884D
+%define GL_COMPARE_REF_TO_TEXTURE       0x884E
+%define GL_GEQUAL                       0x0206
+%define GL_POLYGON_OFFSET_FILL          0x8037
 %define GL_RED_INTEGER                  0x8D94
 %define GL_NEAREST_MIPMAP_NEAREST       0x2700
 

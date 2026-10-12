@@ -14,6 +14,8 @@
 ;   g_sun_dir               f32 x, y, z (unit, towards the sun)
 ;   g_day_length, g_start_hour   f32 settings (world.cfg)
 ;   g_time_override         f32 start hour from --time, or -1
+;   g_cloud_cover, g_cloud_height   f32 cloud layer settings (world.cfg; the
+;                           sky's state lives here until weather, M25)
 ; =============================================================================
 %include "macros.inc"
 %include "log.inc"
@@ -21,6 +23,7 @@
 
 global daycycle_init, daycycle_update
 global g_time_of_day, g_sun_dir, g_day_length, g_start_hour, g_time_override
+global g_cloud_cover, g_cloud_height
 
 extern g_frame_us
 
@@ -43,6 +46,8 @@ align 4
 g_day_length:       dd 20.0             ; minutes per day
 g_start_hour:       dd 8.0
 g_time_override:    dd -1.0
+g_cloud_cover:      dd 0.45             ; share of the sky (world.cfg)
+g_cloud_height:     dd 230.0            ; bottom of the cloud layer (world y)
 
 section .bss
 alignb 16

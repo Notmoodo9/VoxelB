@@ -67,6 +67,10 @@ Settings: `mouse_sensitivity` (degrees per mouse count), `invert_mouse_y`
 | `gpu_culling` | `0`/`1` (default 1) | `1` culls the draws in a compute shader (exact frustum test) and lets the GPU write the indirect commands; `0` draws everything the CPU's visibility walk found |
 | `bloom` | `0`/`1` (default 1) | glowing blocks and the sun bleed light into their surroundings |
 | `height_fog` | `0`/`1` (default 1) | mist that gathers in low ground, thinning with height |
+| `shadows` | `0`/`1` (default 1) | cascaded shadow maps from the sun and moon |
+| `shadow_resolution` | 512, 1024, 2048, 4096 (default 2048) | shadow map size: sharper but slower |
+| `shadow_distance` | 32–512 blocks (default 160) | how far shadows reach |
+| `clouds` | `0`/`1` (default 1) | the drifting cloud layer |
 | `smooth_lighting` | `0`/`1` (default 1) | `1` mixes each face's 4 corner lights smoothly; `0` lights a face flat |
 | `ambient_occlusion` | `0`/`1` (default 1) | `1` darkens inner corners and edges |
 | `held_light` | `r, g, b` (0–15, default 14, 11, 6) | colour of the held light (`toggle_held_light`), a stand-in for held torches until items |
@@ -179,6 +183,8 @@ you run it.
 | `generator` | `terrain` (default) / `flat_test` | the real terrain, or the debug gallery world (`--flat` forces it) |
 | `day_length` | minutes (default 20) | length of one day and night |
 | `start_time` | hour 0–24 (default 8) | time of day at the start (`--time <hour>` overrides) |
+| `cloud_cover` | 0–1 (default 0.45) | share of the sky the cloud layer covers |
+| `cloud_height` | world y (default 230) | bottom of the cloud layer (48 blocks thick) |
 
 ### `terrain.cfg` (Milestone 8)
 
