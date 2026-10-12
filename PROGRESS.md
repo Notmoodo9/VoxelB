@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 17: Save/load, main menu, world creation, settings: DONE** (part 2c, Windows CI: see below)
+**Milestone 17: Save/load, main menu, world creation, settings: DONE** (part 2c, Windows CI green: run #87)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
