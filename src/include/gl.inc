@@ -95,6 +95,8 @@
 %define GL_UNSIGNED_INT                 0x1405
 %define GL_READ_ONLY                    0x88B8
 %define GL_WRITE_ONLY                   0x88B9
+%define GL_READ_WRITE                   0x88BA
+%define GL_RGBA16F                      0x881A
 %define GL_TEXTURE_FETCH_BARRIER_BIT    0x00000008
 %define GL_SHADER_IMAGE_ACCESS_BARRIER_BIT 0x00000020
 %define GL_COMMAND_BARRIER_BIT          0x00000040

@@ -39,6 +39,7 @@ extern g_gpu_units_used
 extern g_lod_levels, g_lod_ready, g_lod_inflight, g_lod_quads, g_lod_records
 extern g_lod_gen_count, g_lod_gen_total_us, g_lod_gen_max_us, g_lod_distance
 extern g_light_count, g_light_total_us, g_light_max_us, g_held_on
+extern g_time_of_day, g_day_length
 extern g_block_names
 
 %define TEXT_CAP        6144
@@ -120,6 +121,12 @@ s_l_gen:        db "  gen ", 0
 s_l_slash:      db "/", 0
 s_light:        db "light   columns ", 0
 s_held_on:      db " us   held light on", 10, 0
+s_sky:          db "sky     time ", 0
+s_colon:        db ":", 0
+s_zero:         db "0", 0
+s_daylen:       db "   day length (min) ", 0
+align 4
+c_day_minutes:  dd 1440.0
 s_held_off:     db " us   held light off", 10, 0
 s_sp:           db " ", 0
 s_ground:       db "   ground below: ", 0
@@ -440,6 +447,27 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
 .held_off:
     PUT s_held_off
 .held_done:
+    ; time of day (milestone 14)
+    PUT s_sky
+    movss xmm0, [rel g_time_of_day]
+    mulss xmm0, [rel c_day_minutes]
+    cvttss2si eax, xmm0                 ; minutes since midnight
+    xor edx, edx
+    mov ecx, 60
+    div ecx
+    mov r13d, edx                       ; minutes
+    PUTNUM rax, 0
+    PUT s_colon
+    cmp r13d, 10
+    jae .two_digits
+    PUT s_zero
+.two_digits:
+    mov eax, r13d
+    PUTNUM rax, 0
+    PUT s_daylen
+    cvttss2si eax, [rel g_day_length]
+    PUTNUM rax, 0
+    PUT s_nl
     ; distant terrain tiles (milestone 12)
     PUT s_lod
     mov eax, [rel g_lod_levels]

@@ -52,7 +52,8 @@ build\debug\voxelb.exe --flat              the flat test world with the block ga
 build\debug\voxelb.exe --survey            log terrain statistics and places to visit: highest point, giant range,
                                           river, sky cavern, ravine, shaft (voxel.log)
 build\debug\voxelb.exe --held-light        start with the held light on (L toggles it)
-build\debug\voxelb.exe --daylight 8        sky light at 8% (preview night lighting until the day/night cycle)
+build\debug\voxelb.exe --daylight 8        sky light at 8% of normal (a dimmer for testing)
+build\debug\voxelb.exe --time 18.5         start at 18:30 (time of day; T fast-forwards)
 ```
 
 Default controls (rebind in `data/config/controls.cfg`, format in `DATA_FORMAT.md`):
@@ -67,6 +68,7 @@ Default controls (rebind in `data/config/controls.cfg`, format in `DATA_FORMAT.m
 | F5 | reload all shaders (they also reload automatically when saved) |
 | F8 | vsync on/off |
 | L | held light on/off (a torch in hand, until items arrive) |
+| T (hold) | time of day runs 240× faster |
 | Esc | release the mouse; press again (mouse free) to quit |
 | Left click | capture the mouse again |
 

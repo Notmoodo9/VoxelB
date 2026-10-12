@@ -21,7 +21,8 @@
 %define ACT_RELOAD_SHADERS      9
 %define ACT_MENU                10      ; Esc: release the mouse, or quit if free
 %define ACT_TOGGLE_HELD_LIGHT   11      ; the held light (milestone 13)
-%define ACT_COUNT               12
+%define ACT_TIME_FORWARD        12      ; hold: the clock runs fast (milestone 14)
+%define ACT_COUNT               13
 %define BINDS_PER_ACTION        2
 
 %define VK_LBUTTON              0x01

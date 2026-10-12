@@ -12,6 +12,7 @@
 ;   --flat             use the flat test world (block gallery)
 ;   --survey           log terrain statistics and places to visit
 ;   --held-light       start with the held light on (toggle_held_light)
+;   --time <0..24>     start at this hour (overrides world.cfg's start_time)
 ;   --daylight <0..100>  sky light strength in percent (preview of night
 ;                      lighting until the day/night cycle, milestone 14)
 ;   --look <yaw> <pitch>  start view direction in degrees (yaw 0 = north,
@@ -51,6 +52,7 @@ extern terrain_survey
 extern world_spawn, g_seed_override, g_seed_override_set, g_force_flat
 extern stream_init, stream_update, stream_shutdown, settings_load
 extern lod_init, lod_update, lod_shutdown, g_held_on, g_daylight
+extern daycycle_init, daycycle_update, g_time_override
 extern block_textures_poll
 extern g_cam_autofly, g_fly_speed, g_cam_pos, g_cam_yaw, g_cam_pitch
 extern timer_init, timer_frame, timer_reset, timer_elapsed_us
@@ -79,6 +81,7 @@ opt_survey:         db "--survey", 0
 opt_look:           db "--look ", 0
 opt_held:           db "--held-light", 0
 opt_daylight:       db "--daylight ", 0
+opt_time:           db "--time ", 0
 align 4
 c_deg_to_rad:       dd 0.0174532925
 align 4
@@ -384,12 +387,23 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     divss xmm0, [rel c_hundred]
     movss [rel g_daylight], xmm0
 .no_daylight:
+    lea rdx, [rel opt_time]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .no_time
+    lea rcx, [rax + 7]
+    call str_parse_float
+    test eax, eax
+    jz .no_time
+    movss [rel g_time_override], xmm0
+.no_time:
     lea rdx, [rel opt_held]
     INVOKE str_find, rbx, rdx
     test rax, rax
     jz .no_held_opt
     mov dword [rel g_held_on], 1
 .no_held_opt:
+    call daycycle_init                  ; (after --time)
     lea rdx, [rel opt_flytest]
     INVOKE str_find, rbx, rdx
     test rax, rax
@@ -486,6 +500,7 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     call camera_update
     call stream_update
     call lod_update
+    call daycycle_update
     mov ecx, [rel g_client_w]
     mov edx, [rel g_client_h]
     call renderer_frame

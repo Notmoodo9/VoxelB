@@ -1,6 +1,10 @@
 ; =============================================================================
 ; renderer.asm — frame setup: reverse-Z depth, the offscreen scene target.
 ;
+; Milestone 14: the scene target's colour is RGBA16F (linear HDR); each
+; frame draws the sky (sky.asm), then the world, then post.asm turns the
+; scene into the window's image (bloom, tonemapping).
+;
 ; The world is drawn into an offscreen framebuffer (colour RGBA8 + a 32-bit
 ; float depth texture), so later passes can read the depth (Hi-Z occlusion
 ; culling, milestone 11; post-processing later). It is blitted to the window
@@ -18,9 +22,10 @@
 %include "gl.inc"
 
 global renderer_init, renderer_frame, renderer_shutdown
-global g_scene_depth, g_viewport_w, g_viewport_h
+global g_scene_depth, g_scene_color, g_viewport_w, g_viewport_h
 
-extern world_render_draw
+extern world_render_draw, sky_init, sky_draw, sky_shutdown
+extern post_init, post_frame, post_shutdown
 
 section .rdata
 align 4
@@ -55,8 +60,17 @@ PROC renderer_init, 0
     GL glEnable, GL_DEPTH_TEST
     mov dword [rel g_viewport_w], 0
     mov dword [rel g_viewport_h], 0
-    LOG_INFO "renderer initialised (reverse-Z, offscreen scene target)"
+    call sky_init
+    test eax, eax
+    jz .fail
+    call post_init
+    test eax, eax
+    jz .fail
+    LOG_INFO "renderer initialised (reverse-Z, HDR scene target, sky, post)"
     mov eax, 1
+    RETURN
+.fail:
+    xor eax, eax
     RETURN
 ENDPROC
 
@@ -73,7 +87,7 @@ PROC scene_target, 0, rbx, rsi
     GL glCreateFramebuffers, 1, rdx
     lea r8, [rel g_scene_color]
     GL glCreateTextures, GL_TEXTURE_2D, 1, r8
-    GL glTextureStorage2D, [rel g_scene_color], 1, GL_RGBA8, rbx, rsi
+    GL glTextureStorage2D, [rel g_scene_color], 1, GL_RGBA16F, rbx, rsi
     lea r8, [rel g_scene_depth]
     GL glCreateTextures, GL_TEXTURE_2D, 1, r8
     GL glTextureStorage2D, [rel g_scene_depth], 1, GL_DEPTH_COMPONENT32F, rbx, rsi
@@ -129,11 +143,11 @@ PROC renderer_frame, 0, rbx, rsi
     INVOKE scene_target, rbx, rsi
 .draw:
     GL glBindFramebuffer, GL_FRAMEBUFFER, [rel g_scene_fbo]
-    GL glClear, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT
+    GL glClear, GL_DEPTH_BUFFER_BIT     ; (the sky covers every pixel)
+    call sky_draw
     call world_render_draw
-    ; show it: the scene colour to the window
-    GL glBindFramebuffer, GL_FRAMEBUFFER, 0
-    GL glBlitNamedFramebuffer, [rel g_scene_fbo], 0, 0, 0, rbx, rsi, 0, 0, rbx, rsi, GL_COLOR_BUFFER_BIT, GL_NEAREST
+    ; show it: bloom, tonemapping, into the window
+    INVOKE post_frame, rbx, rsi
 .done:
     RETURN
 ENDPROC
@@ -143,6 +157,8 @@ ENDPROC
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC renderer_shutdown, 0
+    call post_shutdown
+    call sky_shutdown
     call scene_free
     RETURN
 ENDPROC

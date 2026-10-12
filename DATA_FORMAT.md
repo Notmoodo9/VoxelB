@@ -51,7 +51,7 @@ warnings, as above.
 
 Actions: `move_forward`, `move_back`, `move_left`, `move_right`, `move_up`,
 `move_down`, `sprint`, `toggle_debug_overlay`, `toggle_vsync`,
-`reload_shaders`, `menu`, `toggle_held_light`. Each takes one or two key names (the list of
+`reload_shaders`, `menu`, `toggle_held_light`, `time_forward` (hold: the clock runs 240× faster). Each takes one or two key names (the list of
 names is at the top of the file).
 
 Settings: `mouse_sensitivity` (degrees per mouse count), `invert_mouse_y`
@@ -65,6 +65,8 @@ Settings: `mouse_sensitivity` (degrees per mouse count), `invert_mouse_y`
 | `lod_distance` | `0`–`256` (default 64) | distant terrain (LOD tiles) out to this many chunks; `0`, or a value not beyond `render_distance`, turns it off. 64 is the default; 128–256 for strong PCs |
 | `opaque_leaves` | `0`/`1` (default 0) | `1` draws cut-out blocks (leaves) as solid cubes: faster on weak GPUs |
 | `gpu_culling` | `0`/`1` (default 1) | `1` culls the draws in a compute shader (exact frustum test) and lets the GPU write the indirect commands; `0` draws everything the CPU's visibility walk found |
+| `bloom` | `0`/`1` (default 1) | glowing blocks and the sun bleed light into their surroundings |
+| `height_fog` | `0`/`1` (default 1) | mist that gathers in low ground, thinning with height |
 | `smooth_lighting` | `0`/`1` (default 1) | `1` mixes each face's 4 corner lights smoothly; `0` lights a face flat |
 | `ambient_occlusion` | `0`/`1` (default 1) | `1` darkens inner corners and edges |
 | `held_light` | `r, g, b` (0–15, default 14, 11, 6) | colour of the held light (`toggle_held_light`), a stand-in for held torches until items |
@@ -175,6 +177,8 @@ you run it.
 |---|---|---|
 | `seed` | unsigned number | the world seed: same seed, same world (`--seed <n>` overrides) |
 | `generator` | `terrain` (default) / `flat_test` | the real terrain, or the debug gallery world (`--flat` forces it) |
+| `day_length` | minutes (default 20) | length of one day and night |
+| `start_time` | hour 0–24 (default 8) | time of day at the start (`--time <hour>` overrides) |
 
 ### `terrain.cfg` (Milestone 8)
 

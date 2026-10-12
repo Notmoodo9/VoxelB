@@ -15,6 +15,8 @@
 ;   g_smooth_lighting (u32)      1 = corner lights mixed across faces
 ;   g_ambient_occlusion (u32)    1 = darker inner corners
 ;   g_held_light (u32)           the held light's r | g << 8 | b << 16 (0..15)
+;   g_bloom (u32)                1 = bloom (milestone 14)
+;   g_height_fog (u32)           1 = height fog in low ground
 ;                                (0 or <= render_distance: no LOD)
 ; =============================================================================
 %include "macros.inc"
@@ -25,7 +27,7 @@
 
 global settings_load, g_render_distance, g_opaque_leaves
 global g_gpu_culling, g_occlusion_culling, g_lod_distance
-global g_smooth_lighting, g_ambient_occlusion, g_held_light
+global g_smooth_lighting, g_ambient_occlusion, g_held_light, g_bloom, g_height_fog
 
 extern str_ieq, str_parse_u64, cfg_next_token
 
@@ -44,6 +46,8 @@ k_lod:          db "lod_distance", 0
 k_smooth:       db "smooth_lighting", 0
 k_ao:           db "ambient_occlusion", 0
 k_held:         db "held_light", 0
+k_bloom:        db "bloom", 0
+k_hfog:         db "height_fog", 0
 str_unknown:    db "unknown setting: ", 0
 str_bad:        db "bad value for: ", 0
 
@@ -57,6 +61,8 @@ g_lod_distance:     dd 64
 g_smooth_lighting:  dd 1
 g_ambient_occlusion: dd 1
 g_held_light:       dd 14 | (11 << 8) | (6 << 16)   ; a warm torch
+g_bloom:            dd 1
+g_height_fog:       dd 1
 
 section .bss
 alignb 8
@@ -109,6 +115,16 @@ PROC graphics_pair, 0, rbx, rsi, rdi, r12
     INVOKE str_ieq, rbx, rdx
     test eax, eax
     jnz .held
+    lea rdx, [rel k_bloom]
+    INVOKE str_ieq, rbx, rdx
+    lea rdi, [rel g_bloom]
+    test eax, eax
+    jnz .flag
+    lea rdx, [rel k_hfog]
+    INVOKE str_ieq, rbx, rdx
+    lea rdi, [rel g_height_fog]
+    test eax, eax
+    jnz .flag
     lea rcx, [rel str_cfg_label]
     lea rdx, [rel str_unknown]
     INVOKE cfg_warn, rcx, rdx, rbx

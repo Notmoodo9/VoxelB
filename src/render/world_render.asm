@@ -51,7 +51,8 @@ extern block_textures_init, block_textures_bind, block_textures_shutdown
 extern timer_elapsed_us, world_column, vis_pair_bit
 extern g_scene_depth, g_viewport_w, g_viewport_h
 extern g_gpu_culling, g_occlusion_culling
-extern g_smooth_lighting, g_ambient_occlusion, g_held_light
+extern g_smooth_lighting, g_ambient_occlusion, g_held_light, g_height_fog
+extern g_sun_dir, g_sea_level
 
 global g_lod_tint_tex, g_lod_records
 
@@ -91,10 +92,13 @@ endstruc
 %define U_FOG               9           ; fog density
 %define U_HELD              10          ; held light: rgb levels, on
 %define U_LIGHT_FLAGS       11          ; 1 smooth light, 2 ambient occlusion
-%define U_DAYLIGHT          12          ; sky light strength (M14: day/night)
+%define U_DAYLIGHT          12          ; sky light multiplier (--daylight)
+%define U_CAM_Y             13          ; camera height (height fog)
+%define U_SUN_DIR           14          ; towards the sun (daycycle.asm)
+%define U_FOG_BASE          15          ; height fog base (world y)
 %define LOD_TINT_SIZE       1024        ; LOD tint map texels per side (16 blocks each)
 %define FOG_DEFAULT         0.0013      ; without LOD
-%define FOG_LOD             2.3         ; / the LOD radius: the far edge ~90% fog
+%define FOG_LOD             1.8         ; / the LOD radius: the far edge ~85% fog
 %define TINT_SIZE           1024        ; tint map texels per side (4 blocks each)
 
 ; GPU-driven drawing (milestone 11)
@@ -133,6 +137,7 @@ c_tint_default: dd 0xFF404040           ; factor 1.0
 c_fog_default:  dd FOG_DEFAULT
 c_fog_lod:      dd FOG_LOD
 c_fade_in:      dd 0.92                 ; 1 - FADE (shaders/chunk.frag)
+c_fog_lift:     dd 8.0                  ; height fog base above the sea level
 align 16
 c_abs_mask:     times 4 dd 0x7FFFFFFF
 align 8
@@ -915,7 +920,19 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     mov ecx, [rel g_ambient_occlusion]
     add ecx, ecx
     or eax, ecx
+    mov ecx, [rel g_height_fog]
+    shl ecx, 2
+    or eax, ecx
     GL glProgramUniform1i, rbx, U_LIGHT_FLAGS, rax
+    ; sky and fog (milestone 14)
+    lea r9, [rel g_sun_dir]
+    GL glProgramUniform3fv, rbx, U_SUN_DIR, 1, r9
+    movsd xmm0, [rel g_cam_pos + 8]
+    cvtsd2ss xmm2, xmm0
+    GL glProgramUniform1f, rbx, U_CAM_Y
+    cvtsi2ss xmm2, dword [rel g_sea_level]
+    addss xmm2, [rel c_fog_lift]
+    GL glProgramUniform1f, rbx, U_FOG_BASE
     movss xmm2, [rel g_daylight]
     GL glProgramUniform1f, rbx, U_DAYLIGHT
     mov eax, [rel g_held_light]

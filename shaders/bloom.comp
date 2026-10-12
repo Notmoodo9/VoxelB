@@ -1,0 +1,59 @@
+#version 450 core
+// Bloom (milestone 14), on one RGBA16F texture with a mip chain at half the
+// scene's size:
+//   mode 0: level 0 = the scene's highlights (above u_threshold, soft knee),
+//           a 2 x 2 box down from full size;
+//   mode 1: level n = 2 x 2 box of level n - 1 (downsample);
+//   mode 2: level n += a bilinear upsample of level n + 1 (back up the
+//           chain, in place), so level 0 ends up with every level's blur.
+// Images only for the chain (one level read, another written), like hiz.comp.
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0) uniform sampler2D u_scene;
+layout(rgba16f, binding = 0) uniform image2D u_src;   // level n - 1 or n + 1
+layout(rgba16f, binding = 1) uniform image2D u_dst;   // level n
+
+layout(location = 0) uniform int u_mode;
+layout(location = 1) uniform ivec2 u_src_size;
+layout(location = 2) uniform ivec2 u_dst_size;
+layout(location = 3) uniform float u_threshold;
+
+vec3 src_at(ivec2 p) { return imageLoad(u_src, clamp(p, ivec2(0), u_src_size - 1)).rgb; }
+
+vec3 highlight(vec3 c) {
+    float b = max(c.r, max(c.g, c.b));
+    float knee = u_threshold * 0.5;
+    float s = clamp(b - u_threshold + knee, 0.0, 2.0 * knee);
+    s = s * s / (4.0 * knee + 1e-4);
+    float w = max(s, b - u_threshold) / max(b, 1e-4);
+    return c * w;
+}
+
+void main() {
+    ivec2 d = ivec2(gl_GlobalInvocationID.xy);
+    if (d.x >= u_dst_size.x || d.y >= u_dst_size.y) return;
+    vec3 c;
+    if (u_mode == 0) {
+        ivec2 s = d * 2;
+        ivec2 m = u_src_size - 1;
+        c = highlight(texelFetch(u_scene, min(s, m), 0).rgb)
+          + highlight(texelFetch(u_scene, min(s + ivec2(1, 0), m), 0).rgb)
+          + highlight(texelFetch(u_scene, min(s + ivec2(0, 1), m), 0).rgb)
+          + highlight(texelFetch(u_scene, min(s + ivec2(1, 1), m), 0).rgb);
+        c *= 0.25;
+    } else if (u_mode == 1) {
+        ivec2 s = d * 2;
+        c = (src_at(s) + src_at(s + ivec2(1, 0)) + src_at(s + ivec2(0, 1))
+             + src_at(s + ivec2(1, 1))) * 0.25;
+    } else {
+        // bilinear sample of the smaller level at this texel's centre
+        vec2 p = (vec2(d) + 0.5) * 0.5 - 0.5;
+        ivec2 i = ivec2(floor(p));
+        vec2 f = p - vec2(i);
+        vec3 up = mix(mix(src_at(i), src_at(i + ivec2(1, 0)), f.x),
+                      mix(src_at(i + ivec2(0, 1)), src_at(i + ivec2(1, 1)), f.x), f.y);
+        c = imageLoad(u_dst, d).rgb + up;
+    }
+    imageStore(u_dst, d, vec4(c, 1.0));
+}

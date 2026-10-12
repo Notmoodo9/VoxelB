@@ -1,0 +1,126 @@
+; =============================================================================
+; daycycle.asm — the time of day and the sun's direction (milestone 14).
+;
+; The day lasts day_length minutes (data/world/world.cfg) and starts at
+; start_time (hours, 0..24; the command line's --time overrides it). Holding
+; time_forward (T) runs the clock 240 times faster. The sun rises in the
+; east (+X) at 6:00, stands highest at 12:00 (tilted 25 degrees towards +Z),
+; and sets in the west at 18:00; the moon is opposite it.
+;
+; Public API:
+;   daycycle_init()         after world.cfg is read
+;   daycycle_update()       once per frame (main thread)
+;   g_time_of_day           f32 0..1 (0 midnight, 0.5 noon)
+;   g_sun_dir               f32 x, y, z (unit, towards the sun)
+;   g_day_length, g_start_hour   f32 settings (world.cfg)
+;   g_time_override         f32 start hour from --time, or -1
+; =============================================================================
+%include "macros.inc"
+%include "log.inc"
+%include "input.inc"
+
+global daycycle_init, daycycle_update
+global g_time_of_day, g_sun_dir, g_day_length, g_start_hour, g_time_override
+
+extern g_frame_us
+
+%define FAST_FORWARD    240.0           ; clock speed while time_forward is held
+
+section .rdata
+align 4
+c_two_pi:       dd 6.28318530718
+c_quarter:      dd 0.25
+c_24:           dd 24.0
+c_60:           dd 60.0
+c_us:           dd 0.000001
+c_one:          dd 1.0
+c_fast:         dd FAST_FORWARD
+c_cos_tilt:     dd 0.906307787              ; cos 25 degrees
+c_sin_tilt:     dd 0.422618262              ; sin 25 degrees
+
+section .data
+align 4
+g_day_length:       dd 20.0             ; minutes per day
+g_start_hour:       dd 8.0
+g_time_override:    dd -1.0
+
+section .bss
+alignb 16
+g_sun_dir:          resd 4
+g_time_of_day:      resd 1
+g_dc_tmp:           resd 2
+
+section .text
+
+; -----------------------------------------------------------------------------
+; daycycle_init — the clock at the start hour.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC daycycle_init, 0
+    movss xmm0, [rel g_start_hour]
+    xorps xmm1, xmm1
+    comiss xmm1, [rel g_time_override]
+    ja .no_override
+    movss xmm0, [rel g_time_override]
+.no_override:
+    divss xmm0, [rel c_24]
+    call wrap_time
+    movss [rel g_time_of_day], xmm0
+    call sun_from_time
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; daycycle_update — advance the clock by the last frame's time.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC daycycle_update, 16
+    mov rax, [rel g_frame_us]
+    cvtsi2ss xmm0, rax
+    mulss xmm0, [rel c_us]
+    minss xmm0, [rel c_one]             ; (at most 1 s per frame)
+    movss [LOCAL(0)], xmm0
+    mov ecx, ACT_TIME_FORWARD
+    call input_down
+    movss xmm0, [LOCAL(0)]
+    test eax, eax
+    jz .speed
+    mulss xmm0, [rel c_fast]
+.speed:
+    movss xmm1, [rel g_day_length]
+    mulss xmm1, [rel c_60]              ; seconds per day
+    maxss xmm1, [rel c_one]
+    divss xmm0, xmm1
+    addss xmm0, [rel g_time_of_day]
+    call wrap_time
+    movss [rel g_time_of_day], xmm0
+    call sun_from_time
+    RETURN
+ENDPROC
+
+; wrap_time: xmm0 = frac(xmm0)   clobbers xmm1
+wrap_time:
+    roundss xmm1, xmm0, 9               ; floor
+    subss xmm0, xmm1
+    ret
+
+; sun_from_time: g_sun_dir from g_time_of_day   clobbers rax, xmm0, x87
+sun_from_time:
+    movss xmm0, [rel g_time_of_day]
+    subss xmm0, [rel c_quarter]
+    mulss xmm0, [rel c_two_pi]          ; 0 at sunrise
+    movss [rel g_dc_tmp], xmm0
+    fld dword [rel g_dc_tmp]
+    fsincos                             ; st0 = cos, st1 = sin
+    fstp dword [rel g_dc_tmp]           ; cos
+    fstp dword [rel g_dc_tmp + 4]       ; sin
+    movss xmm0, [rel g_dc_tmp]
+    movss [rel g_sun_dir], xmm0         ; x: east at sunrise
+    movss xmm0, [rel g_dc_tmp + 4]
+    mulss xmm0, [rel c_cos_tilt]
+    movss [rel g_sun_dir + 4], xmm0     ; y: height
+    movss xmm0, [rel g_dc_tmp + 4]
+    mulss xmm0, [rel c_sin_tilt]
+    movss [rel g_sun_dir + 8], xmm0     ; z: the tilt of the sun's path
+    mov dword [rel g_sun_dir + 12], 0
+    ret

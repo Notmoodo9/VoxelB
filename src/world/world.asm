@@ -37,7 +37,7 @@ extern str_ieq, str_parse_float, str_parse_u64
 extern blocks_load, block_find
 extern terrain_load, terrain_gen_column, terrain_find_spawn, g_world_seed
 extern g_block_count, g_block_shape, g_block_state, g_block_nstates
-extern timer_elapsed_us
+extern timer_elapsed_us, g_day_length, g_start_hour
 
 %define MAX_LAYERS          16
 %define MAX_STRUCT_BLOCKS   8
@@ -58,6 +58,8 @@ str_world_cfg:  db "data/world/world.cfg", 0
 str_world_label: db "world.cfg", 0
 k_seed:         db "seed", 0
 k_generator:    db "generator", 0
+k_day_length:   db "day_length", 0
+k_start_time:   db "start_time", 0
 v_terrain:      db "terrain", 0
 v_flat:         db "flat_test", 0
 str_cfg_label:  db "flat_test.cfg", 0
@@ -1253,7 +1255,8 @@ PROC world_hash_selftest, 16, rbx, rsi, rdi, r12, r13
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; world_cfg_pair — cfg_parse callback for world.cfg (seed, generator).
+; world_cfg_pair — cfg_parse callback for world.cfg (seed, generator,
+; day_length, start_time).
 ;   in:  rcx = name, rdx = value
 ; -----------------------------------------------------------------------------
 PROC world_cfg_pair, 0, rbx, rsi
@@ -1270,6 +1273,28 @@ PROC world_cfg_pair, 0, rbx, rsi
     mov [rel g_world_seed], eax
     RETURN
 .not_seed:
+    lea rdx, [rel k_day_length]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_day
+    mov rcx, rsi
+    call str_parse_float
+    test eax, eax
+    jz .bad
+    movss [rel g_day_length], xmm0
+    RETURN
+.not_day:
+    lea rdx, [rel k_start_time]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_start
+    mov rcx, rsi
+    call str_parse_float
+    test eax, eax
+    jz .bad
+    movss [rel g_start_hour], xmm0
+    RETURN
+.not_start:
     lea rdx, [rel k_generator]
     INVOKE str_ieq, rbx, rdx
     test eax, eax

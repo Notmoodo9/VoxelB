@@ -1,14 +1,67 @@
 # Progress
 
 ## Current state
-**Milestone 13: Lighting: DONE** (Windows CI green: run #68)
+**Milestone 14 part 1 (sky, day/night, fog, HDR, bloom): DONE** (Windows CI: see below)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
 `design/BACKLOG.md`). Progressive LOD is planned as Milestone 34.
 
-Next: **Milestone 14: Sky, day/night, fog, cascaded shadows,
-HDR/tonemap/bloom**. It is a technical milestone, so no design interview.
+Next: **Milestone 14 part 2**: cascaded shadow maps from the sun and moon
+(soft edges) and volumetric-looking clouds. It is technical, so no design
+interview.
+
+---
+
+## Milestone 14, part 1 — done (2026-10-12)
+
+### What was built (D82)
+* **HDR rendering**: the world renders into a 16-bit float target, and a
+  post pass (`post.asm`, `shaders/post.frag`) tonemaps it (ACES) with a
+  saturation/vibrance grade.
+  * **Bloom** (`shaders/bloom.comp`): glowing blocks, lava and the sun
+    bleed soft light.
+* **Sky** (`sky.asm`, `shaders/sky.frag`):
+  * a blue gradient by day; orange and pink glows at sunrise and sunset;
+  * the sun with halos; the moon opposite it;
+  * twinkling stars at night.
+* **Day/night cycle** (`src/world/daycycle.asm`):
+  * `day_length` (20 min) and `start_time` (8:00) in world.cfg;
+  * `--time <hour>` to start at any hour; hold **T** to fast-forward;
+  * surfaces are lit by warm low sun, white noon light or blue
+    moonlight.
+* **Fog**: distance fog and height fog (mist in low ground), coloured by
+  the sky in the view direction (golden at sunset, dark blue at night).
+  Caves get dark fog.
+* **Settings**: `bloom`, `height_fog`.
+* **Debug overlay** line `sky`: time of day and day length.
+
+### Verified
+* Debug and release headless tests pass, with no GL errors or asserts.
+* Screenshots from `--pos 0 180 0`:
+  * noon (`--time 12`): vivid terrain, soft haze on distant ranges;
+  * sunset, looking west (`--time 17.6 --look 270 2`): pink-orange sky,
+    golden haze, silhouetted trees;
+  * night (`--time 23 --look 90 10`): starry sky, moonlit snow, glowing
+    crystals.
+
+### Performance (llvmpipe software GL, 1280×720, render distance 16 + LOD 64)
+| | M13 | M14.1 |
+|---|---|---|
+| Frame time at spawn (loaded) | ~750 ms | ~950 ms |
+
+The extra cost is the full-screen sky, fog and post passes; a software
+renderer is slow at those. On a GPU they cost well under a millisecond.
+
+### For the owner
+* Day length is 20 minutes (like Minecraft) and the game starts at 8:00.
+  Both are in `data/world/world.cfg`. Say if you want a different
+  default.
+
+### Deferred
+* Cascaded shadows and clouds: part 2.
+* Biome-tinted fog, underwater fog (M15), weather (M25), auto-exposure.
+* A shader include mechanism so `sky_color()` is not duplicated.
 
 ---
 

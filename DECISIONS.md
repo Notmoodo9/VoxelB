@@ -1226,3 +1226,48 @@ block for their upper half (mossy cobblestone boulders).
 * **Settings:** `smooth_lighting`, `ambient_occlusion`, `held_light`
   (graphics.cfg); action `toggle_held_light` (L).
 
+## D82 — Sky, day/night, fog, HDR and bloom (M14 part 1)
+* **HDR scene.** The scene target's colour is RGBA16F. chunk.frag still
+  works out lighting in the textures' own (sRGB) space, so the look of M13
+  is kept, then converts to linear (^2.2). Glow layers are added in linear
+  at 2.5× (above white, so they bloom).
+  * `post.frag` (fullscreen triangle into the window) adds bloom, applies
+    exposure and ACES (Narkowicz fit), then a grade: saturation 1.12 plus
+    vibrance 0.25 for duller colours. Then gamma 1/2.2.
+* **Bloom** (`bloom.comp`): one RGBA16F texture with up to 6 mips at half
+  size.
+  * Prefilter: the highlights above 1.0 with a soft knee, a 2×2 box from
+    the scene.
+  * Downsample: 2×2 boxes down the chain.
+  * Upsample: in place, level n += bilinear(level n + 1).
+  * Images only, one level read and another written, like Hi-Z.
+  * The final pass adds 7% of level 0.
+* **Sky** (`sky.frag`, drawn first at the far plane with no depth test).
+  An analytic model in linear colour, not a full scattering simulation:
+  * zenith-to-horizon gradient that blends from day to night with the
+    sun's height;
+  * warm glow on the sun's side and pink opposite while the sun is near
+    the horizon;
+  * sun disk (HDR 40×) with a tight and a wide halo; the moon opposite the
+    sun;
+  * hashed twinkling stars at night.
+  * `sky_color()` is duplicated in chunk.frag for the fog colour (no
+    shader includes yet). Keep them the same.
+* **Day/night** (`daycycle.asm`): `day_length` minutes and `start_time`
+  in world.cfg, `--time`, and T to run the clock 240× faster.
+  * The sun rises in the east (+X) at 6:00 and peaks at noon, its path
+    tilted 25° towards +Z. It moves continuously.
+  * Surfaces get the sky light × a sun colour: white at noon, warm near
+    the horizon, dim blue moonlight at night.
+* **Fog**: the colour is the sky's colour in the view direction, so it
+  matches sunsets and nights.
+  * Distance fog: density 1.8 / LOD radius.
+  * Height fog: integrated along the ray, 0.0012 per block at the base
+    (sea level + 8), thinning by e every 30 blocks, no thicker below the
+    base.
+  * Near surfaces without sky light (caves) get dark fog. Beyond 160
+    blocks the sky colour wins.
+* Settings `bloom`, `height_fog` (graphics.cfg).
+* Not yet: cascaded shadows and clouds (part 2); biome-tinted fog;
+  auto-exposure.
+
