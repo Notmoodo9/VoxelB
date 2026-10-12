@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 16, part 2: Breaking and placing blocks: DONE** (Windows CI: see below)
+**Milestone 16, part 2: Breaking and placing blocks: DONE** (Windows CI green: run #78)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
