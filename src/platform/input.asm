@@ -23,9 +23,10 @@ global input_down, input_pressed, input_vk_pressed
 global input_set_capture, input_update_capture, input_key_name, input_action_name
 global g_mouse_dx, g_mouse_dy, g_mouse_captured, g_bindings
 global g_mouse_sensitivity, g_invert_mouse_y
+global input_any_pressed, input_format_binding, input_save_bindings
 global input_on_char, g_mouse_x, g_mouse_y, g_mouse_wheel, g_chars, g_char_count
 
-extern str_ieq, str_parse_float
+extern str_ieq, str_parse_float, str_copy
 
 IMPORT RegisterRawInputDevices, GetRawInputData
 IMPORT ShowCursor, ClipCursor, GetClientRect, MapWindowPoints
@@ -84,6 +85,18 @@ str_too_many:       db "more than 2 keys for: ", 0
 str_bound:          db "bound ", 0
 str_arrow:          db " -> ", 0
 str_comma:          db ", ", 0
+
+align 8
+; what the settings screen writes back into controls.cfg: key, formatter, arg
+save_table:
+%assign i 0
+%rep ACT_COUNT
+    dq an_%+i, input_format_binding, i
+%assign i i + 1
+%endrep
+    dq set_sens, cfgw_hundredths, g_mouse_sensitivity
+    dq set_inv, cfgw_flag, g_invert_mouse_y
+save_count equ ($ - save_table) / 24
 
 %include "keytable.inc"
 
@@ -365,6 +378,82 @@ PROC log_bindings, 0, rbx, rsi
     inc ebx
     cmp ebx, ACT_COUNT
     jb .next
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; input_any_pressed — the first named key or mouse button that went down this
+; frame (for rebinding in the settings screen).
+;   out: eax = virtual-key code, 0 if none
+;   clobbers: rax, rcx, rdx, r8
+; -----------------------------------------------------------------------------
+input_any_pressed:
+    mov r8d, 1
+.vk:
+    lea rax, [rel g_keys_pressed]
+    cmp byte [rax + r8], 0
+    je .next
+    mov ecx, r8d
+    call input_key_name
+    lea rcx, [rel str_unknown_q]
+    cmp rax, rcx
+    jne .found                          ; (keys without a name can't be saved)
+.next:
+    inc r8d
+    cmp r8d, 256
+    jb .vk
+    xor eax, eax
+    ret
+.found:
+    mov eax, r8d
+    ret
+
+; -----------------------------------------------------------------------------
+; input_format_binding — an action's keys as controls.cfg text ("W, Up";
+; nothing when unbound).
+;   in:  rcx = cursor, rdx = action id
+;   out: rax = new cursor (at its terminator)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC input_format_binding, 0, rbx, rsi, rdi
+    mov rdi, rcx
+    lea rsi, [rel g_bindings]
+    lea rsi, [rsi + rdx * BINDS_PER_ACTION]
+    mov byte [rdi], 0
+    xor ebx, ebx
+.key:
+    cmp ebx, BINDS_PER_ACTION
+    jae .done
+    movzx ecx, byte [rsi + rbx]
+    test ecx, ecx
+    jz .next
+    call input_key_name
+    mov rdx, rax
+    test ebx, ebx
+    jz .first
+    cmp byte [rsi], 0
+    je .first                           ; (the first slot was empty)
+    mov word [rdi], ', '
+    add rdi, 2
+.first:
+    mov rcx, rdi
+    call str_copy
+    mov rdi, rax
+.next:
+    inc ebx
+    jmp .key
+.done:
+    mov rax, rdi
+    RETURN
+ENDPROC
+
+; input_save_bindings — write the bindings, sensitivity and invert into
+; controls.cfg (comments kept).   out: eax = 1 written
+PROC input_save_bindings, 0
+    lea rcx, [rel STR_CONTROLS]
+    lea rdx, [rel save_table]
+    mov r8d, save_count
+    call cfg_rewrite
     RETURN
 ENDPROC
 

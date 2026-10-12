@@ -25,6 +25,7 @@
 ;   stream_block_changed(ecx=x, edx=y, r8d=z)   a block changed: remesh
 ;   stream_reset()                 unload everything (changed columns are
 ;                                  saved), ready for another world (M17)
+;   stream_set_distance()          g_render_distance changed (M17)
 ;   g_loaded / g_loaded_count      columns (for drawing: state COL_READY)
 ;   g_stream_* statistics (render distance: settings.asm)
 ; =============================================================================
@@ -39,6 +40,7 @@
 %include "world_api.inc"
 
 global stream_init, stream_update, stream_shutdown, stream_block_changed, stream_reset
+global stream_set_distance
 global g_loaded, g_loaded_count
 global g_stream_ready, g_stream_gen_inflight, g_stream_mesh_inflight
 global g_stream_update_us, g_stream_update_max_us, g_stream_upload_frame
@@ -60,6 +62,9 @@ IMPORT VirtualAlloc, VirtualFree
 %define MEM_RESERVE         0x2000
 %define MEM_RELEASE         0x8000
 %define PAGE_READWRITE      0x04
+
+%define SPIRAL_MAX_R    (48 + 2)        ; settings.asm MAX_DISTANCE + 2
+%define SPIRAL_CAP      ((2 * SPIRAL_MAX_R + 1) * (2 * SPIRAL_MAX_R + 1))
 
 section .rdata
 align 8
@@ -179,13 +184,17 @@ PROC build_spiral, 16, rbx, rsi, rdi, r12, r13, r14, r15
     cmp ecx, r14d
     jbe .prefix
     mov [rel g_spiral_count], rax
-    ; storage
-    lea rdx, [rax * 4]
+    ; storage: made once, for the largest render distance (the settings
+    ; screen rebuilds the spiral when the distance changes)
+    mov rax, [rel g_spiral]
+    test rax, rax
+    jnz .have_storage
     lea rcx, [rel g_arena_perm]
-    INVOKE arena_alloc, rcx, rdx, 16
+    INVOKE arena_alloc, rcx, SPIRAL_CAP * 4, 16
     test rax, rax
     jz .fail
     mov [rel g_spiral], rax
+.have_storage:
     mov r15, rax
     ; place
     mov esi, r13d
@@ -1107,6 +1116,19 @@ PROC stream_shutdown, 0
     jmp .next
 .done:
     LOG_INFO "stream: all columns released"
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; stream_set_distance — g_render_distance changed (settings screen): new
+; spiral; columns now too far unload by themselves, new ones stream in.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC stream_set_distance, 0
+    call build_spiral
+    mov dword [rel g_view_logged], 0
+    mov rax, [rel g_spiral_count]
+    LOG_VAL LOG_LEVEL_INFO, "stream: spiral offsets", rax
     RETURN
 ENDPROC
 

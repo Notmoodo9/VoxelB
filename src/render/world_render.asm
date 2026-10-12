@@ -50,7 +50,7 @@
 %include "world_api.inc"
 %include "lod.inc"
 
-global world_render_init, world_render_draw, world_render_shutdown, tint_upload
+global world_render_init, world_render_draw, world_render_shutdown, tint_upload, shadow_apply
 global g_world_visible, g_world_drawn_quads, g_world_gpu_bytes, g_quad_buffer
 global g_light_buffer, g_held_on, g_daylight, g_shadow_records, g_cam_in_water
 global g_world_draws, g_vis_visited, g_world_gpu_visible, g_world_occluded
@@ -203,6 +203,7 @@ g_shadow_fbo:       resd 1
 g_shadow_ssbo:      resd 1
 g_shadow_cmd:       resd SHADOW_CASCADES
 g_shadow_on:        resd 1              ; cascades in use (0: off)
+g_shadow_made_res:  resd 1              ; size the maps were made with
 g_shadow_frame:     resd 1              ; frames drawn (the far cascades alternate)
 g_shadow_mask:      resd 1              ; cascades drawn this frame
 g_refr_fbo:         resd 1              ; copies of the opaque scene (water)
@@ -1653,14 +1654,47 @@ PROC shadow_init, 0, rbx
     GL glCreateBuffers, 1, rdx
     GL glNamedBufferStorage, [rel g_shadow_ssbo], SHADOW_DATA_BYTES, 0, 0
     mov dword [rel g_shadow_on], 0
+    call shadow_apply
+    RETURN
+.fail:
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; shadow_apply — follow the shadow settings (start-up and the settings
+; screen): shadows off = no passes (the maps are kept); on = make the
+; program and the maps if missing, or new maps if the resolution changed.
+;   out: eax = 1 (0 if the program failed to build: shadows stay off)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC shadow_apply, 0, rbx
+    mov dword [rel g_shadow_on], 0
     cmp dword [rel g_shadows], 0
     je .done
+    cmp dword [rel g_shadow_prog], 0
+    jne .have_prog
     lea rcx, [rel str_vs]
     lea rdx, [rel str_shadow_fs]
     call shader_create
     cmp eax, -1
     je .fail
     mov [rel g_shadow_prog], eax
+.have_prog:
+    cmp dword [rel g_shadow_tex], 0
+    je .create
+    mov eax, [rel g_shadow_res]
+    cmp eax, [rel g_shadow_made_res]
+    je .on
+    ; another size: new maps
+    lea rdx, [rel g_shadow_tex]
+    GL glDeleteTextures, 1, rdx
+    lea rdx, [rel g_shadow_fbo]
+    GL glDeleteFramebuffers, 1, rdx
+    lea rdx, [rel g_shadow_cmd]
+    GL glDeleteBuffers, SHADOW_CASCADES, rdx
+    mov dword [rel g_shadow_tex], 0
+.create:
     ; depth array: one layer per cascade, compared on sampling (reverse-Z:
     ; lit where the fragment is at least as near the light as the map)
     lea r8, [rel g_shadow_tex]
@@ -1687,9 +1721,11 @@ PROC shadow_init, 0, rbx
     inc ebx
     cmp ebx, SHADOW_CASCADES
     jb .cmd
-    mov dword [rel g_shadow_on], SHADOW_CASCADES
     mov eax, [rel g_shadow_res]
+    mov [rel g_shadow_made_res], eax
     LOG_VAL LOG_LEVEL_INFO, "shadows: cascades 3, map size", rax
+.on:
+    mov dword [rel g_shadow_on], SHADOW_CASCADES
 .done:
     mov eax, 1
     RETURN

@@ -40,6 +40,7 @@ extern input_set_capture, input_update_capture, input_key_name, input_action_nam
 extern g_mouse_dx, g_mouse_dy, g_mouse_captured, g_bindings
 extern g_mouse_sensitivity, g_invert_mouse_y
 extern input_on_char, g_mouse_x, g_mouse_y, g_mouse_wheel, g_chars, g_char_count
+extern input_any_pressed, input_format_binding, input_save_bindings
 %endif
 
 %endif

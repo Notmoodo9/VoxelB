@@ -1,15 +1,56 @@
 # Progress
 
 ## Current state
-**Milestone 17, part 2b: World list, world creation, deleting worlds: DONE** (Windows CI green: run #85)
+**Milestone 17: Save/load, main menu, world creation, settings: DONE** (part 2c, Windows CI: see below)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
 `design/BACKLOG.md`). Progressive LOD is planned as Milestone 34.
 
-Next: **Milestone 17, part 2c: settings** (tabs with presets: graphics,
-controls with rebinding, game; live apply; written back to the cfg files;
-design/ui/menus.md).
+Next: **Milestone 18 (🎨 DESIGN): items, inventory, hotbar, chests,
+crafting, tool tiers, smelting** — starts with a design interview.
+
+---
+
+## Milestone 17, part 2c — done (2026-10-12): settings (D91)
+
+### What was built
+* **Settings screen** (main menu and pause menu), three tabs:
+  * **Graphics:** presets Low / Medium / High / Ultra, plus render
+    distance, far terrain (LOD), shadows, shadow detail, shadow distance,
+    water, clouds, bloom, height fog, smooth lighting, ambient occlusion,
+    fast leaves (after a restart), GPU culling, occlusion culling.
+  * **Controls:** every action with two key slots: click, press the new
+    key or mouse button (Delete: none, Esc: cancel); mouse sensitivity,
+    invert mouse Y.
+  * **Game:** field of view (50–110), autosave (off … 30 min), show HUD.
+* Changes show at once (also behind the pause menu); render/LOD distance
+  apply when the screen closes.
+* Closing writes `graphics.cfg`, `controls.cfg` and the new `game.cfg`,
+  keeping all their comments (only changed files are written).
+* `autosave_minutes` moved from `world.cfg` to `game.cfg`; FOV is a
+  setting now (was fixed at 70°).
+
+### Verified (scripted clicks and keys with xdotool)
+* Main menu → Settings → Low preset: every value switched, Low highlighted;
+  Controls: second key of Move forward rebound to I; Game: FOV 70 → 75;
+  Done → the three files rewritten with only those values changed
+  (comments and other keys intact — checked with git diff), the render
+  distance applied (spiral 1009 → 317 offsets) and LOD reset.
+* In a world: Esc → pause → Settings → Low: the world behind loses
+  shadows, bloom, clouds at once; Done → pause; a rebinding cancelled with
+  Esc, Esc again back to the pause menu, Resume plays on.
+* Debug build: Ultra preset (spiral 2121) and tab switching without
+  warnings; debug and release headless tests pass.
+
+### Performance
+* Applying Low → High etc. costs nothing per frame; render distance
+  changes stream columns in/out over the next frames like walking does;
+  a shadow resolution change rebuilds 3 depth layers once.
+
+### Deferred
+* Audio volumes (milestone 24), GUI scale, a key-conflict warning.
+* Presets tuned to the FPS targets (milestone 33).
 
 ---
 

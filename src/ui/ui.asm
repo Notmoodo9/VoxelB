@@ -31,7 +31,7 @@ extern ui_draw_begin, ui_draw_flush, ui_rect, ui_glass, ui_glow, ui_text
 extern ui_text_width, str_len
 extern g_ui_scale, g_frame_us, g_mouse_captured, g_chars, g_char_count
 
-%define UI_IDS          64
+%define UI_IDS          256
 %define HOVER_RATE      12.0            ; hover animation: per second
 
 section .rdata

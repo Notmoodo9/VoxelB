@@ -18,4 +18,5 @@
 %define SCREEN_CREDITS  2
 %define SCREEN_PAUSE    3
 %define SCREEN_CREATE   4
+%define SCREEN_SETTINGS 5
 %endif

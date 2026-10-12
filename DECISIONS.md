@@ -1587,3 +1587,36 @@ block for their upper half (mossy cobblestone boulders).
   ASCII = the font's range) and Backspace edit, Enter reports back; a
   blinking caret.
 
+## D91 — Settings screen: live apply, write-back keeping comments (M17 part 2c)
+* **Rows are data** (`settings_screen.asm`, `SROW` tables): a label, the
+  variable and its kind (toggle, range with a step, a list of allowed
+  values with names, hundredths of a float, float toggle) and what a change
+  touches. One stepper/toggle widget draws them all; adding a setting is a
+  table line plus its key in the file's parser.
+* **Live apply:** everything read per frame changes at once (effects,
+  culling, water, fog, lighting flags, FOV, keys, sensitivity). Shadows
+  are rebuilt on the spot (`shadow_apply`: the program and maps are made on
+  first need, the maps again when the resolution changes; off just stops
+  the passes). Render and LOD distance apply when the screen closes, once,
+  instead of on every click: the streamer rebuilds its spiral (made once
+  for the largest distance, so no memory is lost) and lets columns stream
+  in or out; the LOD rings are reset (they start at the render distance).
+  `opaque_leaves` is baked into the block registry and the meshes, so it
+  says it needs a restart.
+* **Presets** (Low / Medium / High / Ultra) set 11 values; the matching
+  preset is highlighted, otherwise "Custom". High = the old defaults; Ultra
+  = 24 chunks + 128 LOD + 4096 shadows. They will be tuned against the FPS
+  targets in milestone 33.
+* **Write-back** (`cfg_rewrite`): the file is read line by line and only
+  the value text of known keys is replaced (a comment after a value
+  stays); missing keys are appended; written via `.tmp` + rename. So the
+  hand-written explanations in the cfg files survive the settings screen.
+* **Rebinding:** two keys per action as in `controls.cfg`; a click on a
+  slot waits for the next key or mouse button that has a name (starting
+  the frame after the click, so the click is not taken as the key); Delete
+  unbinds, Esc cancels. Esc can therefore not be bound from the screen
+  (it stays the menu key unless edited in the file).
+* **game.cfg** is new for player-facing game options (FOV, autosave, HUD);
+  `autosave_minutes` moved there from `world.cfg`, which describes the
+  world, not the player's preferences.
+

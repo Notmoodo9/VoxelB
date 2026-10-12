@@ -36,7 +36,7 @@ global g_gravity
 global world_spawn, g_generator, g_seed_override, g_seed_override_set, g_force_flat
 global g_world_gen_count, g_world_gen_total_us, g_world_gen_max_us
 
-extern biomes_load, save_load_column, g_autosave_minutes
+extern biomes_load, save_load_column
 extern str_ieq, str_parse_float, str_parse_u64
 extern blocks_load, block_find
 extern terrain_load, terrain_gen_column, terrain_find_spawn, g_world_seed
@@ -67,7 +67,6 @@ k_start_time:   db "start_time", 0
 k_cloud_cover:  db "cloud_cover", 0
 k_cloud_height: db "cloud_height", 0
 k_gravity:      db "gravity", 0
-k_autosave:     db "autosave_minutes", 0
 v_terrain:      db "terrain", 0
 v_flat:         db "flat_test", 0
 str_cfg_label:  db "flat_test.cfg", 0
@@ -1432,17 +1431,6 @@ PROC world_cfg_pair, 0, rbx, rsi
     movss [rel g_gravity], xmm0
     RETURN
 .not_gravity:
-    lea rdx, [rel k_autosave]
-    INVOKE str_ieq, rbx, rdx
-    test eax, eax
-    jz .not_autosave
-    mov rcx, rsi
-    call str_parse_u64
-    test r8, r8
-    jz .bad
-    mov [rel g_autosave_minutes], eax
-    RETURN
-.not_autosave:
     lea rdx, [rel k_generator]
     INVOKE str_ieq, rbx, rdx
     test eax, eax

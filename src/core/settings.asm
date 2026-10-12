@@ -1,12 +1,19 @@
 ; =============================================================================
-; settings.asm — graphics settings from data/config/graphics.cfg.
+; settings.asm — graphics settings from data/config/graphics.cfg and game
+; settings from data/config/game.cfg.
 ;
 ; Loaded once at start-up, before the world and the streamer, because both
 ; the block registry (opaque_leaves) and the streamer (render_distance) use
-; them. Restart after editing.
+; them. The settings screen (settings_screen.asm) changes them while the
+; game runs and writes them back (settings_save).
 ;
 ; Public API:
-;   settings_load()              parse the file (missing file: defaults)
+;   settings_load()              parse the files (missing file: defaults)
+;   settings_save_graphics(), settings_save_game() -> eax 1: write the
+;                                values back into the files (cfg_rewrite)
+;   g_fov (u32)                  vertical field of view, degrees, 50..110
+;   g_show_hud (u32)             1 = draw the HUD
+;   (game.cfg's autosave_minutes: g_autosave_minutes in save.asm)
 ;   g_render_distance (u32)      full-detail view distance in chunks, 2..48
 ;   g_opaque_leaves (u32)        1 = draw leaves as solid cubes (low-end)
 ;   g_gpu_culling (u32)          1 = cull the draws in a compute shader
@@ -35,8 +42,9 @@ global settings_load, g_render_distance, g_opaque_leaves
 global g_gpu_culling, g_occlusion_culling, g_lod_distance
 global g_smooth_lighting, g_ambient_occlusion, g_held_light, g_bloom, g_height_fog
 global g_shadows, g_shadow_res, g_shadow_distance, g_clouds, g_water_quality
+global g_fov, g_show_hud, settings_save_graphics, settings_save_game
 
-extern str_ieq, str_parse_u64, cfg_next_token
+extern str_ieq, str_parse_u64, cfg_next_token, g_autosave_minutes
 
 %define MIN_DISTANCE        2
 %define MAX_DISTANCE        48
@@ -60,6 +68,12 @@ k_clouds:       db "clouds", 0
 k_water:        db "water_quality", 0
 k_shadow_res:   db "shadow_resolution", 0
 k_shadow_dist:  db "shadow_distance", 0
+str_game_path:  db "data/config/game.cfg", 0
+str_game_label: db "game.cfg", 0
+k_fov:          db "fov", 0
+k_autosave:     db "autosave_minutes", 0
+k_hud:          db "show_hud", 0
+str_missing:    db " missing; using defaults", 0
 str_unknown:    db "unknown setting: ", 0
 str_bad:        db "bad value for: ", 0
 
@@ -80,6 +94,8 @@ g_clouds:           dd 1
 g_water_quality:    dd 2
 g_shadow_res:       dd 2048
 g_shadow_distance:  dd 160
+g_fov:              dd 70
+g_show_hud:         dd 1
 
 section .bss
 alignb 8
@@ -277,26 +293,14 @@ ENDPROC
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC settings_load, 0
-    lea rcx, [rel g_arena_scratch]
-    call arena_mark
-    mov [rel g_cfg_mark], rax
-    lea rcx, [rel g_cfg_path]
-    lea rdx, [rel str_cfg_path]
-    call path_make
-    lea rcx, [rel g_cfg_path]
-    lea rdx, [rel g_arena_scratch]
-    call file_load
-    test rax, rax
-    jz .no_cfg
+    lea rcx, [rel str_cfg_path]
     lea rdx, [rel graphics_pair]
-    lea r9, [rel str_cfg_label]
-    INVOKE cfg_parse, rax, rdx, 0, r9
-    jmp .done
-.no_cfg:
-    LOG_WARN "data/config/graphics.cfg missing; using defaults"
-.done:
-    lea rcx, [rel g_arena_scratch]
-    INVOKE arena_reset_to, rcx, [rel g_cfg_mark]
+    lea r8, [rel str_cfg_label]
+    call load_file
+    lea rcx, [rel str_game_path]
+    lea rdx, [rel game_pair]
+    lea r8, [rel str_game_label]
+    call load_file
     mov eax, [rel g_render_distance]
     LOG_VAL LOG_LEVEL_INFO, "settings: render distance (chunks)", rax
     mov eax, [rel g_opaque_leaves]
@@ -305,3 +309,138 @@ PROC settings_load, 0
     LOG_VAL LOG_LEVEL_INFO, "settings: LOD distance (chunks)", rax
     RETURN
 ENDPROC
+
+; load_file — parse one settings file.
+;   in:  rcx = root-relative path, rdx = cfg callback, r8 = label
+;   clobbers: volatile registers
+PROC load_file, 0, rbx, rsi, rdi
+    mov rbx, rcx
+    mov rsi, rdx
+    mov rdi, r8
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [rel g_cfg_mark], rax
+    lea rcx, [rel g_cfg_path]
+    mov rdx, rbx
+    call path_make
+    lea rcx, [rel g_cfg_path]
+    lea rdx, [rel g_arena_scratch]
+    call file_load
+    test rax, rax
+    jz .no_cfg
+    INVOKE cfg_parse, rax, rsi, 0, rdi
+    jmp .done
+.no_cfg:
+    mov ecx, LOG_LEVEL_WARN
+    call log_begin
+    mov rcx, rdi
+    call log_append_str
+    lea rcx, [rel str_missing]
+    call log_append_str
+    call log_end
+.done:
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [rel g_cfg_mark]
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; game_pair — cfg_parse callback for game.cfg.
+;   in:  rcx = name, rdx = value
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC game_pair, 0, rbx, rsi
+    mov rbx, rcx
+    mov rsi, rdx
+    mov rcx, rsi
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    mov rsi, rax                        ; (every game.cfg value is a number)
+    lea rdx, [rel k_fov]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_fov
+    cmp rsi, 50
+    jb .bad
+    cmp rsi, 110
+    ja .bad
+    mov [rel g_fov], esi
+    RETURN
+.not_fov:
+    lea rdx, [rel k_autosave]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_autosave
+    cmp rsi, 1440
+    ja .bad
+    mov [rel g_autosave_minutes], esi
+    RETURN
+.not_autosave:
+    lea rdx, [rel k_hud]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .unknown
+    cmp rsi, 1
+    ja .bad
+    mov [rel g_show_hud], esi
+    RETURN
+.unknown:
+    lea rcx, [rel str_game_label]
+    lea rdx, [rel str_unknown]
+    INVOKE cfg_warn, rcx, rdx, rbx
+    RETURN
+.bad:
+    lea rcx, [rel str_game_label]
+    lea rdx, [rel str_bad]
+    INVOKE cfg_warn, rcx, rdx, rbx
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; settings_save_graphics / settings_save_game — write the current values
+; into graphics.cfg / game.cfg (comments and other keys are kept).
+;   out: eax = 1 written
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC settings_save_graphics, 0
+    lea rcx, [rel str_cfg_path]
+    lea rdx, [rel graphics_entries]
+    mov r8d, GRAPHICS_ENTRIES
+    call cfg_rewrite
+    RETURN
+ENDPROC
+
+PROC settings_save_game, 0
+    lea rcx, [rel str_game_path]
+    lea rdx, [rel game_entries]
+    mov r8d, GAME_ENTRIES
+    call cfg_rewrite
+    RETURN
+ENDPROC
+
+section .rdata
+align 8
+; what the settings screen writes back: key, formatter, value
+graphics_entries:
+    dq k_distance, cfgw_int, g_render_distance
+    dq k_lod, cfgw_int, g_lod_distance
+    dq k_smooth, cfgw_int, g_smooth_lighting
+    dq k_ao, cfgw_int, g_ambient_occlusion
+    dq k_bloom, cfgw_int, g_bloom
+    dq k_hfog, cfgw_int, g_height_fog
+    dq k_shadows, cfgw_int, g_shadows
+    dq k_shadow_res, cfgw_int, g_shadow_res
+    dq k_shadow_dist, cfgw_int, g_shadow_distance
+    dq k_clouds, cfgw_int, g_clouds
+    dq k_water, cfgw_int, g_water_quality
+    dq k_leaves, cfgw_int, g_opaque_leaves
+    dq k_gpu_cull, cfgw_int, g_gpu_culling
+    dq k_occlusion, cfgw_int, g_occlusion_culling
+GRAPHICS_ENTRIES equ ($ - graphics_entries) / 24
+game_entries:
+    dq k_fov, cfgw_int, g_fov
+    dq k_autosave, cfgw_int, g_autosave_minutes
+    dq k_hud, cfgw_int, g_show_hud
+GAME_ENTRIES equ ($ - game_entries) / 24
+section .text

@@ -32,7 +32,7 @@ global g_game_state, g_game_paused, g_menu_fade
 extern camera_update, client_init, client_input, client_view
 extern sim_init, sim_update, save_update, save_all, save_open, save_load_player
 extern stream_update, stream_reset, lod_update, lod_reset, fluid_reset, edit_reset
-extern thumb_update, thumb_reset
+extern thumb_update, thumb_reset, menu_screen, g_show_hud
 extern g_world_mode, g_world_difficulty, g_world_hardcore
 extern g_new_mode, g_new_difficulty, g_new_hardcore
 extern renderer_frame, hud_draw, overlay_draw, menu_frame, menu_open, menu_back
@@ -517,6 +517,12 @@ PROC game_frame, 16, rbx, rsi, rdi
 .paused_keys:
     cmp dword [LOCAL(0)], 0
     je .keys_done
+    call menu_screen
+    cmp eax, SCREEN_PAUSE
+    je .resume
+    call menu_back                      ; (settings over the pause menu)
+    jmp .keys_done
+.resume:
     call resume_game
     jmp .keys_done
 .menu_keys:
@@ -562,6 +568,8 @@ PROC game_frame, 16, rbx, rsi, rdi
     cmp dword [rel g_game_paused], 0
     jne .menus
     call thumb_update                   ; (the world list's picture, no HUD)
+    cmp dword [rel g_show_hud], 0
+    je .overlay
     mov ecx, esi
     mov edx, edi
     call hud_draw

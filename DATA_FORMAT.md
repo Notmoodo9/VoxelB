@@ -37,7 +37,8 @@ warnings, as above.
 | File | Read by | Contents |
 |---|---|---|
 | `data/config/controls.cfg` | `src/platform/input.asm` | key bindings (actions → up to 2 keys) and mouse/fly settings |
-| `data/config/graphics.cfg` | `src/core/settings.asm` | graphics settings (render distance, opaque leaves) |
+| `data/config/graphics.cfg` | `src/core/settings.asm` | graphics settings (render distance, LOD, effects) |
+| `data/config/game.cfg` | `src/core/settings.asm` | field of view, autosave, HUD |
 | `data/blocks/*.blocks` | `src/world/block.asm` | the block registry: every block, its textures and render settings |
 | `data/world/world.cfg` | `src/world/world.asm` | world seed and generator (`terrain` or `flat_test`), day length, clouds, gravity |
 | `data/entities/player.cfg` | `src/sim/player.asm` | the player's body size and movement speeds (walking, swimming, climbing, flying) |
@@ -69,6 +70,12 @@ pressing it twice within 0.3 s starts or stops flying (Creative).
 `move_down` sneaks (never walking off an edge), dives and flies down.
 `sprint` runs forward.
 
+The settings screen (milestone 17) writes `controls.cfg`, `graphics.cfg`
+and `game.cfg` back when it closes: only the values of the keys it
+manages are replaced; comments, blank lines, other keys and their order are
+kept (`src/core/cfg_write.asm`). An unbound key slot is written as nothing
+(`pick_block =`).
+
 ### `graphics.cfg`
 
 | Key | Value | Meaning |
@@ -88,6 +95,14 @@ pressing it twice within 0.3 s starts or stops flying (Creative).
 | `ambient_occlusion` | `0`/`1` (default 1) | `1` darkens inner corners and edges |
 | `held_light` | `r, g, b` (0–15, default 14, 11, 6) | colour of the held light (`toggle_held_light`), a stand-in for held torches until items |
 | `occlusion_culling` | `0`/`1` (default 1) | `1` also skips sections hidden behind the previous frame's depth (Hi-Z); needs `gpu_culling` |
+
+### `game.cfg` (Milestone 17)
+
+| Key | Value | Meaning |
+|---|---|---|
+| `fov` | `50`–`110` (default 70) | vertical field of view in degrees |
+| `autosave_minutes` | `0`–`1440` (default 5; `0` = only when leaving the world) | how often the world being played is saved (moved here from `world.cfg`) |
+| `show_hud` | `0`/`1` (default 1) | `0` hides the crosshair and the held block's name |
 
 ## Block files (`data/blocks/*.blocks`)
 
@@ -206,7 +221,6 @@ you run it.
 | `cloud_cover` | 0–1 (default 0.45) | share of the sky the cloud layer covers |
 | `cloud_height` | world y (default 230) | bottom of the cloud layer (48 blocks thick) |
 | `gravity` | blocks/s² (default 32) | how fast the player falls |
-| `autosave_minutes` | minutes (default 5; `0` = only on exit) | how often the world is saved |
 
 ### `player.cfg` (Milestone 16)
 

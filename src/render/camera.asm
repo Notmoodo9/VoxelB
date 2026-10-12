@@ -23,7 +23,7 @@
 global camera_init, camera_update
 global g_cam_pos, g_cam_yaw, g_cam_pitch, g_cam_viewproj
 
-extern sincosf
+extern sincosf, g_fov
 
 section .rdata
 align 16
@@ -31,7 +31,7 @@ c_neg_mask:     dd 0x80000000, 0, 0, 0     ; 16-byte aligned (xorps operand)
 c_deg2rad:      dd 0.017453292
 c_two_pi:       dd 6.283185307
 c_pitch_limit:  dd 1.553343         ; 89 degrees
-c_half_fov:     dd 0.610865238      ; 70 degree vertical FOV / 2
+c_half_deg:     dd 0.008726646      ; radians per degree / 2 (FOV -> half angle)
 c_near:         dd 0.05
 ; start position: south of the block gallery and the test structures,
 ; looking north, slightly down
@@ -137,7 +137,8 @@ PROC camera_update, 64
     ; F = (sy*cp, sp, -cy*cp)   R = (cy, 0, sy)   U = (-sy*sp, cp, cy*sp)
     ; f = cot(fov/2), fa = f / aspect
     ; col j<3 = (fa*R_j, f*U_j, 0, F_j)        col3 = (0, 0, near, 0)
-    movss xmm0, [rel c_half_fov]
+    cvtsi2ss xmm0, dword [rel g_fov]    ; vertical FOV in degrees (game.cfg)
+    mulss xmm0, [rel c_half_deg]
     call sincosf
     divss xmm1, xmm0                    ; xmm1 = f
     movss xmm7, xmm1                    ; xmm7 = f

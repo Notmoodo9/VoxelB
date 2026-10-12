@@ -7,6 +7,7 @@
 ;   create    a new world: name, seed (a number, any text, or empty for a
 ;             random one), game mode, difficulty, hardcore (what isn't built
 ;             yet is shown greyed out)
+;   settings  settings_screen.asm (from the main menu and the pause menu)
 ;   credits   data/ui/credits.txt
 ;   pause     Resume, Settings, Save & quit to menu, Save & quit game
 ; Screens slide and fade in (~150 ms). The menus only ask; game.asm acts
@@ -15,6 +16,7 @@
 ; Public API:
 ;   menu_open(ecx = SCREEN_*)
 ;   menu_back()                         Esc: the previous screen
+;   menu_screen() -> eax SCREEN_*       the screen showing
 ;   menu_frame(ecx = w, edx = h) -> eax MA_*, rdx = world name, r8d = seed
 ;   g_new_mode, g_new_difficulty, g_new_hardcore: the rules of the world
 ;   MA_CREATE asks for (save.inc MODE_* / DIFF_*)
@@ -28,7 +30,7 @@
 %include "menu.inc"
 %include "save.inc"
 
-global menu_open, menu_back, menu_frame
+global menu_open, menu_back, menu_frame, menu_screen
 global g_new_mode, g_new_difficulty, g_new_hardcore
 
 extern ui_frame, ui_end, ui_button, ui_panel, ui_label, ui_rect, ui_text
@@ -37,6 +39,8 @@ extern g_ui_vw, g_ui_vh, g_ui_alpha, g_ui_oy, g_ui_dt, g_ui_click, g_ui_mx
 extern g_ui_my, g_menu_fade, g_game_state, g_mouse_wheel, g_ui_images_tex
 extern str_copy, str_append_dec, str_ieq, str_len, str_parse_u64
 extern timer_elapsed_us, save_peek, png_decode
+extern settings_screen_open, settings_screen_frame, settings_screen_back
+extern settings_screen_close
 
 IMPORT FindFirstFileA, FindNextFileA, FindClose, DeleteFileA, RemoveDirectoryA
 
@@ -149,6 +153,7 @@ g_confirm:      resd 1                  ; the delete question is open
 g_credit_n:     resd 1
 g_credits_done: resd 1
 g_atlas:        resd 1                  ; the pictures' texture
+g_settings_return: resd 1               ; the screen Settings goes back to
 alignb 16
 g_worlds:       resb MAX_WORLDS * WORLD_INFO_size
 g_tmp_info:     resb WORLD_INFO_size
@@ -195,6 +200,29 @@ PROC menu_open, 0
     RETURN
 ENDPROC
 
+; menu_screen — eax = the screen showing (SCREEN_*)
+menu_screen:
+    mov eax, [rel g_screen]
+    ret
+
+; open_settings — the settings screen; back to the current one afterwards
+PROC open_settings, 0
+    mov eax, [rel g_screen]
+    mov [rel g_settings_return], eax
+    call settings_screen_open
+    mov ecx, SCREEN_SETTINGS
+    call menu_open
+    RETURN
+ENDPROC
+
+; close_settings — apply and write the settings, back to where they opened
+PROC close_settings, 0
+    call settings_screen_close
+    mov ecx, [rel g_settings_return]
+    call menu_open
+    RETURN
+ENDPROC
+
 ; menu_back — Esc on a menu screen: close the question, or go back a screen
 PROC menu_back, 0
     cmp dword [rel g_confirm], 0
@@ -202,6 +230,14 @@ PROC menu_back, 0
     mov dword [rel g_confirm], 0
     RETURN
 .screen:
+    cmp dword [rel g_screen], SCREEN_SETTINGS
+    jne .not_settings
+    call settings_screen_back           ; (Esc cancels a key being rebound)
+    test eax, eax
+    jnz .done
+    call close_settings
+    RETURN
+.not_settings:
     mov eax, [rel g_screen]
     cmp eax, SCREEN_MAIN
     je .done
@@ -1024,6 +1060,8 @@ PROC menu_frame, 48, rbx, rsi, rdi, r12, r13, r14, r15
     je .credits
     cmp eax, SCREEN_CREATE
     je .create
+    cmp eax, SCREEN_SETTINGS
+    je .settings
     jmp .pause
 
     ; ---- main ---------------------------------------------------------------------------
@@ -1066,8 +1104,12 @@ PROC menu_frame, 48, rbx, rsi, rdi, r12, r13, r14, r15
     mov qword [rsp + 32], 56
     lea rax, [rel s_settings]
     mov [rsp + 40], rax
-    mov qword [rsp + 48], UIW_DISABLED
+    mov qword [rsp + 48], 0
     INVOKE ui_button, 1, rdi, rsi, 320
+    test eax, eax
+    jz .m_credits
+    call open_settings
+.m_credits:
     add esi, 68
     mov qword [rsp + 32], 56
     lea rax, [rel s_credits]
@@ -1372,6 +1414,15 @@ PROC menu_frame, 48, rbx, rsi, rdi, r12, r13, r14, r15
     mov dword [rel g_confirm], 0
     jmp .end
 
+    ; ---- settings --------------------------------------------------------------------
+.settings:
+    mov ecx, [LOCAL(M_CX)]
+    call settings_screen_frame
+    test eax, eax
+    jz .end
+    call close_settings
+    jmp .end
+
     ; ---- create ----------------------------------------------------------------------
 .create:
     mov edi, [LOCAL(M_CX)]
@@ -1594,8 +1645,12 @@ PROC menu_frame, 48, rbx, rsi, rdi, r12, r13, r14, r15
     mov qword [rsp + 32], 56
     lea rax, [rel s_settings]
     mov [rsp + 40], rax
-    mov qword [rsp + 48], UIW_DISABLED
+    mov qword [rsp + 48], 0
     INVOKE ui_button, 21, rdi, rsi, 340
+    test eax, eax
+    jz .p_menu
+    call open_settings
+.p_menu:
     add esi, 68
     mov qword [rsp + 32], 56
     lea rax, [rel s_to_menu]
