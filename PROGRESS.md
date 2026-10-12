@@ -1,18 +1,63 @@
 # Progress
 
 ## Current state
-**Milestone 16, part 2: Breaking and placing blocks: DONE** (Windows CI green: run #78)
+**Milestone 16: Simulation/client split, physics, break/place, Creative, flowing liquids: DONE** (Windows CI: see below)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
 `design/BACKLOG.md`). Progressive LOD is planned as Milestone 34.
 
-Next: **Milestone 16, part 3: flowing water** (M15 part 2, D84): water
-spreads from sources into the holes you dig, on the simulation tick.
+Next: **Milestone 17: Save/load (region files) + main menu, world creation
+with seed, settings menus.** Mostly technical; the menus' look may need a
+short design interview.
+
+---
+
+## Milestone 16, part 3 — done (2026-10-12): flowing water and lava (D87)
+
+### What was built
+* **Flowing liquids** in the simulation: water spreads up to 7 blocks
+  from a source, a level lower per block, falls straight down where it
+  can and spreads again where it lands; it dries up when its source is
+  gone. Lava does the same, slower and only 3 blocks. Plants are washed
+  away.
+* Everything is event driven: dig next to a lake and the water runs into
+  the hole; generated oceans and lakes don't move until something next
+  to them changes.
+* **Rendering:** flowing water is drawn lower the farther it is from its
+  source, with the water shader (refraction, reflections); steps between
+  levels have their own small walls, and the source's faces into its own
+  flowing water are hidden.
+* **Data:** new blocks `flowing_water` and `flowing_lava` (`shape = fluid`,
+  `source`, `flow_range`, `flow_delay`).
+* `--held <block>` start option (e.g. `--held water`) for placing liquids.
+* Debug overlay: a `fluid` line (cell updates, changes, waiting).
+
+### Verified
+* A water source placed on the beach (`--pos 0.5 102.6 4.5 --look 0 -35
+  --held water`, right click): the water spreads over the sand in steps
+  and runs down the beach's terraces (293 blocks changed); replacing the
+  source with sand dries it all up again (992 changes in total).
+* Lava placed at night (`--time 20 --held lava`): a diamond 3 blocks
+  wide, stepped down, lighting the beach red.
+* Debug build with asserts: no warnings; debug and release headless
+  tests pass.
+
+### Performance
+* While water spreads, a tick takes 6 µs on average (max ~30 µs);
+  ~2000 cell updates for 292 changes. Each change remeshes its column
+  (and neighbours in light range) on the workers; changes in the same
+  column are merged into one remesh.
+
+### Deferred
+* Currents pushing the player; flowing toward the nearest drop; infinite
+  water sources; lava + water making stone or obsidian.
 
 ---
 
 ## Milestone 16, part 2 — done (2026-10-12): breaking and placing blocks
+
+Windows CI green: run #78.
 
 ### What was built (D86)
 * **Targeting:** the block under the crosshair (within 5 blocks) gets a
@@ -64,6 +109,8 @@ spreads from sources into the holes you dig, on the simulation tick.
 ---
 
 ## Milestone 16, part 1 — done (2026-10-12): simulation, packets, player physics
+
+Windows CI green: run #76.
 
 ### What was built (D85)
 * **Simulation / client split.** The simulation (`src/sim/`) runs at a

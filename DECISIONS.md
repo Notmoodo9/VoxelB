@@ -1455,3 +1455,37 @@ block for their upper half (mossy cobblestone boulders).
 * Edits live in the loaded columns only: a column that unloads (beyond
   render distance + 4) is generated fresh when it comes back. Saving
   edited columns arrives with region files (milestone 17).
+
+## D87 — Flowing liquids (M16 part 3; M15 part 2)
+* **Data:** a liquid is a source block (`water`, `lava`: plain cubes) and
+  a flowing block with the new `fluid` shape (8 states: levels 1–7,
+  falling) naming its `source`, with `flow_range` and `flow_delay`. Lava
+  flows too (range 3, 30 ticks per step).
+* **Rules (Minecraft-like, in the simulation, `src/sim/fluid.asm`):** a
+  cell holds falling liquid if the same liquid is directly above it, else
+  the lowest neighbouring level + 1, where a source (or a waterlogged block,
+  for water) is level 0 and a flowing/falling neighbour only counts where it
+  rests on something (liquid over air falls instead of spreading; resting
+  falling liquid counts as a source). Beyond `flow_range` it dries up. Only
+  air, plants and flowing liquid are replaced; sources never change, so
+  generated oceans and lakes stay as they are until something next to them
+  changes.
+* **Event driven:** nothing is scanned. Every block change (edits and the
+  liquid's own changes, through `edit_apply`) schedules the cell and its 6
+  neighbours `flow_delay` ticks later in a 128-bucket ring by tick (4096
+  cells per bucket, 2048 updates per tick at most, the rest move on). A
+  change into a busy column retries next tick.
+* **Rendering** (`shapes.asm`, with exact face masks per box): a flowing
+  block is a box as high as its level (14/16 … 2/16; falling or covered by
+  the same liquid: full). Top unless the liquid continues above, bottom
+  over non-liquid, sides next to non-opaque non-liquid blocks; where a
+  neighbouring liquid cell is lower, a strip from its height up to ours;
+  where the source cube next to us is higher, its strip above us, facing
+  us. The cube mesher treats a flowing neighbour as its source, so a
+  source's faces into flowing liquid are hidden. Water states take the
+  water shader (refraction, reflections) like the source.
+* Not done: currents pushing the player, Minecraft's preference for the
+  nearest drop, new sources from two neighbours, lava + water making
+  stone.
+* `--held <block>` (command line) starts with any block in hand, e.g.
+  water or lava, since liquids can't be targeted for pick_block.

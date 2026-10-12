@@ -45,7 +45,7 @@ extern g_block_names
 extern g_cl_player, g_sim_tick, g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us
 extern g_pkt_sent_sim, g_pkt_sent_client, g_pkt_dropped
 extern g_target_valid, g_target, g_target_id, g_held_block, g_edit_applied, g_edit_rejected
-extern g_stream_remeshes
+extern g_stream_remeshes, g_fluid_updates, g_fluid_changes, g_fluid_pending
 
 %define TEXT_CAP        6144
 %define PAD             6               ; panel padding (unscaled pixels)
@@ -160,6 +160,9 @@ s_t_held:       db "   held ", 0
 s_t_edits:      db "   edits ", 0
 s_t_rej:        db "  rejected ", 0
 s_t_remesh:     db "  remeshed columns ", 0
+s_fluid:        db "fluid   updates ", 0
+s_f_changes:    db "  changes ", 0
+s_f_pending:    db "  waiting ", 0
 align 4
 c_ten:          dd 10.0
 s_sp:           db " ", 0
@@ -593,6 +596,13 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
     PUTNUM [rel g_edit_rejected], 0
     PUT s_t_remesh
     PUTNUM [rel g_stream_remeshes], 0
+    PUT s_nl
+    PUT s_fluid
+    PUTNUM [rel g_fluid_updates], 0
+    PUT s_f_changes
+    PUTNUM [rel g_fluid_changes], 0
+    PUT s_f_pending
+    PUTNUM [rel g_fluid_pending], 0
     PUT s_nl
     ; distant terrain tiles (milestone 12)
     PUT s_lod

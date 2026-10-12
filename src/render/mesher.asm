@@ -45,6 +45,7 @@
 global mesh_section, vis_pair_bit
 
 extern g_block_opaque, g_block_layer, g_block_shape, g_block_flags, g_block_water
+extern g_block_source
 extern shapes_emit, g_block_light
 
 ; g_block_opaque, g_block_layer, g_block_cullself and g_block_shape are
@@ -568,8 +569,16 @@ PROC mesh_section, L_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     cmp edx, SOLID_ID
     je .nb_not_wl                       ; (border filler: past the flag table)
     test byte [r9 + rdx], BLOCKF_WATERLOGGED
-    jz .nb_not_wl
+    jz .nb_not_fluid
     mov edx, r10d
+    jmp .nb_not_wl
+.nb_not_fluid:
+    ; flowing liquid next to its source: as the source (shapes_emit draws
+    ; the strips where their heights differ)
+    cmp byte [r14 + rdx + SHAPE_OFS], SHAPE_FLUID
+    jne .nb_not_wl
+    lea r8, [rel g_block_source]
+    movzx edx, word [r8 + rdx * 2]
 .nb_not_wl:
     cmp byte [r14 + rdx], 0
     jne .mask_hidden

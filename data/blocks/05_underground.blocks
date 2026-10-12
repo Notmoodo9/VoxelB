@@ -4,6 +4,16 @@
 light = 15, 8, 2
 liquid = lava
 
+# lava flowing from a source: slower and not as far as water
+[block flowing_lava]
+shape      = fluid
+textures   = lava
+light      = 15, 8, 2
+liquid     = lava
+source     = lava
+flow_range = 3
+flow_delay = 30
+
 [block dripstone_block]
 
 # pointed dripstone: state 0 points up (stalagmite), 1 points down

@@ -38,6 +38,20 @@ tint   = water
 light_filter = 1     # sunlight fades 1 level per block of water
 liquid  = water      # swim in it, no collision (milestone 16)
 
+# water flowing from a source into the space it finds (milestone 16): one
+# level lower per block away from the source (flow_range levels), falling
+# straight down where it can; flow_delay = ticks (1/20 s) per step
+[block flowing_water]
+shape        = fluid
+textures     = water
+render       = translucent
+tint         = water
+light_filter = 1
+liquid       = water
+source       = water
+flow_range   = 7
+flow_delay   = 5
+
 # soft moss ground of old-growth forests
 [block moss_block]
 

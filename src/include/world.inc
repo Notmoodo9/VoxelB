@@ -50,7 +50,9 @@
 %define SHAPE_PLANT         15          ; two crossed planes (grass, flowers)
 %define SHAPE_TALL_PLANT    16          ; bit 0: upper half (upper_textures)
 %define SHAPE_STALK         17          ; a thin upright post that joins nothing (bamboo)
-%define SHAPE_COUNT         18
+%define SHAPE_FLUID         18          ; flowing liquid: states 0-6 level 1-7, 7 falling
+%define SHAPE_COUNT         19
+%define FLUID_FALLING       7           ; the falling state
 ; facings: 0 north (-Z), 1 east (+X), 2 south (+Z), 3 west (-X)
 
 ; Neighbour sentinel for the mesher: a solid boundary (below the world).

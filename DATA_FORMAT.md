@@ -111,6 +111,9 @@ Defines a block, or changes one defined earlier (the later settings win).
 | `collision` | `none` / `full` | what the player bumps into. Default: cubes are solid, shapes collide as their parts (fences, fence gates and walls 1.5 blocks high), plants, signs, pressure plates and liquids not at all |
 | `climbable` | `0`/`1` | ladders and vines can be climbed (default: `1` for the `ladder` shape) |
 | `liquid` | `none` / `water` / `lava` | the player swims in it (lava slows more); liquids have no collision |
+| `source` | a block name | a flowing liquid (`shape = fluid`): the source block it flows from. That source then spreads as this block (milestone 16) |
+| `flow_range` | `1`–`7` (default 7) | a flowing liquid: how many blocks it spreads sideways from a source (water 7, lava 3) |
+| `flow_delay` | `1`–`100` ticks (default 5) | a flowing liquid: time per step of spreading (1/20 s; water 5, lava 30) |
 
 Shapes and their states (each state is its own block id, base id + state;
 every setting applies to all states):
@@ -133,6 +136,7 @@ every setting applies to all states):
 | `plant` | 1 | two crossed planes, seen from both sides (grass, flowers) |
 | `tall_plant` | lower, upper | two blocks high; the upper half uses `upper_textures` |
 | `stalk` | 1 | a thin upright post (4/16 wide) that joins nothing (bamboo) |
+| `fluid` | levels 1–7, falling | flowing liquid: a box as high as its level (14/16 down to 2/16; falling and liquid-covered: full), with the sides drawn where neighbouring liquid is lower. Needs `source` |
 | `axis` | upright, east-west, north-south | a cube log: the `end` texture faces along its axis (logs lying in fallen trees and branches) |
 
 Faces of a shape take the block's textures by direction, projected like

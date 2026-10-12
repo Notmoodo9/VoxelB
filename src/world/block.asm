@@ -48,6 +48,7 @@ global blocks_load, block_find, tex_find, str_dup
 global g_block_count, g_block_names, g_block_colors, g_block_opaque
 global g_block_layer, g_block_cullself, g_block_light, g_block_flags, g_block_tex
 global g_block_water, g_block_lfilter, g_block_phys
+global g_block_source, g_block_flowing, g_block_frange, g_block_fdelay
 global g_block_shape, g_block_state, g_block_nstates, g_block_tintmask
 global g_tex_count, g_tex_names, g_tex_frame_ms, g_tex_glow, g_tex_interp
 
@@ -98,6 +99,10 @@ k_climbable:    db "climbable", 0
 k_liquid:       db "liquid", 0
 v_full:         db "full", 0
 v_lava:         db "lava", 0
+k_source:       db "source", 0
+k_flow_range:   db "flow_range", 0
+k_flow_delay:   db "flow_delay", 0
+str_bad_source: db "source must be a liquid block defined earlier: ", 0
 str_water:      db "water", 0
 k_tint:         db "tint", 0
 v_grass:        db "grass", 0
@@ -124,12 +129,13 @@ s_spike:        db "spike", 0
 s_plant:        db "plant", 0
 s_tall_plant:   db "tall_plant", 0
 s_stalk:        db "stalk", 0
+s_fluid:        db "fluid", 0
 s_axis:         db "axis", 0
 align 8
 shape_names:    dq s_cube, s_slab, s_stairs, s_fence, s_gate, s_door, s_trapdoor
                 dq s_ladder, s_sign, s_wall_sign, s_plate, s_wall, s_pillar, s_pane, s_spike
-                dq s_plant, s_tall_plant, s_stalk, s_axis
-shape_states:   db 1, 2, 8, 1, 8, 32, 16, 4, 4, 4, 2, 1, 1, 1, 2, 1, 2, 1, 3
+                dq s_plant, s_tall_plant, s_stalk, s_fluid, s_axis
+shape_states:   db 1, 2, 8, 1, 8, 32, 16, 4, 4, 4, 2, 1, 1, 1, 2, 1, 2, 1, 8, 3
 %define SHAPE_AXIS_NAME SHAPE_COUNT     ; "axis": cube-shaped log states (BLOCKF_AXIS)
 str_shape_late:     db "shape must be the first setting of a new block: ", 0
 k_templates:    db "templates", 0
@@ -200,6 +206,10 @@ g_block_flags:      resb MAX_BLOCK_TYPES
 g_block_tintmask:   resb MAX_BLOCK_TYPES
 g_block_lfilter:    resb MAX_BLOCK_TYPES ; light_filter (0..15), 0xFF = default
 g_block_phys:       resb MAX_BLOCK_TYPES ; collision / climbable / liquid (BPHYS_*)
+g_block_source:     resw MAX_BLOCK_TYPES ; flowing liquid states: their source block
+g_block_flowing:    resw MAX_BLOCK_TYPES ; a liquid source: its flowing block (0 = still)
+g_block_frange:     resb MAX_BLOCK_TYPES ; flowing liquid: levels it spreads (1..7)
+g_block_fdelay:     resb MAX_BLOCK_TYPES ; flowing liquid: ticks per step
 g_tex_interp:       resb MAX_TEXTURES
 alignb 16
 g_block_opaque:     resb 65536
@@ -370,6 +380,14 @@ PROC block_get, 0, rbx, rsi
     mov byte [rcx + rbx], 0xFF
     lea rcx, [rel g_block_phys]
     mov byte [rcx + rbx], 0
+    lea rcx, [rel g_block_source]
+    mov word [rcx + rbx * 2], 0
+    lea rcx, [rel g_block_flowing]
+    mov word [rcx + rbx * 2], 0
+    lea rcx, [rel g_block_frange]
+    mov byte [rcx + rbx], 7
+    lea rcx, [rel g_block_fdelay]
+    mov byte [rcx + rbx], 5
     lea rcx, [rel g_block_layer]
     mov byte [rcx + rbx], LAYER_OPAQUE
     lea rcx, [rel g_block_tex]
@@ -566,6 +584,15 @@ PROC sync_states, 0, rbx, rsi, rdi
     mov cl, [rax + rbx]
     mov [rax + r8], cl
     lea rax, [rel g_block_phys]
+    mov cl, [rax + rbx]
+    mov [rax + r8], cl
+    lea rax, [rel g_block_source]
+    mov cx, [rax + rbx * 2]
+    mov [rax + r8 * 2], cx
+    lea rax, [rel g_block_frange]
+    mov cl, [rax + rbx]
+    mov [rax + r8], cl
+    lea rax, [rel g_block_fdelay]
     mov cl, [rax + rbx]
     mov [rax + r8], cl
     ; textures: a door's upper half uses upper_textures when set
@@ -776,6 +803,18 @@ PROC block_apply_one, 0, rbx, rsi, rdi, r12, r13
     INVOKE str_ieq, rsi, rdx
     test eax, eax
     jnz .liquid
+    lea rdx, [rel k_source]
+    INVOKE str_ieq, rsi, rdx
+    test eax, eax
+    jnz .source
+    lea rdx, [rel k_flow_range]
+    INVOKE str_ieq, rsi, rdx
+    test eax, eax
+    jnz .flow_range
+    lea rdx, [rel k_flow_delay]
+    INVOKE str_ieq, rsi, rdx
+    test eax, eax
+    jnz .flow_delay
     lea rdx, [rel k_tint]
     INVOKE str_ieq, rsi, rdx
     test eax, eax
@@ -991,6 +1030,45 @@ PROC block_apply_one, 0, rbx, rsi, rdi, r12, r13
     lea rcx, [rel g_block_phys]
     and byte [rcx + rbx], ~BPHYS_LIQUID_MASK
     or [rcx + rbx], r12b
+    RETURN
+
+.source:                                ; source = <liquid block> (flowing liquids)
+    mov rcx, rdi
+    call block_find
+    cmp eax, 0
+    jle .bad_source
+    lea rcx, [rel g_block_phys]
+    test byte [rcx + rax], BPHYS_LIQUID_MASK
+    jz .bad_source
+    lea rcx, [rel g_block_source]
+    mov [rcx + rbx * 2], ax
+    lea rcx, [rel g_block_flowing]
+    mov [rcx + rax * 2], bx             ; the source flows as this block
+    RETURN
+.bad_source:
+    lea rcx, [rel str_bad_source]
+    mov rdx, rdi
+    call warn
+    RETURN
+
+.flow_range:                            ; flow_range = 1..7
+    mov rcx, rdi
+    mov edx, 7
+    call parse_small
+    cmp eax, 1
+    jl .bad
+    lea rcx, [rel g_block_frange]
+    mov [rcx + rbx], al
+    RETURN
+
+.flow_delay:                            ; flow_delay = 1..100 ticks
+    mov rcx, rdi
+    mov edx, 100
+    call parse_small
+    cmp eax, 1
+    jl .bad
+    lea rcx, [rel g_block_fdelay]
+    mov [rcx + rbx], al
     RETURN
 
 .waterlogged:

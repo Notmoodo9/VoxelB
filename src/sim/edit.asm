@@ -15,6 +15,9 @@
 ; Public API:
 ;   edit_request(rcx = BLOCK_PKT*, edx = 0 break / 1 place)
 ;   edit_tick()                         apply what can be applied
+;   edit_apply(ecx=x, edx=y, r8d=z, r9d=id) -> eax as world_set_block:
+;       change a block now, tell the client, and wake the liquids around it
+;       (fluid.asm uses it too)
 ;   g_edit_applied, g_edit_rejected     counters (overlay)
 ; =============================================================================
 %include "macros.inc"
@@ -24,12 +27,14 @@
 %include "packet.inc"
 %include "physics.inc"
 
-global edit_request, edit_tick, g_edit_applied, g_edit_rejected
+global edit_request, edit_tick, edit_apply, g_edit_applied, g_edit_rejected
 
 extern g_pl_pos, g_pl_eye, g_pl_reach, g_pl_width, g_pl_height
+extern fluid_schedule_around
 
 %define QUEUE_SLOTS     64              ; power of two
 %define RETRY_TICKS     100             ; 5 s
+%define DEFAULT_FLOW_DELAY 5            ; liquids next to an edit look again after this
 struc EDIT
     .x      resd 1
     .y      resd 1
@@ -346,25 +351,10 @@ PROC edit_tick, 0, rbx
     mov edx, [rbx + EDIT.y]
     mov r8d, [rbx + EDIT.z]
     mov r9d, [rbx + EDIT.id]
-    call world_set_block
+    call edit_apply
     test eax, eax
     jz .wait
-    inc dword [rel g_edit_tail]
-    cmp eax, 1
-    jne .next                           ; impossible: dropped
-    inc qword [rel g_edit_applied]
-    ; tell the client
-    mov eax, [rbx + EDIT.x]
-    mov [rel g_edit_out + BLOCK_PKT.x], eax
-    mov eax, [rbx + EDIT.y]
-    mov [rel g_edit_out + BLOCK_PKT.y], eax
-    mov eax, [rbx + EDIT.z]
-    mov [rel g_edit_out + BLOCK_PKT.z], eax
-    mov eax, [rbx + EDIT.id]
-    mov [rel g_edit_out + BLOCK_PKT.id], eax
-    lea rcx, [rel g_to_client]
-    lea r8, [rel g_edit_out]
-    INVOKE pkt_send, rcx, PKT_S_BLOCK, r8, BLOCK_PKT_size
+    inc dword [rel g_edit_tail]         ; (done, or impossible: dropped)
     jmp .next
 .wait:
     dec dword [rbx + EDIT.left]
@@ -372,6 +362,47 @@ PROC edit_tick, 0, rbx
     inc dword [rel g_edit_tail]         ; waited too long: dropped
     inc qword [rel g_edit_rejected]
 .done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; edit_apply — change a block now (if no job reads its column), announce it
+; to the client and wake the liquids around it.
+;   in:  ecx = x, edx = y, r8d = z, r9d = id
+;   out: eax = 1 done, 0 not now (busy), -1 impossible
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC edit_apply, 0, rbx, rsi, rdi, r12, r13
+    mov ebx, ecx
+    mov esi, edx
+    mov edi, r8d
+    mov r12d, r9d
+    call world_set_block
+    mov r13d, eax
+    cmp eax, 1
+    jne .done
+    inc qword [rel g_edit_applied]
+    mov [rel g_edit_out + BLOCK_PKT.x], ebx
+    mov [rel g_edit_out + BLOCK_PKT.y], esi
+    mov [rel g_edit_out + BLOCK_PKT.z], edi
+    mov [rel g_edit_out + BLOCK_PKT.id], r12d
+    lea rcx, [rel g_to_client]
+    lea r8, [rel g_edit_out]
+    INVOKE pkt_send, rcx, PKT_S_BLOCK, r8, BLOCK_PKT_size
+    ; liquids around it look again after a step of the liquid involved
+    mov r9d, DEFAULT_FLOW_DELAY
+    lea rax, [rel g_block_shape]
+    cmp byte [rax + r12], SHAPE_FLUID
+    jne .schedule
+    lea rax, [rel g_block_fdelay]
+    movzx r9d, byte [rax + r12]
+.schedule:
+    mov ecx, ebx
+    mov edx, esi
+    mov r8d, edi
+    call fluid_schedule_around
+.done:
+    mov eax, r13d
     RETURN
 ENDPROC
 

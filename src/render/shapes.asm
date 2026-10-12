@@ -26,12 +26,14 @@
 
 global shapes_emit
 
-extern g_block_opaque, g_block_shape, g_block_state
+extern g_block_opaque, g_block_shape, g_block_state, g_block_source, g_block_flags
+extern g_block_water
 
 %define PAD             34
 %define PAD2            (PAD * PAD)
 %define ORIGIN          (1 + PAD + PAD2)
 %define MAX_BOXES       16
+%define SOLID_FILL      0xFFFF          ; the mesher's border filler (solid edges)
 
 section .rdata
 ; neighbour offsets in the volume, by direction: N, E, S, W, up, down
@@ -81,6 +83,14 @@ shape_jump:     dq shapes_emit.s_none, shapes_emit.s_slab, shapes_emit.s_stairs
                 dq shapes_emit.s_wall_sign, shapes_emit.s_plate, shapes_emit.s_wall
                 dq shapes_emit.s_pillar, shapes_emit.s_pane, shapes_emit.s_spike
                 dq shapes_emit.s_plant, shapes_emit.s_tall_plant, shapes_emit.s_stalk
+                dq shapes_emit.s_fluid
+
+; fluids: the 4 sides (-X, +X, -Z, +Z): face, neighbour offset, and the
+; thin strip box on that side (x0, x1, z0, z1)
+fluid_side_face: db 0, 1, 4, 5
+align 8
+fluid_side_off:  dq -1, 1, -PAD, PAD
+fluid_strip:     db 0, 1, 0, 16,   15, 16, 0, 16,   0, 16, 0, 1,   0, 16, 15, 16
 
 section .text
 
@@ -171,7 +181,12 @@ add_quadrants:
 %define S_BOXES     48                  ; MAX_BOXES * 6 bytes
 %define S_FACE0     (48 + MAX_BOXES * 6 + 8)   ; first face to emit (6: plant)
 %define S_HIFLAGS   (S_FACE0 + 4)
-%define S_LOCALS    (S_FACE0 + 8)
+%define S_FORCED    (S_FACE0 + 8)       ; 1: each box has its own face mask
+%define S_H         (S_FACE0 + 12)      ; fluid: own height (1/16)
+%define S_SRC       (S_FACE0 + 16)      ; fluid: its source block
+%define S_NH        (S_FACE0 + 20)      ; fluid: a neighbour's height
+%define S_FMASK     (S_FACE0 + 24)      ; MAX_BOXES face masks
+%define S_LOCALS    (S_FACE0 + 24 + MAX_BOXES)
 PROC shapes_emit, S_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov [LOCAL(S_VOL)], rcx
     mov [LOCAL(S_OUT)], rdx
@@ -218,6 +233,7 @@ PROC shapes_emit, S_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     lea r15, [LOCAL(S_BOXES)]           ; box cursor
     mov dword [LOCAL(S_FACE0)], 0
     mov dword [LOCAL(S_HIFLAGS)], 0
+    mov dword [LOCAL(S_FORCED)], 0
     lea rcx, [rel shape_jump]
     jmp [rcx + rax * 8]
 
@@ -554,6 +570,138 @@ PROC shapes_emit, S_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov dword [LOCAL(S_FACE0)], 6
     jmp .emit
 
+; ---- fluids (milestone 16): a box as high as the level, risers to neighbours ----
+; Height in 1/16: level 1..7 (states 0..6) -> 14, 12, .. 2; falling (state 7)
+; 16; with the same liquid above, 16 (and no top). Faces: the top unless the
+; liquid continues above; the bottom over air; a side next to a
+; non-liquid, non-opaque block; where a neighbour of the same liquid is
+; lower, the strip above it (its own riser); where the neighbour is the
+; (full) source block and higher, the source's strip above us, drawn here
+; facing into our cell (the source cube's face is hidden by the mesher).
+.s_fluid:
+    mov dword [LOCAL(S_FORCED)], 1
+    mov eax, [LOCAL(S_ID)]
+    lea rcx, [rel g_block_source]
+    movzx eax, word [rcx + rax * 2]
+    mov [LOCAL(S_SRC)], eax
+    mov eax, [LOCAL(S_ID)]
+    call fluid_height                   ; (own height; eax = id)
+    mov [LOCAL(S_H)], eax
+    xor ebx, ebx                        ; main box face mask
+    ; above
+    mov rcx, [LOCAL(S_VOL)]
+    lea rdx, [r12 + PAD2]
+    movzx eax, word [rcx + rdx * 2]
+    mov [LOCAL(S_NH)], eax
+    call fluid_height
+    test eax, eax
+    js .fl_top
+    mov dword [LOCAL(S_H)], 16          ; the liquid continues above
+    jmp .fl_bottom
+.fl_top:
+    mov eax, [LOCAL(S_NH)]
+    lea rcx, [rel g_block_opaque]
+    cmp byte [rcx + rax], 0
+    jne .fl_bottom
+    or ebx, 1 << 3
+.fl_bottom:
+    mov rcx, [LOCAL(S_VOL)]
+    lea rdx, [r12 - PAD2]
+    movzx eax, word [rcx + rdx * 2]
+    mov [LOCAL(S_NH)], eax
+    lea rcx, [rel g_block_opaque]
+    cmp byte [rcx + rax], 0
+    jne .fl_sides
+    call fluid_height
+    test eax, eax
+    jns .fl_sides
+    or ebx, 1 << 2
+.fl_sides:
+    xor esi, esi                        ; side 0..3 -> faces 0, 1, 4, 5
+.fl_side:
+    lea rax, [rel fluid_side_face]
+    movzx r13d, byte [rax + rsi]        ; face
+    lea rax, [rel fluid_side_off]
+    mov rdx, [rax + rsi * 8]
+    add rdx, r12
+    mov rcx, [LOCAL(S_VOL)]
+    movzx eax, word [rcx + rdx * 2]     ; neighbour
+    cmp eax, SOLID_FILL
+    jae .fl_next
+    lea rcx, [rel g_block_opaque]
+    cmp byte [rcx + rax], 0
+    jne .fl_next                        ; against a wall: nothing
+    mov [LOCAL(S_NH)], eax
+    call fluid_height
+    test eax, eax
+    jns .fl_liquid
+    bts ebx, r13d                       ; next to air / glass / plants
+    jmp .fl_next
+.fl_liquid:
+    mov ecx, [LOCAL(S_H)]
+    cmp eax, ecx
+    je .fl_next
+    jg .fl_higher
+    ; lower neighbour: our strip [nh, h] on that side
+    mov r8d, eax                        ; y0
+    mov r9d, ecx                        ; y1
+    mov r10d, r13d                      ; face
+    jmp .fl_strip
+.fl_higher:
+    ; a higher source cube next to us: its strip [h, nh], facing us
+    mov edx, [LOCAL(S_NH)]
+    cmp edx, [LOCAL(S_SRC)]
+    jne .fl_next                        ; (a higher flowing block draws its own)
+    mov r8d, ecx
+    mov r9d, eax
+    mov r10d, r13d
+    xor r10d, 1                         ; the opposite face (pointing into us)
+.fl_strip:
+    ; a thin box along that side: 1/16 deep
+    lea rax, [rel fluid_strip]
+    lea rcx, [rax + rsi * 4]            ; x0, x1, z0, z1
+    movzx eax, byte [rcx]
+    mov [r15], al
+    movzx eax, byte [rcx + 1]
+    mov [r15 + 3], al
+    movzx eax, byte [rcx + 2]
+    mov [r15 + 2], al
+    movzx eax, byte [rcx + 3]
+    mov [r15 + 5], al
+    mov [r15 + 1], r8b
+    mov [r15 + 4], r9b
+    lea rax, [LOCAL(S_BOXES)]
+    mov rcx, r15
+    sub rcx, rax
+    imul ecx, ecx, 0xAAAB
+    shr ecx, 18                         ; box index
+    xor eax, eax
+    bts eax, r10d
+    mov [rsp + OUTGOING_SIZE + S_FMASK + rcx], al
+    add r15, 6
+.fl_next:
+    inc esi
+    cmp esi, 4
+    jb .fl_side
+    ; the main box last (if it shows anything)
+    test ebx, ebx
+    jz .emit
+    mov byte [r15], 0
+    mov byte [r15 + 1], 0
+    mov byte [r15 + 2], 0
+    mov byte [r15 + 3], 16
+    mov eax, [LOCAL(S_H)]
+    mov [r15 + 4], al
+    mov byte [r15 + 5], 16
+    lea rax, [LOCAL(S_BOXES)]
+    mov rcx, r15
+    sub rcx, rax
+    imul ecx, ecx, 0xAAAB
+    shr ecx, 18
+    mov [rsp + OUTGOING_SIZE + S_FMASK + rcx], bl
+    add r15, 6
+    jmp .emit
+
 ; ---- emit the visible faces of the collected boxes -------------------------------
 .emit:
     mov rbx, [LOCAL(S_VOL)]
@@ -563,6 +711,19 @@ PROC shapes_emit, S_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     jae .box_done
     mov r9d, [LOCAL(S_FACE0)]           ; face
 .face:
+    cmp dword [LOCAL(S_FORCED)], 0
+    je .face_normal
+    ; fluids: exactly the faces in the box's mask
+    lea rax, [LOCAL(S_BOXES)]
+    mov rcx, r14
+    sub rcx, rax
+    imul ecx, ecx, 0xAAAB               ; (/ 6 for the small box offsets)
+    shr ecx, 18
+    movzx eax, byte [rsp + OUTGOING_SIZE + S_FMASK + rcx]
+    bt eax, r9d
+    jc .face_visible
+    jmp .face_next
+.face_normal:
     cmp r9d, 6
     jae .face_visible                   ; plant planes: always drawn
     ; on the block boundary next to an opaque neighbour? then hidden
@@ -680,6 +841,48 @@ PROC shapes_emit, S_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov esi, [LOCAL(S_X)]
     lea r13, [rel g_block_shape]
     jmp .x_next
+
+; -----------------------------------------------------------------------------
+; fluid_height (local) — height of a block of the current fluid's liquid.
+;   in:  eax = block id; frame locals of shapes_emit (via rsp + 8): S_SRC
+;   out: eax = height in 1/16 (16 for the source block, waterlogged blocks of
+;        water, falling), or -1 if it is not this liquid
+;   clobbers: rax, rcx, rdx
+; -----------------------------------------------------------------------------
+fluid_height:
+    mov edx, [rsp + 8 + OUTGOING_SIZE + S_SRC]
+    test edx, edx
+    jz .no                              ; (a fluid without a source)
+    cmp eax, SOLID_FILL
+    jae .no
+    cmp eax, edx
+    je .full
+    lea rcx, [rel g_block_shape]
+    cmp byte [rcx + rax], SHAPE_FLUID
+    jne .not_fluid
+    lea rcx, [rel g_block_source]
+    cmp [rcx + rax * 2], dx
+    jne .no
+    lea rcx, [rel g_block_state]
+    movzx eax, byte [rcx + rax]
+    cmp eax, FLUID_FALLING
+    je .full
+    add eax, eax
+    neg eax
+    add eax, 14                         ; level 1 (state 0) -> 14
+    ret
+.not_fluid:
+    lea rcx, [rel g_block_flags]
+    test byte [rcx + rax], BLOCKF_WATERLOGGED
+    jz .no
+    cmp edx, [rel g_block_water]
+    jne .no
+.full:
+    mov eax, 16
+    ret
+.no:
+    mov eax, -1
+    ret
 
 ; -----------------------------------------------------------------------------
 ; stair_neighbor (local) — facing of a stair at volume index rdx when it has
