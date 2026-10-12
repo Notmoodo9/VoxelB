@@ -51,6 +51,8 @@ build\debug\voxelb.exe --seed 42           world seed (overrides data/world/worl
 build\debug\voxelb.exe --flat              the flat test world with the block gallery
 build\debug\voxelb.exe --survey            log terrain statistics and places to visit: highest point, giant range,
                                           river, sky cavern, ravine, shaft (voxel.log)
+build\debug\voxelb.exe --held-light        start with the held light on (L toggles it)
+build\debug\voxelb.exe --daylight 8        sky light at 8% (preview night lighting until the day/night cycle)
 ```
 
 Default controls (rebind in `data/config/controls.cfg`, format in `DATA_FORMAT.md`):
@@ -64,6 +66,7 @@ Default controls (rebind in `data/config/controls.cfg`, format in `DATA_FORMAT.m
 | F3 | debug overlay on/off |
 | F5 | reload all shaders (they also reload automatically when saved) |
 | F8 | vsync on/off |
+| L | held light on/off (a torch in hand, until items arrive) |
 | Esc | release the mouse; press again (mouse free) to quit |
 | Left click | capture the mouse again |
 

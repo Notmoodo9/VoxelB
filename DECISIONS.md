@@ -1170,3 +1170,59 @@ block for their upper half (mossy cobblestone boulders).
   attribute is a float conversion of the record's count (exact for the
   top byte, since counts stay below 2^23). A zero radius disables the
   clipping instead of discarding every pixel.
+
+## D81 — Lighting: per-column light volumes baked into quad corners (M13)
+* **Where light is computed.** In each column's mesh job (worker thread),
+  just before meshing: a light volume covering the column plus a 16-block
+  margin on every side (64 × 64 cells), from the world bottom to 16 above
+  the highest stored section of the 9 columns. Light is not stored with
+  the world. It is rebuilt whenever a column is meshed, so block edits
+  (M16) only need a re-mesh of the columns within 16 blocks.
+  * Meshing now waits for all 8 surrounding columns. The streamer
+    generates two rings beyond the render distance (was one) and drops
+    columns four rings out.
+* **Cell data.** u16 light: r, g, b and sky, 4 bits each. A u8 per cell
+  from `g_light_op`: opaque (stops light, counts for AO) and the
+  `light_filter` (extra loss per block: leaves 1, water 1, set in the
+  block files).
+* **Skylight.** Straight down from the open sky at 15 without loss until
+  the first opaque block; filtering blocks subtract their filter. Then a
+  breadth-first flood fill sideways and down, losing 1 + filter per step.
+  The seeds are only the full-sky cells next to a column whose full sky
+  starts higher, so open plains cost almost nothing.
+* **Block light.** A flood fill from every emitter (the `light` setting),
+  all three channels at once: the channels as bytes, `psubusb` for the
+  loss, `pmaxub` against the cell, re-queued only when a channel grew.
+  Inside a uniform emitter section (lava lakes) only the boundary cells
+  are queued.
+  * Light that would leave the volume is lost. With a 16-block margin that
+    only affects paths that go out and come back.
+* **Faces.** For each visible face and each corner, take the cell in
+  front of the face, its two side neighbours in the face plane and the
+  diagonal one. The diagonal is skipped when both sides are solid.
+  * Corner light = the mean of the open cells, per channel.
+  * AO = 3 − (side1 + side2 + corner), or 0 when both sides are solid.
+  * Emitting blocks light their own faces at least to their emission.
+  * Shaped blocks and plants use the flat light of their cell (the cell
+    above if it counts as solid).
+* **Storage.** Each quad gets a light word (4 corners × 16 bits) in a
+  buffer parallel to the quad buffer: same index, SSBO binding 6. AO
+  (2 bits per corner) goes into bits 48–55 of cube quads.
+  * Greedy merging joins faces only when block, light word and AO are all
+    equal. That costs about 2× the quads (5.9 M → 11.8 M at render
+    distance 16), so the quad and light buffers are 256 MB each now.
+  * Drawn quads at spawn: 525 k → 709 k.
+* **Shading.**
+  * The vertex shader passes the 4 corners flat plus the position inside
+    the quad, and the fragment shader mixes them bilinearly. This is
+    smoother than per-vertex interpolation, with no diagonal seams.
+  * Brightness = max(sky × daylight, block RGB, held light), through a
+    curve l^1.6 with an ambient floor of 0.03, times AO (0.45..1).
+  * The held light falls off 1 level per block from the camera. It casts
+    no shadows.
+  * LOD tiles are lit as open sky.
+  * The `daylight` uniform waits for the day/night cycle (M14). Until
+    then the `--daylight` option previews it.
+* **Settings:** `smooth_lighting`, `ambient_occlusion`, `held_light`
+  (graphics.cfg); action `toggle_held_light` (L).
+

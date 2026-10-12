@@ -1,7 +1,8 @@
 ; =============================================================================
 ; world_render.asm — draws the meshed world.
 ;
-; All section quads live in one 128 MB shader storage buffer; the streamer
+; All section quads live in one 256 MB shader storage buffer (their light
+; words in a parallel one, milestone 13); the streamer
 ; (src/world/stream.asm) uploads into ranges handed out by the buddy
 ; allocator (gpu_alloc.asm). A section's quads are ordered by render layer
 ; (opaque, cutout, translucent; see mesher.asm), so each layer is one
@@ -41,6 +42,7 @@
 
 global world_render_init, world_render_draw, world_render_shutdown, tint_upload
 global g_world_visible, g_world_drawn_quads, g_world_gpu_bytes, g_quad_buffer
+global g_light_buffer, g_held_on, g_daylight
 global g_world_draws, g_vis_visited, g_world_gpu_visible, g_world_occluded
 
 extern g_cam_viewproj, g_cam_pos
@@ -49,10 +51,11 @@ extern block_textures_init, block_textures_bind, block_textures_shutdown
 extern timer_elapsed_us, world_column, vis_pair_bit
 extern g_scene_depth, g_viewport_w, g_viewport_h
 extern g_gpu_culling, g_occlusion_culling
+extern g_smooth_lighting, g_ambient_occlusion, g_held_light
 
 global g_lod_tint_tex, g_lod_records
 
-%define QUAD_BUFFER_BYTES   (1 << 27)   ; 128 MB = gpu_alloc's 2^18 x 512 B
+%define QUAD_BUFFER_BYTES   (1 << 28)   ; 256 MB = gpu_alloc's 2^19 x 512 B
 %define MAX_PASS_ENTRIES    65536       ; per pass and frame (frame arena)
 %define ENTRY_SIZE          32          ; rel xyz (0), world xyz (12), SECT* (24)
 %define MAX_WALK            65536       ; sections the visibility walk visits
@@ -86,6 +89,9 @@ endstruc
 %define U_LOD_RA            7           ;   ring radii r0..r3 (vec4)
 %define U_LOD_RB            8           ;   r4, r5 (vec4)
 %define U_FOG               9           ; fog density
+%define U_HELD              10          ; held light: rgb levels, on
+%define U_LIGHT_FLAGS       11          ; 1 smooth light, 2 ambient occlusion
+%define U_DAYLIGHT          12          ; sky light strength (M14: day/night)
 %define LOD_TINT_SIZE       1024        ; LOD tint map texels per side (16 blocks each)
 %define FOG_DEFAULT         0.0013      ; without LOD
 %define FOG_LOD             2.3         ; / the LOD radius: the far edge ~90% fog
@@ -132,13 +138,19 @@ c_abs_mask:     times 4 dd 0x7FFFFFFF
 align 8
 c_wrap_us:      dq 3600000000           ; animation clock wraps hourly
 
+section .data
+align 4
+g_daylight:         dd 1.0              ; sky light strength 0..1 (M14: day/night)
+
 section .bss
 alignb 4
 g_world_prog:       resd 1
 g_world_vao:        resd 1
 g_quad_buffer:      resd 1
+g_light_buffer:     resd 1              ; light words, one per quad (M13)
 g_tint_tex:         resd 1              ; biome tint map (2D array, 3 layers)
 g_lod_tint_tex:     resd 1              ; the LOD tiles' tint map (same layers)
+g_held_on:          resd 1              ; the held light is on (toggle_held_light)
 alignb 8
 g_world_visible:    resq 1
 g_world_drawn_quads: resq 1
@@ -216,7 +228,12 @@ PROC world_render_init, 0, rbx
     lea rdx, [rel g_quad_buffer]
     GL glCreateBuffers, 1, rdx
     GL glNamedBufferStorage, [rel g_quad_buffer], QUAD_BUFFER_BYTES, 0, GL_DYNAMIC_STORAGE_BIT
-    LOG_INFO "world: quad buffer created (128 MB)"
+    LOG_INFO "world: quad buffer created (256 MB, + 256 MB light words)"
+    ; light words: parallel to the quads (quad i's corners at word i)
+    mov qword [rel g_world_gpu_bytes], 2 * QUAD_BUFFER_BYTES
+    lea rdx, [rel g_light_buffer]
+    GL glCreateBuffers, 1, rdx
+    GL glNamedBufferStorage, [rel g_light_buffer], QUAD_BUFFER_BYTES, 0, GL_DYNAMIC_STORAGE_BIT
 
     call block_textures_init
     test eax, eax
@@ -270,6 +287,8 @@ PROC world_render_shutdown, 0
     lea rdx, [rel g_lod_tint_tex]
     GL glDeleteTextures, 1, rdx
     lea rdx, [rel g_quad_buffer]
+    GL glDeleteBuffers, 1, rdx
+    lea rdx, [rel g_light_buffer]
     GL glDeleteBuffers, 1, rdx
     lea rdx, [rel g_world_vao]
     GL glDeleteVertexArrays, 1, rdx
@@ -891,8 +910,32 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     divss xmm2, [rcx + rax * 4]
 .fog:
     GL glProgramUniform1f, rbx, U_FOG
+    ; lighting
+    mov eax, [rel g_smooth_lighting]
+    mov ecx, [rel g_ambient_occlusion]
+    add ecx, ecx
+    or eax, ecx
+    GL glProgramUniform1i, rbx, U_LIGHT_FLAGS, rax
+    movss xmm2, [rel g_daylight]
+    GL glProgramUniform1f, rbx, U_DAYLIGHT
+    mov eax, [rel g_held_light]
+    movzx ecx, al
+    cvtsi2ss xmm0, ecx
+    movss [LOCAL(0)], xmm0
+    movzx ecx, ah
+    cvtsi2ss xmm0, ecx
+    movss [LOCAL(4)], xmm0
+    shr eax, 16
+    movzx ecx, al
+    cvtsi2ss xmm0, ecx
+    movss [LOCAL(8)], xmm0
+    cvtsi2ss xmm0, dword [rel g_held_on]
+    movss [LOCAL(12)], xmm0
+    lea r9, [LOCAL(0)]
+    GL glProgramUniform4fv, rbx, U_HELD, 1, r9
     GL glBindVertexArray, [rel g_world_vao]
     GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 0, [rel g_quad_buffer]
+    GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 6, [rel g_light_buffer]
     call block_textures_bind
     GL glBindTextureUnit, 3, [rel g_tint_tex]
     GL glBindTextureUnit, 4, [rel g_lod_tint_tex]

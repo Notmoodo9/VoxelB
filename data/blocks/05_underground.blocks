@@ -58,3 +58,27 @@ render   = translucent
 [family glow_pools]
 templates = glow_pool
 members   = blue, purple, green, pink, amber
+
+# their light (milestone 13): the grotto's colour, a little dimmer than the
+# crystal blocks (data/blocks/50_lights.blocks)
+[block blue_crystal_sprout]
+light = 3, 6, 10
+[block purple_crystal_sprout]
+light = 8, 3, 10
+[block green_crystal_sprout]
+light = 3, 10, 6
+[block pink_crystal_sprout]
+light = 10, 4, 8
+[block amber_crystal_sprout]
+light = 10, 7, 2
+[block blue_glow_pool]
+light = 3, 7, 11
+[block purple_glow_pool]
+light = 8, 3, 11
+[block green_glow_pool]
+light = 3, 11, 6
+[block pink_glow_pool]
+light = 11, 4, 9
+[block amber_glow_pool]
+light = 11, 8, 2
+

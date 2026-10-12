@@ -35,6 +35,7 @@ textures = side: sandstone, top: sandstone_top, bottom: sandstone_bottom
 [block water]
 render = translucent
 tint   = water
+light_filter = 1     # sunlight fades 1 level per block of water
 
 # soft moss ground of old-growth forests
 [block moss_block]
@@ -68,6 +69,7 @@ textures = side: dead_wood, end: dead_wood_top
 
 # glowing forest (design/biomes/glowing_forest.md): luminous moss
 [block glow_moss]
+light = 2, 6, 5          # a faint teal glow (milestone 13)
 
 # mushroom fields (design/biomes/mushroom_fields.md): fungal ground
 [block mycelium]

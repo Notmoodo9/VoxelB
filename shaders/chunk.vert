@@ -16,6 +16,8 @@
 layout(std430, binding = 0) readonly buffer Quads { uvec2 quads[]; };
 layout(std430, binding = 1) readonly buffer Faces { uint block_face[]; };
 layout(std430, binding = 2) readonly buffer Textures { uvec4 tex_info[]; };
+// milestone 13: light of quad i's 4 corners (src/render/mesher.asm)
+layout(std430, binding = 6) readonly buffer Lights { uvec2 lights[]; };
 
 layout(location = 0) uniform mat4 u_viewproj;     // rotation + projection
 layout(location = 0) in vec3 a_origin_rel;        // section origin - camera
@@ -33,6 +35,9 @@ flat out uvec2 v_layers; // current and next animation frame
 flat out float v_mix;    // blend between them (interpolated animations)
 flat out uint v_glow;    // glow layer + 1 (0 = none)
 flat out uint v_level;   // LOD level (0 = full detail)
+flat out uvec2 v_light;  // corner lights: r | g << 4 | b << 8 | sky << 12 each
+flat out uint v_ao;      // AO, 2 bits per corner (3 = open)
+out vec2 v_cuv;          // position in the quad: corner 0 (0, 0) .. corner 2 (1, 1)
 
 // corner order per face; faces 1, 3, 4 (+X, +Y, -Z) are mirrored so every
 // face winds counter-clockwise seen from outside (back-face culling)
@@ -127,6 +132,12 @@ void main() {
     }
     v_face = face;
     v_level = level;
+    // light: LOD tiles are open sky; cube quads carry AO in q.y bits 16-23
+    uint qi = uint(gl_VertexID) / 6u;
+    v_light = level > 0u ? uvec2(0xF000F000u) : lights[qi];
+    v_ao = (level == 0u && !plant && (lo & 0x80000000u) == 0u) ? (q.y >> 16) & 0xFFu : 0xFFu;
+    uint cl = plant ? CORNERS[uint(gl_VertexID) % 6u] : c;
+    v_cuv = vec2((cl == 1u || cl == 2u) ? 1.0 : 0.0, cl >= 2u ? 1.0 : 0.0);
     vec3 wp = u_origin_world + p;
     v_tint = (bf >> 19) & 3u;
     // one tint texel per 4 x 4 blocks (texel centres at 4i + 2); LOD tiles:

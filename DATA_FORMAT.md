@@ -51,7 +51,7 @@ warnings, as above.
 
 Actions: `move_forward`, `move_back`, `move_left`, `move_right`, `move_up`,
 `move_down`, `sprint`, `toggle_debug_overlay`, `toggle_vsync`,
-`reload_shaders`, `menu`. Each takes one or two key names (the list of
+`reload_shaders`, `menu`, `toggle_held_light`. Each takes one or two key names (the list of
 names is at the top of the file).
 
 Settings: `mouse_sensitivity` (degrees per mouse count), `invert_mouse_y`
@@ -61,10 +61,13 @@ Settings: `mouse_sensitivity` (degrees per mouse count), `invert_mouse_y`
 
 | Key | Value | Meaning |
 |---|---|---|
-| `render_distance` | `2`–`48` (default 16) | full-detail view distance in chunks. Columns are generated one ring further out (so edge chunks can be meshed against their neighbours) and unloaded three rings beyond it |
+| `render_distance` | `2`–`48` (default 16) | full-detail view distance in chunks. Columns are generated two rings further out (so edge chunks can be meshed and lit against all 8 neighbours) and unloaded four rings beyond it |
 | `lod_distance` | `0`–`256` (default 64) | distant terrain (LOD tiles) out to this many chunks; `0`, or a value not beyond `render_distance`, turns it off. 64 is the default; 128–256 for strong PCs |
 | `opaque_leaves` | `0`/`1` (default 0) | `1` draws cut-out blocks (leaves) as solid cubes: faster on weak GPUs |
 | `gpu_culling` | `0`/`1` (default 1) | `1` culls the draws in a compute shader (exact frustum test) and lets the GPU write the indirect commands; `0` draws everything the CPU's visibility walk found |
+| `smooth_lighting` | `0`/`1` (default 1) | `1` mixes each face's 4 corner lights smoothly; `0` lights a face flat |
+| `ambient_occlusion` | `0`/`1` (default 1) | `1` darkens inner corners and edges |
+| `held_light` | `r, g, b` (0–15, default 14, 11, 6) | colour of the held light (`toggle_held_light`), a stand-in for held torches until items |
 | `occlusion_culling` | `0`/`1` (default 1) | `1` also skips sections hidden behind the previous frame's depth (Hi-Z); needs `gpu_culling` |
 
 ## Block files (`data/blocks/*.blocks`)
@@ -82,7 +85,8 @@ Defines a block, or changes one defined earlier (the later settings win).
 |---|---|---|
 | `textures` | `face: texture, …` or `texture` | which texture each face uses. Faces: `all`, `side` (the 4 vertical faces), `top`, `bottom`, `end` (top + bottom), `north` (−Z), `south` (+Z), `east` (+X), `west` (−X). Later entries override earlier ones. A face without a texture uses the texture named like the block |
 | `render` | `opaque` (default), `cutout`, `translucent` | `cutout`: alpha-tested, pixels are fully see-through or solid (leaves). `translucent`: blended (glass, ice); faces between two equal translucent blocks are hidden |
-| `light` | `r, g, b` (0–15 each) | coloured light the block emits (used from Milestone 13) |
+| `light` | `r, g, b` (0–15 each) | coloured light the block emits; it spreads up to 15 blocks, losing 1 level per block |
+| `light_filter` | `0`–`15` | extra light lost per block passed for non-opaque blocks (water 1). Default: 1 for cut-out cubes (leaves), else 0. Opaque blocks stop light |
 | `sway` | `0`/`1` | the block waves in the wind (leaves; plants bend from the ground) |
 | `tint` | `grass` / `foliage` / `water` / `none` [`, faces…`] | the faces (default all) take the biome's grass, foliage or water colour, blended across biome borders |
 | `waterlogged` | `1`: the block is drawn inside water (river weed): the mesher treats its cell as water for faces |

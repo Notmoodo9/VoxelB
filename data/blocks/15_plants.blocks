@@ -114,16 +114,24 @@ render   = cutout
 sway     = 1
 
 # dark forest (design/biomes/dark_forest.md): softly glowing mushrooms
-# (the glow layer reads bright now; real block light arrives in M13)
+# (with a glow layer; they light their surroundings from milestone 13)
 [block glowcap]
 shape    = plant
 textures = glowcap
 render   = cutout
+light    = 3, 7, 10
 
 # glowing forest (design/biomes/glowing_forest.md): luminous plants
 [family glow_plants]
 templates = plant
 members   = glow_bellflower, star_bloom, glow_fern
+# their light (milestone 13): soft cyan and teal
+[block glow_bellflower]
+light = 2, 7, 8
+[block star_bloom]
+light = 2, 8, 6
+[block glow_fern]
+light = 2, 6, 5
 
 # sky islands (design/biomes/sky_islands.md): roots hanging under islands
 [block hanging_roots]

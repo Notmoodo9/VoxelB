@@ -57,6 +57,8 @@ sect_variants:      dd 1, 2, 3, 17, 200, 300     ; distinct ids per test
 sect_expect_bits:   dd 0, 1, 2, 8, 8, 16
 
 section .bss
+alignb 8
+g_st_light:     resq MESH_MAX_QUADS     ; mesher light words (unused here)
 alignb 64
 g_test_pool:        resb POOL_size
 alignb 8
@@ -588,7 +590,8 @@ PROC mesh_case, 48, rbx, rsi, rdi, r12
     jb .fill_nb
     lea rdx, [LOCAL(0)]
     lea r9, [rel g_arena_scratch]
-    INVOKE mesh_section, rbx, rdx, r12, r9
+    lea rax, [rel g_st_light]
+    INVOKE mesh_section, rbx, rdx, r12, r9, 0, rax
     cmp rax, rsi
     je .ok
     mov rbx, rax
@@ -716,7 +719,8 @@ PROC test_mesher, 16, rbx, rsi, rdi, r12, r13
     mov [rdi + 32], rsi                 ; -Z
     mov [rdi + 40], rsi                 ; +Z
     lea r9, [rel g_arena_scratch]
-    INVOKE mesh_section, rsi, rdi, r12, r9
+    lea rax, [rel g_st_light]
+    INVOKE mesh_section, rsi, rdi, r12, r9, 0, rax
     cmp rax, 1
     je .case6_ok
     mov rsi, rax
@@ -927,7 +931,8 @@ PROC vis_case, 64, rbx, rsi, rdi
     jb .nb
     lea rdx, [LOCAL(0)]
     lea r9, [rel g_arena_scratch]
-    INVOKE mesh_section, rbx, rdx, rdi, r9
+    lea rax, [rel g_st_light]
+    INVOKE mesh_section, rbx, rdx, rdi, r9, 0, rax
     movzx eax, word [rbx + SECT.vis]
     mov [LOCAL(48)], eax
     mov rcx, rbx

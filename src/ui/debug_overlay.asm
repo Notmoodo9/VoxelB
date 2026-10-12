@@ -38,6 +38,7 @@ extern g_stream_mesh_count, g_stream_mesh_total_us, g_stream_mesh_max_us
 extern g_gpu_units_used
 extern g_lod_levels, g_lod_ready, g_lod_inflight, g_lod_quads, g_lod_records
 extern g_lod_gen_count, g_lod_gen_total_us, g_lod_gen_max_us, g_lod_distance
+extern g_light_count, g_light_total_us, g_light_max_us, g_held_on
 extern g_block_names
 
 %define TEXT_CAP        6144
@@ -96,7 +97,7 @@ s_s_upload:     db "   upload ", 0
 s_s_update:     db " KB/frame   update ", 0
 s_gpu:          db "gpu     quads ", 0
 s_g_used:       db "   buffer ", 0
-s_g_total:      db " / 128 MB   CPU meshes waiting ", 0
+s_g_total:      db " / 256 MB   CPU meshes waiting ", 0
 s_g_kb_nl:      db " KB", 10, 0
 s_draw:         db "draw    walk sections ", 0
 s_d_gpu:        db "  GPU drawn ", 0
@@ -117,6 +118,9 @@ s_l_quads:      db "  quads ", 0
 s_l_rec:        db "  drawn ", 0
 s_l_gen:        db "  gen ", 0
 s_l_slash:      db "/", 0
+s_light:        db "light   columns ", 0
+s_held_on:      db " us   held light on", 10, 0
+s_held_off:     db " us   held light off", 10, 0
 s_sp:           db " ", 0
 s_ground:       db "   ground below: ", 0
 s_at_y:         db " at y ", 0
@@ -415,6 +419,27 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
     PUT s_us_max
     PUTNUM [rel g_stream_mesh_max_us], 0
     PUT s_us_nl
+    ; lighting (milestone 13): light volume times per column
+    PUT s_light
+    PUTNUM [rel g_light_count], 0
+    PUT s_cols_avg
+    mov rax, [rel g_light_total_us]
+    xor edx, edx
+    mov rcx, [rel g_light_count]
+    test rcx, rcx
+    jz .light_div0
+    div rcx
+.light_div0:
+    PUTNUM rax, 0
+    PUT s_us_max
+    PUTNUM [rel g_light_max_us], 0
+    cmp dword [rel g_held_on], 0
+    je .held_off
+    PUT s_held_on
+    jmp .held_done
+.held_off:
+    PUT s_held_off
+.held_done:
     ; distant terrain tiles (milestone 12)
     PUT s_lod
     mov eax, [rel g_lod_levels]

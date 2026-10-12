@@ -1,15 +1,98 @@
 # Progress
 
 ## Current state
-**Milestone 12: LOD system: DONE** (Windows CI green: run #64)
+**Milestone 13: Lighting: DONE** (Windows CI: see below)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
-`design/BACKLOG.md`).
+`design/BACKLOG.md`). Progressive LOD is planned as Milestone 34.
 
-Next: **Milestone 13: Lighting**: skylight + RGB block light
-propagation, smooth light, AO, held lights. It is a technical milestone,
-so no design interview.
+Next: **Milestone 14: Sky, day/night, fog, cascaded shadows,
+HDR/tonemap/bloom**. It is a technical milestone, so no design interview.
+
+---
+
+## Milestone 13 — done (2026-10-12)
+
+### What was built (D81)
+* **Light engine** (`src/world/light.asm`, `src/include/light.inc`):
+  every column's mesh job builds a light volume (the column plus a
+  16-block margin from all 8 neighbours).
+  * Skylight: straight down from the sky, then a flood fill under
+    overhangs, into caves and under trees.
+  * RGB block light: a flood fill from every emitting block, three
+    channels at once (SIMD byte maths).
+  * New block setting `light_filter`: water and leaves dim light by 1 per
+    block.
+* **Smooth lighting and AO**: the mesher gives every face 4 corner lights
+  (the mean of the open cells around each corner) and ambient occlusion,
+  and only merges faces whose light matches.
+  * The light words go into a parallel GPU buffer.
+  * The fragment shader mixes the corners bilinearly.
+  * Emitting blocks light their own faces.
+* **Held light** (L, `toggle_held_light`): a warm light around the camera
+  (`held_light = 14, 11, 6` in graphics.cfg), a stand-in until held items
+  exist (M18).
+* **Settings**: `smooth_lighting`, `ambient_occlusion`, `held_light`.
+  Start options: `--held-light`, and `--daylight <percent>` to preview
+  night lighting before the day/night cycle (M14).
+* **Light values for the M10 content that was waiting for M13**:
+  * crystal sprouts and glow pools in their grotto's colour;
+  * glow moss, glowcaps;
+  * the glowing forest's bellflowers, star blooms and glow ferns.
+  * Crystals, lava, lamps, glowstone and the fantasy woods already had
+    their values in the block files.
+* **Streaming**: meshing now waits for all 8 neighbours; columns are
+  generated 2 rings beyond the render distance.
+* **GPU buffers**: the quad buffer is now 256 MB, plus a 256 MB light
+  buffer. Light-aware merging roughly doubles the quads.
+* **Debug overlay** line `light`: light-volume time per column and the
+  held-light state. The stream log also counts light sources.
+
+### Verified
+* Debug and release headless tests pass, with no GL errors or asserts.
+  The test now waits 40 s, because streaming does more work per column.
+* Screenshots:
+  * terrain steps get soft AO, and overhangs and the forest floor are
+    shaded;
+  * the flat gallery at `--daylight 5`: lava lights its neighbours
+    orange;
+  * the glowing forest at night (`--pos -64 125 40 --look 180 -20
+    --daylight 8`): crystal clusters light the ground blue, and the
+    glowing trees and plants shine;
+  * crystal grotto (`--pos 64 -70 0 --look 0 25`): dark veined rock lit
+    by the crystals.
+* All 797 columns of the view load (they waited for missing diagonal
+  neighbours until the generation ring was widened).
+
+### Performance (llvmpipe software GL under Wine, 3 workers, render distance 16)
+| | M12 | M13 |
+|---|---|---|
+| Quads in the GPU buffer | 5.9 M | 11.8 M |
+| Quads drawn at spawn | 525 k | 709 k |
+| Frame time at spawn | ~560 ms | ~750 ms |
+| Light volume per column | — | avg 16.7 ms, max 47 ms |
+| Mesh job per column (incl. light) | ~20–34 ms | ~40 ms |
+| View complete (797 columns) | ~13 s | ~24 s (2 more rings generated) |
+
+### For the owner
+* The glacier design said "light from the blue ice in caves comes with
+  M13". Should blue glacier ice give off a faint blue glow in ice caves,
+  or did that mean light shining through the ice? It is unchanged for
+  now (ice is opaque to light).
+* The light colours chosen for the grotto sprouts and pools, glow moss,
+  glowcaps and glowing-forest plants are listed in the block files. Say
+  if any should be brighter or dimmer.
+
+### Deferred
+* Faster light volumes: SIMD flood fill; reuse neighbour data instead of
+  decoding 9 columns per job (M33 performance pass).
+* Fewer quads with lighting: merge faces whose light differs only
+  slightly, or move to compute-shader meshing (M33).
+* Light updates for block edits (M16 re-meshes the affected columns).
+* The held light casts no shadows and passes through walls.
+* LOD tiles are always lit as open sky (night darkens them through the
+  daylight uniform in M14).
 
 ---
 

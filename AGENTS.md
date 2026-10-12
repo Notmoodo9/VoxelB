@@ -323,6 +323,9 @@ design/      (design docs from our interviews + BACKLOG.md)
 31. 🎨 DESIGN — Realm system: second realm.
 32. Adventure & Spectator modes.
 33. Performance & visual polish pass; quality presets tuned to targets.
+34. Progressive LOD (added by the owner after M12): detail falls off gradually with
+    distance — slightly more detail close to the full-detail chunks, fading to
+    no detail (bare silhouettes) at the far edge, instead of a few fixed levels.
 
 🎨 DESIGN milestones: build the engine system first if needed, then run a Design
 Interview (section 1a) for each piece of content before building it. Biomes, mobs,

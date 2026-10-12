@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 CONFIG=${1:-debug}
-MS=${2:-20000}
+MS=${2:-40000}
 EXE=build/$CONFIG/voxelb.exe
 LOG=build/$CONFIG/voxel.log
 [ -f "$EXE" ] || { echo "missing $EXE - run tools/build.sh $CONFIG" >&2; exit 1; }

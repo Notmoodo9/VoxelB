@@ -94,7 +94,8 @@ struc COLUMN
     .state      resd 1                  ; COL_* (atomic)
     .busy       resd 1                  ; mesh jobs reading this column
     .sections   resq SECTIONS_PER_COLUMN
-    .nb         resq 4                  ; -X, +X, -Z, +Z (set at mesh submit)
+    .nb         resq 8                  ; -X, +X, -Z, +Z, then -X-Z, +X-Z, -X+Z, +X+Z
+                                        ; (set at mesh submit)
     .mesh_buf   resq 1                  ; quads of all sections (VirtualAlloc)
     .mesh_bytes resq 1
     .geo_mask   resq 1                  ; bit sy = section has quads on the GPU

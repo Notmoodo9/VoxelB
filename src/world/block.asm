@@ -45,7 +45,7 @@
 global blocks_load, block_find, tex_find, str_dup
 global g_block_count, g_block_names, g_block_colors, g_block_opaque
 global g_block_layer, g_block_cullself, g_block_light, g_block_flags, g_block_tex
-global g_block_water
+global g_block_water, g_block_lfilter
 global g_block_shape, g_block_state, g_block_nstates, g_block_tintmask
 global g_tex_count, g_tex_names, g_tex_frame_ms, g_tex_glow, g_tex_interp
 
@@ -90,6 +90,7 @@ k_render:       db "render", 0
 k_light:        db "light", 0
 k_sway:         db "sway", 0
 k_waterlogged:  db "waterlogged", 0
+k_lfilter:      db "light_filter", 0
 str_water:      db "water", 0
 k_tint:         db "tint", 0
 v_grass:        db "grass", 0
@@ -190,6 +191,7 @@ g_block_utex:       resw MAX_BLOCK_TYPES * 6    ; door upper-half textures
 g_block_nstates:    resw MAX_BLOCK_TYPES
 g_block_flags:      resb MAX_BLOCK_TYPES
 g_block_tintmask:   resb MAX_BLOCK_TYPES
+g_block_lfilter:    resb MAX_BLOCK_TYPES ; light_filter (0..15), 0xFF = default
 g_tex_interp:       resb MAX_TEXTURES
 alignb 16
 g_block_opaque:     resb 65536
@@ -356,6 +358,8 @@ PROC block_get, 0, rbx, rsi
     mov byte [rcx + rbx], 0
     lea rcx, [rel g_block_tintmask]
     mov byte [rcx + rbx], 0
+    lea rcx, [rel g_block_lfilter]
+    mov byte [rcx + rbx], 0xFF
     lea rcx, [rel g_block_layer]
     mov byte [rcx + rbx], LAYER_OPAQUE
     lea rcx, [rel g_block_tex]
@@ -548,6 +552,9 @@ PROC sync_states, 0, rbx, rsi, rdi
     lea rax, [rel g_block_light]
     mov cx, [rax + rbx * 2]
     mov [rax + r8 * 2], cx
+    lea rax, [rel g_block_lfilter]
+    mov cl, [rax + rbx]
+    mov [rax + r8], cl
     ; textures: a door's upper half uses upper_textures when set
     imul r9, rbx, 12
     lea r10, [rel g_block_tex]
@@ -736,6 +743,10 @@ PROC block_apply_one, 0, rbx, rsi, rdi, r12, r13
     INVOKE str_ieq, rsi, rdx
     test eax, eax
     jnz .waterlogged
+    lea rdx, [rel k_lfilter]
+    INVOKE str_ieq, rsi, rdx
+    test eax, eax
+    jnz .lfilter
     lea rdx, [rel k_shape]
     INVOKE str_ieq, rsi, rdx
     test eax, eax
@@ -792,6 +803,16 @@ PROC block_apply_one, 0, rbx, rsi, rdi, r12, r13
 .set_layer:
     lea rax, [rel g_block_layer]
     mov [rax + rbx], r12b
+    RETURN
+
+.lfilter:                               ; light_filter = 0..15
+    mov rcx, rdi
+    mov edx, 15
+    call parse_small
+    cmp eax, -1
+    je .bad
+    lea rcx, [rel g_block_lfilter]
+    mov [rcx + rbx], al
     RETURN
 
 .light:                                 ; light = r, g, b (0..15 each)

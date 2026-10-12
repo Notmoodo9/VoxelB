@@ -21,9 +21,9 @@
 global gpu_alloc_init, gpu_alloc, gpu_free, gpu_alloc_units_needed
 global g_gpu_units_used
 
-%define GA_ORDERS       18              ; 2^18 units
+%define GA_ORDERS       19              ; 2^19 units
 %define GA_TOTAL_UNITS  (1 << GA_ORDERS)
-%define GA_UNIT_QUADS   64              ; 512 bytes per unit -> 128 MB total
+%define GA_UNIT_QUADS   64              ; 512 bytes per unit -> 256 MB total
 %define ST_NONE         0               ; not a block head
 %define ST_FREE         1
 %define ST_USED         2

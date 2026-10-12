@@ -12,6 +12,9 @@
 ;   g_gpu_culling (u32)          1 = cull the draws in a compute shader
 ;   g_occlusion_culling (u32)    1 = Hi-Z occlusion culling (needs gpu_culling)
 ;   g_lod_distance (u32)         LOD terrain out to this many chunks, 0..256
+;   g_smooth_lighting (u32)      1 = corner lights mixed across faces
+;   g_ambient_occlusion (u32)    1 = darker inner corners
+;   g_held_light (u32)           the held light's r | g << 8 | b << 16 (0..15)
 ;                                (0 or <= render_distance: no LOD)
 ; =============================================================================
 %include "macros.inc"
@@ -22,8 +25,9 @@
 
 global settings_load, g_render_distance, g_opaque_leaves
 global g_gpu_culling, g_occlusion_culling, g_lod_distance
+global g_smooth_lighting, g_ambient_occlusion, g_held_light
 
-extern str_ieq, str_parse_u64
+extern str_ieq, str_parse_u64, cfg_next_token
 
 %define MIN_DISTANCE        2
 %define MAX_DISTANCE        48
@@ -37,6 +41,9 @@ k_leaves:       db "opaque_leaves", 0
 k_gpu_cull:     db "gpu_culling", 0
 k_occlusion:    db "occlusion_culling", 0
 k_lod:          db "lod_distance", 0
+k_smooth:       db "smooth_lighting", 0
+k_ao:           db "ambient_occlusion", 0
+k_held:         db "held_light", 0
 str_unknown:    db "unknown setting: ", 0
 str_bad:        db "bad value for: ", 0
 
@@ -47,6 +54,9 @@ g_opaque_leaves:    dd 0
 g_gpu_culling:      dd 1
 g_occlusion_culling: dd 1
 g_lod_distance:     dd 64
+g_smooth_lighting:  dd 1
+g_ambient_occlusion: dd 1
+g_held_light:       dd 14 | (11 << 8) | (6 << 16)   ; a warm torch
 
 section .bss
 alignb 8
@@ -60,7 +70,7 @@ section .text
 ;   in:  rcx = name, rdx = value
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC graphics_pair, 0, rbx, rsi, rdi
+PROC graphics_pair, 0, rbx, rsi, rdi, r12
     mov rbx, rcx
     mov rsi, rdx
     lea rdx, [rel k_distance]
@@ -85,6 +95,20 @@ PROC graphics_pair, 0, rbx, rsi, rdi
     INVOKE str_ieq, rbx, rdx
     test eax, eax
     jnz .lod
+    lea rdx, [rel k_smooth]
+    INVOKE str_ieq, rbx, rdx
+    lea rdi, [rel g_smooth_lighting]
+    test eax, eax
+    jnz .flag
+    lea rdx, [rel k_ao]
+    INVOKE str_ieq, rbx, rdx
+    lea rdi, [rel g_ambient_occlusion]
+    test eax, eax
+    jnz .flag
+    lea rdx, [rel k_held]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jnz .held
     lea rcx, [rel str_cfg_label]
     lea rdx, [rel str_unknown]
     INVOKE cfg_warn, rcx, rdx, rbx
@@ -100,6 +124,31 @@ PROC graphics_pair, 0, rbx, rsi, rdi
     ja .bad
     mov [rel g_render_distance], eax
     RETURN
+.held:                                  ; held_light = r, g, b (0..15)
+    xor edi, edi                        ; packed
+    xor r12d, r12d                      ; channel
+.held_ch:
+    test rsi, rsi
+    jz .held_bad
+    mov rcx, rsi
+    call cfg_next_token
+    mov rsi, rdx
+    mov rcx, rax
+    call str_parse_u64
+    test r8, r8
+    jz .held_bad
+    cmp rax, 15
+    ja .held_bad
+    lea ecx, [r12d * 8]
+    shl eax, cl
+    or edi, eax
+    inc r12d
+    cmp r12d, 3
+    jb .held_ch
+    mov [rel g_held_light], edi
+    RETURN
+.held_bad:
+    jmp .bad
 .lod:
     mov rcx, rsi
     call str_parse_u64

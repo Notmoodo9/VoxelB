@@ -11,6 +11,9 @@
 ;   --seed <n>         world seed (overrides data/world/world.cfg)
 ;   --flat             use the flat test world (block gallery)
 ;   --survey           log terrain statistics and places to visit
+;   --held-light       start with the held light on (toggle_held_light)
+;   --daylight <0..100>  sky light strength in percent (preview of night
+;                      lighting until the day/night cycle, milestone 14)
 ;   --look <yaw> <pitch>  start view direction in degrees (yaw 0 = north,
 ;                      90 = east; pitch > 0 looks up)
 ;   --selftest         run the arena/pool/job self test at start (always on
@@ -47,7 +50,7 @@ extern world_init, world_render_init, world_render_shutdown
 extern terrain_survey
 extern world_spawn, g_seed_override, g_seed_override_set, g_force_flat
 extern stream_init, stream_update, stream_shutdown, settings_load
-extern lod_init, lod_update, lod_shutdown
+extern lod_init, lod_update, lod_shutdown, g_held_on, g_daylight
 extern block_textures_poll
 extern g_cam_autofly, g_fly_speed, g_cam_pos, g_cam_yaw, g_cam_pitch
 extern timer_init, timer_frame, timer_reset, timer_elapsed_us
@@ -74,10 +77,13 @@ opt_seed:           db "--seed ", 0
 opt_flat:           db "--flat", 0
 opt_survey:         db "--survey", 0
 opt_look:           db "--look ", 0
+opt_held:           db "--held-light", 0
+opt_daylight:       db "--daylight ", 0
 align 4
 c_deg_to_rad:       dd 0.0174532925
 align 4
 c_flytest_speed:    dd 60.0
+c_hundred:          dd 100.0
 str_cpu_fail:       db "This CPU lacks SSE4.2, which VoxelB requires.", 0
 str_mem_fail:       db "Could not reserve memory. See voxel.log for details.", 0
 str_jobs_fail:      db "Could not start worker threads. See voxel.log for details.", 0
@@ -364,6 +370,26 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     mulss xmm0, [rel c_deg_to_rad]
     movss [rel g_cam_pitch], xmm0
 .no_look:
+    lea rdx, [rel opt_daylight]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .no_daylight
+    lea rcx, [rax + 11]
+    call str_parse_u64
+    test r8, r8
+    jz .no_daylight
+    cmp rax, 100
+    ja .no_daylight
+    cvtsi2ss xmm0, eax
+    divss xmm0, [rel c_hundred]
+    movss [rel g_daylight], xmm0
+.no_daylight:
+    lea rdx, [rel opt_held]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .no_held_opt
+    mov dword [rel g_held_on], 1
+.no_held_opt:
     lea rdx, [rel opt_flytest]
     INVOKE str_find, rbx, rdx
     test rax, rax
@@ -438,6 +464,12 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     jz .no_reload
     call shader_reload_all
 .no_reload:
+    mov ecx, ACT_TOGGLE_HELD_LIGHT
+    call input_pressed
+    test eax, eax
+    jz .no_held
+    xor dword [rel g_held_on], 1
+.no_held:
     call shader_poll
     call block_textures_poll
 

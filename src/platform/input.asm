@@ -55,8 +55,9 @@ an_7:  db "toggle_debug_overlay", 0
 an_8:  db "toggle_vsync", 0
 an_9:  db "reload_shaders", 0
 an_10: db "menu", 0
+an_11: db "toggle_held_light", 0
 align 8
-action_name_table:  dq an_0, an_1, an_2, an_3, an_4, an_5, an_6, an_7, an_8, an_9, an_10
+action_name_table:  dq an_0, an_1, an_2, an_3, an_4, an_5, an_6, an_7, an_8, an_9, an_10, an_11
 %if ($ - action_name_table) / 8 != ACT_COUNT
     %error "action_name_table does not match ACT_COUNT"
 %endif

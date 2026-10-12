@@ -3,12 +3,12 @@
 ;
 ; Every frame (stream_update, main thread, never waits on jobs):
 ;   1. walk the loaded columns: upload finished meshes to the GPU (byte
-;      budget per frame), unload columns beyond render distance + 3 whose
+;      budget per frame), unload columns beyond render distance + 4 whose
 ;      jobs are done (busy == 0), count work in flight;
 ;   2. walk a spiral of chunk offsets sorted by distance (nearest first):
-;      create + queue generation for missing columns within distance + 1,
+;      create + queue generation for missing columns within distance + 2,
 ;      queue meshing for generated columns within the render distance whose
-;      4 horizontal neighbours are generated (so borders mesh correctly the
+;      8 surrounding columns are generated (so borders mesh correctly the
 ;      first time). In-flight jobs are capped so the queue stays short and
 ;      priorities follow the camera.
 ; Workers never touch the column map: a mesh job gets its neighbours'
@@ -39,7 +39,8 @@ global g_stream_quads, g_stream_mesh_count, g_stream_mesh_total_us
 global g_stream_mesh_max_us, g_stream_cpu_mesh_bytes, g_stream_view_ms
 
 extern timer_elapsed_us, g_render_distance, g_frame_us
-extern mesh_section, tint_upload
+extern mesh_section, tint_upload, light_init, light_build, g_light_buffer
+extern g_light_sources
 extern gpu_alloc_init, gpu_alloc, gpu_free, gpu_alloc_units_needed
 extern g_quad_buffer, g_cam_pos
 
@@ -54,7 +55,11 @@ IMPORT VirtualAlloc, VirtualFree
 %define PAGE_READWRITE      0x04
 
 section .rdata
+align 8
+; COLUMN.nb order: dx, dz
+nb_offsets:     dd -1, 0,  1, 0,  0, -1,  0, 1,  -1, -1,  1, -1,  -1, 1,  1, 1
 str_view:       db "stream: view complete, columns ", 0
+str_lsrc:       db " light sources ", 0
 str_after:      db " after ms ", 0
 str_stat:       db "stream: loaded ", 0
 str_ready:      db " ready ", 0
@@ -99,7 +104,7 @@ g_stream_cpu_mesh_bytes: resq 1
 section .text
 
 ; -----------------------------------------------------------------------------
-; build_spiral — chunk offsets within render distance + 1, sorted by squared
+; build_spiral — chunk offsets within render distance + 2, sorted by squared
 ; distance (counting sort), as {i16 dx, i16 dz}.
 ;   out: eax = 1 on success
 ;   clobbers: volatile registers
@@ -107,7 +112,8 @@ section .text
 %define BSP_COUNTS  0                   ; u32 per d^2 bucket (in scratch)
 PROC build_spiral, 16, rbx, rsi, rdi, r12, r13, r14, r15
     mov r12d, [rel g_render_distance]
-    lea r13d, [r12d + 1]                ; outer radius
+    lea r13d, [r12d + 2]                ; outer radius (diagonal neighbours of
+                                        ; the edge columns, for their light)
     mov r14d, r13d
     imul r14d, r14d                     ; outer^2
     ; buckets 0 .. outer^2
@@ -213,6 +219,7 @@ ENDPROC
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC stream_init, 0, rbx
+    call light_init
     call gpu_alloc_init
     test eax, eax
     jz .fail
@@ -238,10 +245,12 @@ PROC stream_init, 0, rbx
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; mesh_column_job — job: mesh every stored section of a column.
-; All quads of the column end up contiguous in the worker's scratch arena
-; (each section's output buffer starts where the previous output ended),
-; then are copied into one VirtualAlloc block for the main thread.
+; mesh_column_job — job: light and mesh every stored section of a column.
+; The column's light volume comes first (light.asm, milestone 13). Each
+; section's output is its quads followed by their light words; all of them
+; end up contiguous in the worker's scratch arena (each section's output
+; starts where the previous one ended), then are copied into one
+; VirtualAlloc block for the main thread (section data at cpu_first * 16).
 ;   in:  rcx = COLUMN* (nb[] set, busy counters raised), rdx = WORKER*
 ;   Publishes COL_MESHED last.
 ; -----------------------------------------------------------------------------
@@ -251,11 +260,14 @@ ENDPROC
 %define MC_TOTAL    64                  ; quads so far
 %define MC_MARK     72
 %define MC_SY       80
+%define MC_LVOL     88
 PROC mesh_column_job, 96, rbx, rsi, rdi, r12, r13, r14, r15
     mov rbx, rcx                        ; column
     lea r15, [rdx + WORKER.scratch]
     call timer_elapsed_us
     mov [LOCAL(MC_T0)], rax
+    INVOKE light_build, rbx, r15        ; (0 if out of memory: open sky)
+    mov [LOCAL(MC_LVOL)], rax
     mov rcx, r15
     call arena_mark
     add rax, [r15 + ARENA.base]
@@ -297,21 +309,33 @@ PROC mesh_column_job, 96, rbx, rsi, rdi, r12, r13, r14, r15
     mov rcx, r15
     call arena_mark
     mov [LOCAL(MC_MARK)], rax
-    INVOKE arena_alloc, r15, MESH_MAX_QUADS * 8, 8
+    INVOKE arena_alloc, r15, MESH_MAX_QUADS * 16, 8
     test rax, rax
     jz .next
-    mov rsi, rax                        ; output (= base + total * 8)
+    mov rsi, rax                        ; output (= base + total * 16)
     lea rdx, [LOCAL(MC_NB)]
-    INVOKE mesh_section, r13, rdx, rsi, r15
+    lea rax, [rsi + MESH_MAX_QUADS * 8] ; light words
+    INVOKE mesh_section, r13, rdx, rsi, r15, [LOCAL(MC_LVOL)], rax
     mov rdi, rax                        ; count
     mov [r13 + SECT.quad_opaque], edx
     shr rdx, 32
     mov [r13 + SECT.quad_cutout], edx
+    ; light words right after the quads
+    mov rcx, rdi
+    mov [LOCAL(MC_SY)], rsi
+    lea rdx, [rsi + rdi * 8]
+    lea rsi, [rsi + MESH_MAX_QUADS * 8]
+    mov rax, rdi
+    mov rdi, rdx
+    rep movsq
+    mov rdi, rax
+    mov rsi, [LOCAL(MC_SY)]
     INVOKE arena_reset_to, r15, [LOCAL(MC_MARK)]
     mov [r13 + SECT.quad_count], edi
     test rdi, rdi
     jz .timed
-    lea rdx, [rdi * 8]
+    mov rdx, rdi
+    shl rdx, 4
     INVOKE arena_alloc, r15, rdx, 8     ; keeps exactly this output
     mov rax, [LOCAL(MC_TOTAL)]
     mov [r13 + SECT.cpu_first], eax     ; offset within the column buffer
@@ -328,7 +352,7 @@ PROC mesh_column_job, 96, rbx, rsi, rdi, r12, r13, r14, r15
     ; hand the quads to the main thread
     mov qword [rbx + COLUMN.mesh_buf], 0
     mov rsi, [LOCAL(MC_TOTAL)]
-    shl rsi, 3                          ; bytes
+    shl rsi, 4                          ; bytes (quads + light words)
     mov [rbx + COLUMN.mesh_bytes], rsi
     test rsi, rsi
     jz .publish
@@ -361,7 +385,7 @@ PROC mesh_column_job, 96, rbx, rsi, rdi, r12, r13, r14, r15
     mov rax, [rbx + COLUMN.nb + rcx * 8]
     lock dec dword [rax + COLUMN.busy]
     inc ecx
-    cmp ecx, 4
+    cmp ecx, 8
     jb .release
     lock dec dword [rbx + COLUMN.busy]
     mov dword [rbx + COLUMN.state], COL_MESHED
@@ -398,7 +422,7 @@ ENDPROC
 ;   out: eax = bytes uploaded, or -1 if the GPU buffer is full (nothing kept)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC upload_column, 0, rbx, rsi, rdi, r12, r13
+PROC upload_column, 32, rbx, rsi, rdi, r12, r13
     mov rbx, rcx
     xor r12d, r12d                      ; bytes
     mov qword [rbx + COLUMN.geo_mask], 0
@@ -418,10 +442,11 @@ PROC upload_column, 0, rbx, rsi, rdi, r12, r13
     call gpu_alloc
     cmp eax, -1
     je .full
-    ; upload: offset = unit * 512 bytes, source = mesh_buf + cpu_first * 8
+    ; upload: offset = unit * 512 bytes, source = mesh_buf + cpu_first * 16
+    ; (the quads; their light words follow, into the light buffer)
     mov r8d, eax                        ; unit
     mov r9d, [rdi + SECT.cpu_first]
-    shl r9, 3
+    shl r9, 4
     add r9, r13                         ; source
     mov ecx, eax
     shl ecx, 6
@@ -433,7 +458,15 @@ PROC upload_column, 0, rbx, rsi, rdi, r12, r13
     mov rdx, r8
     shl rdx, 9                          ; byte offset
     bts qword [rbx + COLUMN.geo_mask], rsi
+    mov [LOCAL(0)], rdx                 ; (keep offset, size, source)
+    mov [LOCAL(8)], rax
+    mov [LOCAL(16)], r9
     GL glNamedBufferSubData, [rel g_quad_buffer], rdx, rax, r9
+    mov rdx, [LOCAL(0)]
+    mov rax, [LOCAL(8)]
+    mov r9, [LOCAL(16)]
+    add r9, rax
+    GL glNamedBufferSubData, [rel g_light_buffer], rdx, rax, r9
 .next:
     inc esi
     cmp esi, SECTIONS_PER_COLUMN
@@ -526,7 +559,8 @@ camera_chunk:
     ret
 
 ; -----------------------------------------------------------------------------
-; neighbors_ready — are the 4 horizontal neighbours generated?
+; neighbors_ready — are the 8 surrounding columns generated? (meshing needs
+; the 4 sides for faces, lighting all 8 for its 16-block margin)
 ;   in:  rcx = COLUMN*
 ;   out: eax = 1 and the column's nb[] filled, or 0
 ;   clobbers: volatile registers
@@ -535,25 +569,11 @@ PROC neighbors_ready, 0, rbx, rsi, rdi
     mov rbx, rcx
     xor esi, esi
 .next:
+    lea rax, [rel nb_offsets]
     mov ecx, [rbx + COLUMN.cx]
+    add ecx, [rax + rsi * 8]
     mov edx, [rbx + COLUMN.cz]
-    cmp esi, 0
-    jne .n1
-    dec ecx
-    jmp .look
-.n1:
-    cmp esi, 1
-    jne .n2
-    inc ecx
-    jmp .look
-.n2:
-    cmp esi, 2
-    jne .n3
-    dec edx
-    jmp .look
-.n3:
-    inc edx
-.look:
+    add edx, [rax + rsi * 8 + 4]
     call world_column
     test rax, rax
     jz .no
@@ -561,7 +581,7 @@ PROC neighbors_ready, 0, rbx, rsi, rdi
     jb .no                              ; NEW or GENERATING
     mov [rbx + COLUMN.nb + rsi * 8], rax
     inc esi
-    cmp esi, 4
+    cmp esi, 8
     jb .next
     mov eax, 1
     RETURN
@@ -595,10 +615,10 @@ PROC stream_update, 80, rbx, rsi, rdi, r12, r13, r14, r15
     mov ecx, eax
     imul ecx, ecx
     mov [LOCAL(SU_R2)], rcx
-    lea ecx, [eax + 1]
+    lea ecx, [eax + 2]
     imul ecx, ecx
     mov [LOCAL(SU_GEN_R2)], rcx
-    lea ecx, [eax + 3]
+    lea ecx, [eax + 4]
     imul ecx, ecx
     mov [LOCAL(SU_UNL_R2)], rcx
     mov eax, [rel g_job_worker_count]
@@ -800,7 +820,7 @@ PROC stream_update, 80, rbx, rsi, rdi, r12, r13, r14, r15
     mov rax, [rbx + COLUMN.nb + rcx * 8]
     lock inc dword [rax + COLUMN.busy]
     inc ecx
-    cmp ecx, 4
+    cmp ecx, 8
     jb .reserve
     mov dword [rbx + COLUMN.state], COL_MESHING
     inc qword [rel g_stream_mesh_inflight]
@@ -893,6 +913,10 @@ PROC log_stats, 0
     lea rcx, [rel str_upl_max]
     call log_append_str
     mov rcx, [rel g_upl_max_us]
+    call log_append_dec
+    lea rcx, [rel str_lsrc]
+    call log_append_str
+    mov rcx, [rel g_light_sources]
     call log_append_dec
     call log_end
     xor eax, eax
