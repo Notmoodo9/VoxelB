@@ -7,8 +7,14 @@ Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
 `design/BACKLOG.md`). Progressive LOD is planned as Milestone 34.
 
+Version **v0.17.0 — Saves, menus and settings** (`data/version.cfg`).
+Every version has its own release on GitHub ("VoxelB v<version> -
+<title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
+
 Next: **Milestone 18 (🎨 DESIGN): items, inventory, hotbar, chests,
-crafting, tool tiers, smelting** — starts with a design interview.
+crafting, tool tiers, smelting** — interviewed and approved
+(`design/items/items_inventory.md`); building part 1 (items and the
+inventory, v0.18.1).
 
 ---
 

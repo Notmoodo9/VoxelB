@@ -29,6 +29,7 @@
 %include "ui.inc"
 %include "menu.inc"
 %include "save.inc"
+%include "cfg.inc"
 
 global menu_open, menu_back, menu_frame, menu_screen
 global g_new_mode, g_new_difficulty, g_new_hardcore
@@ -97,7 +98,12 @@ s_paused:       db "Paused", 0
 s_resume:       db "Resume", 0
 s_to_menu:      db "Save & quit to menu", 0
 s_save_quit:    db "Save & quit game", 0
-s_version:      db "Milestone 17", 0
+s_version_file: db "data/version.cfg", 0
+s_version_lbl:  db "version.cfg", 0
+s_v:            db "v", 0
+s_dash:         db "  -  ", 0
+k_version:      db "version", 0
+k_title:        db "title", 0
 s_world_n:      db "World ", 0
 s_saves_glob:   db "saves\*", 0
 s_saves_bs:     db "saves\", 0
@@ -154,6 +160,10 @@ g_credit_n:     resd 1
 g_credits_done: resd 1
 g_atlas:        resd 1                  ; the pictures' texture
 g_settings_return: resd 1               ; the screen Settings goes back to
+g_version_done: resd 1
+g_version_text: resb 96                 ; "v0.17.0  -  Saves, menus and settings"
+g_ver_num:      resb 24
+g_ver_title:    resb 64
 alignb 16
 g_worlds:       resb MAX_WORLDS * WORLD_INFO_size
 g_tmp_info:     resb WORLD_INFO_size
@@ -932,6 +942,83 @@ s_log_delete:   db "menu: deleted world ", 0
 section .text
 
 ; -----------------------------------------------------------------------------
+; load_version — data/version.cfg into "v<version>  -  <title>" (once), for
+; the main menu's footer.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC load_version, 16, rbx
+    cmp dword [rel g_version_done], 0
+    jne .done
+    mov dword [rel g_version_done], 1
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [LOCAL(0)], rax
+    lea rcx, [rel g_path]
+    lea rdx, [rel s_version_file]
+    call path_make
+    lea rcx, [rel g_path]
+    lea rdx, [rel g_arena_scratch]
+    call file_load
+    test rax, rax
+    jz .reset
+    lea rdx, [rel version_pair]
+    lea r9, [rel s_version_lbl]
+    INVOKE cfg_parse, rax, rdx, 0, r9
+.reset:
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(0)]
+    cmp byte [rel g_ver_num], 0
+    je .done
+    lea rcx, [rel g_version_text]
+    lea rdx, [rel s_v]
+    call str_copy
+    mov rcx, rax
+    lea rdx, [rel g_ver_num]
+    call str_copy
+    cmp byte [rel g_ver_title], 0
+    je .done
+    mov rcx, rax
+    lea rdx, [rel s_dash]
+    call str_copy
+    mov rcx, rax
+    lea rdx, [rel g_ver_title]
+    call str_copy
+.done:
+    RETURN
+ENDPROC
+
+; version.cfg callback: rcx = name, rdx = value
+PROC version_pair, 0, rbx, rsi, rdi
+    mov rbx, rcx
+    mov rsi, rdx
+    lea rdx, [rel k_version]
+    INVOKE str_ieq, rbx, rdx
+    lea rdi, [rel g_ver_num]
+    mov ecx, 23
+    test eax, eax
+    jnz .copy
+    lea rdx, [rel k_title]
+    INVOKE str_ieq, rbx, rdx
+    lea rdi, [rel g_ver_title]
+    mov ecx, 63
+    test eax, eax
+    jz .done
+.copy:
+    mov al, [rsi]
+    test al, al
+    jz .end
+    mov [rdi], al
+    inc rsi
+    inc rdi
+    dec ecx
+    jnz .copy
+.end:
+    mov byte [rdi], 0
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 ; load_credits — data/ui/credits.txt into lines (once).
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
@@ -1136,7 +1223,8 @@ PROC menu_frame, 48, rbx, rsi, rdi, r12, r13, r14, r15
     sub r8d, 36
     mov dword [rsp + 32], COL_TEXT_DIM
     mov qword [rsp + 40], 0
-    lea rcx, [rel s_version]
+    call load_version
+    lea rcx, [rel g_version_text]
     INVOKE ui_label, rcx, 20, r8, 16
     jmp .end
 

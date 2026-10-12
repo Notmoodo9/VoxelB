@@ -1620,3 +1620,18 @@ block for their upper half (mossy cobblestone boulders).
   `autosave_minutes` moved there from `world.cfg`, which describes the
   world, not the player's preferences.
 
+## D92 — Versions and named releases
+* `data/version.cfg` holds the version, `0.<milestone>.<part>` (part 0 =
+  the whole milestone; parts as in PROGRESS.md), and a short title. It is
+  bumped with every milestone part that changes the game.
+* CI (`build.yml`) publishes, on the default branch, a permanent release
+  `VoxelB v<version> - <title>` (tag `v<version>`, zip
+  `voxelb-v<version>-windows.zip`, notes = the commits since the previous
+  version) the first time a version number appears; "Latest build" stays
+  the rolling newest build. Versioned releases are not marked "latest",
+  so GitHub's Latest still means the newest build.
+* Past milestones were rebuilt from their last commits by the
+  `release-history.yml` workflow (list in `tools/release_history.txt`,
+  v0.1.0 – v0.16.0); it skips versions that already have a release.
+* The main menu's footer shows "v<version> - <title>".
+

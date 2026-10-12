@@ -49,6 +49,7 @@ warnings, as above.
 | `data/world/flat_test.cfg` | `src/world/world.asm` | **debug** test world: layers, block gallery, test structures |
 | `assets/textures/blocks/*.png` | `src/render/block_textures.asm` | block textures (16×16, animated strips, glow layers) |
 | `data/ui/menu.cfg` | `src/core/game.asm` | the main menu's background: world seed, time, the camera's path |
+| `data/version.cfg` | `src/ui/menu.asm`, CI | the game's version (`version = 0.<milestone>.<part>`) and its `title`: shown in the main menu; each new version gets its own release |
 | `data/ui/credits.txt` | `src/ui/menu.asm` | the Credits screen: plain text, one line per line (the first is the heading) |
 | `assets/fonts/ui_sdf.png`, `ui_sdf.cfg` | `src/ui/ui_draw.asm` | the menus' / HUD's SDF font (made by `tools/make_sdf_font.py`) |
 

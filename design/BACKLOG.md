@@ -41,7 +41,7 @@ yet; each item gets its own doc in `design/` when we interview it.
 | done | Block set v1 and texture style | M7 | `design/blocks/block_set.md` (262 blocks, 16x16 vibrant shaded) |
 | done | Shaped blocks | M7b | `design/blocks/shaped_blocks.md` |
 | todo | Sign text, pressure plate mechanisms (wiring) | M16+ | from the M7b interview |
-| todo | Items, inventory, chests, crafting, tool tiers, smelting | M18 | |
+| designing | Items, inventory, chests, crafting, tool tiers, smelting | M18 | `design/items/items_inventory.md` |
 | todo | Passive animals | M19 | one mob at a time; bees and beehives on meadow trees (meadow interview); seals, polar bears, walruses (frozen ocean interview); river fish (river interview) |
 | todo | Survival: health, hunger, damage, death, difficulty levels, Hardcore | M20 | |
 | todo | Combat: melee, ranged, armor | M21 | |
