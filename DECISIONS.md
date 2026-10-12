@@ -1165,4 +1165,8 @@ block for their upper half (mossy cobblestone boulders).
 * **Fog** density is 2.3 / LOD radius (the far edge is about 90% sky).
   Without LOD it stays at 0.0013.
 * **Settings:** `lod_distance` (0–256 chunks, default 64) in graphics.cfg.
-
+* Driver robustness (after a blank screen on Intel UHD 630): the ring
+  radii are two `vec4` uniforms (no indexed uniform array). The level
+  attribute is a float conversion of the record's count (exact for the
+  top byte, since counts stay below 2^23). A zero radius disables the
+  clipping instead of discarding every pixel.

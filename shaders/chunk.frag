@@ -13,8 +13,9 @@ layout(binding = 3) uniform sampler2DArray u_tint;   // biome colours (layer 0 g
 layout(binding = 4) uniform sampler2DArray u_lod_tint;  // the LOD tiles' colours
 layout(location = 5) uniform int u_pass;
 layout(location = 6) uniform int u_lod_levels;     // 0: no LOD
-layout(location = 7) uniform float u_lod_r[6];     // ring radii (blocks, xz)
-layout(location = 13) uniform float u_fog;         // fog density
+layout(location = 7) uniform vec4 u_lod_ra;        // ring radii r0..r3 (blocks, xz)
+layout(location = 8) uniform vec4 u_lod_rb;        //   r4, r5
+layout(location = 9) uniform float u_fog;          // fog density
 
 in vec3 v_rel;
 in vec2 v_tuv;
@@ -39,22 +40,34 @@ float dither() {
     return fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
 }
 
+// ring radius i (constant branches: no indexed uniform arrays)
+float ring(int i) {
+    if (i <= 0) return u_lod_ra.x;
+    if (i == 1) return u_lod_ra.y;
+    if (i == 2) return u_lod_ra.z;
+    if (i == 3) return u_lod_ra.w;
+    if (i == 4) return u_lod_rb.x;
+    return u_lod_rb.y;
+}
+
 vec3 tint(float layer) {
     return (v_level > 0u ? texture(u_lod_tint, vec3(v_tuv, layer))
                          : texture(u_tint, vec3(v_tuv, layer))).rgb * 3.984375;
 }
 
 void main() {
-    if (u_lod_levels > 0) {
-        int lv = int(v_level);
+    // (a radius that never arrived, 0, clips nothing)
+    if (u_lod_levels > 0 && u_lod_ra.x > 0.0) {
+        int lv = min(int(v_level), u_lod_levels);
         float d = length(v_rel.xz);
         float t = dither();
+        float ro = ring(lv);
         if (lv < u_lod_levels) {             // fade out towards the next level
-            float ro = u_lod_r[lv], w = ro * FADE;
+            float w = ro * FADE;
             if (t < clamp((d - (ro - w)) / w, 0.0, 1.0)) discard;
-        } else if (d >= u_lod_r[lv]) discard;
+        } else if (d >= ro) discard;
         if (lv > 0) {                        // fade in over the previous level's band
-            float ri = u_lod_r[lv - 1], w = ri * FADE;
+            float ri = ring(lv - 1), w = ri * FADE;
             if (t >= clamp((d - (ri - w)) / w, 0.0, 1.0)) discard;
         }
     }

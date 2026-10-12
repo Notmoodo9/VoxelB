@@ -83,8 +83,9 @@ endstruc
 %define U_TIME              4
 %define U_PASS              5
 %define U_LOD_LEVELS        6           ; LOD: levels in use (0 = off)
-%define U_LOD_R             7           ;   ring radii [6] (locations 7..12)
-%define U_FOG               13          ; fog density
+%define U_LOD_RA            7           ;   ring radii r0..r3 (vec4)
+%define U_LOD_RB            8           ;   r4, r5 (vec4)
+%define U_FOG               9           ; fog density
 %define LOD_TINT_SIZE       1024        ; LOD tint map texels per side (16 blocks each)
 %define FOG_DEFAULT         0.0013      ; without LOD
 %define FOG_LOD             2.3         ; / the LOD radius: the far edge ~90% fog
@@ -476,7 +477,7 @@ PROC gpu_draw_init, 16, rdi
     GL glVertexArrayAttribFormat, [rel g_world_vao], 0, 3, GL_FLOAT, GL_FALSE, 0
     GL glVertexArrayAttribFormat, [rel g_world_vao], 1, 3, GL_FLOAT, GL_FALSE, 16
     GL glVertexArrayAttribBinding, [rel g_world_vao], 0, 0
-    GL glVertexArrayAttribIFormat, [rel g_world_vao], 2, 1, GL_UNSIGNED_INT, 28
+    GL glVertexArrayAttribFormat, [rel g_world_vao], 2, 1, GL_UNSIGNED_INT, GL_FALSE, 28
     GL glVertexArrayAttribBinding, [rel g_world_vao], 1, 0
     GL glVertexArrayAttribBinding, [rel g_world_vao], 2, 0
     GL glVertexArrayBindingDivisor, [rel g_world_vao], 0, 1
@@ -878,7 +879,9 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     ; LOD rings and the fog that hides their far edge
     GL glProgramUniform1i, rbx, U_LOD_LEVELS, [rel g_lod_levels]
     lea r9, [rel g_lod_r]
-    GL glProgramUniform1fv, rbx, U_LOD_R, LOD_MAX_LEVEL + 1, r9
+    GL glProgramUniform4fv, rbx, U_LOD_RA, 1, r9
+    lea r9, [rel g_lod_r + 16]
+    GL glProgramUniform4fv, rbx, U_LOD_RB, 1, r9
     movss xmm2, [rel c_fog_default]
     mov eax, [rel g_lod_levels]
     test eax, eax

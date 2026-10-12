@@ -101,7 +101,7 @@ g_lod_inflight:     resq 1
 g_lod_quads:        resq 1
 g_lod_stamp:        resd 1
 g_lod_levels:       resd 1
-g_lod_r:            resd LOD_MAX_LEVEL + 1
+g_lod_r:            resd 8              ; (6 used; 8 for the two vec4 uniforms)
 g_lod_warned:       resd 1
 g_lod_missing:      resd 1              ; tiles the rings still lack (this frame)
 g_lod_done_logged:  resd 1

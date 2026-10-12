@@ -81,6 +81,19 @@ frame rate is the limit. Full-detail streaming is unchanged: view
 complete in ~12–14 s, the same as before, because LOD jobs wait for a
 short queue.
 
+### Fix after the owner's test (Intel UHD 630, Windows)
+* Nothing but sky rendered on the owner's Intel GPU (records drawn,
+  Hi-Z culled 0: every fragment was discarded by the ring clipping). The
+  ring radii came from an explicit-location uniform float array, and the
+  level from an integer vertex attribute; both are now on the simplest
+  paths:
+  * two `vec4` uniforms read with constant branches;
+  * the level from a float attribute, the same path as the origins.
+  * A radius of 0 now clips nothing, so a missing uniform can no longer
+    blank the screen.
+* Still to confirm on the owner's PC. Workaround meanwhile:
+  `lod_distance = 0`.
+
 ### Deferred
 * LOD tiles ignore player edits (none exist yet; M16 adds breaking and
   placing, then edited columns will rebuild their tiles).

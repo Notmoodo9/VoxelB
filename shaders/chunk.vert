@@ -20,7 +20,8 @@ layout(std430, binding = 2) readonly buffer Textures { uvec4 tex_info[]; };
 layout(location = 0) uniform mat4 u_viewproj;     // rotation + projection
 layout(location = 0) in vec3 a_origin_rel;        // section origin - camera
 layout(location = 1) in vec3 a_origin_world;      // section origin (mod 65536)
-layout(location = 2) in uint a_count;             // quads | LOD level << 24
+layout(location = 2) in float a_count;            // quads | LOD level << 24, as a
+                                                  // float (exact for the level)
 layout(location = 4) uniform float u_time;        // seconds
 
 out vec3 v_rel;          // camera-relative position (fog)
@@ -43,7 +44,7 @@ void main() {
     vec3 u_origin_world = a_origin_world;
     uvec2 q = quads[uint(gl_VertexID) / 6u];
     uint lo = q.x;
-    uint level = a_count >> 24;
+    uint level = uint(floor(a_count * (1.0 / 16777216.0) + 0.25));
     uint face = level > 0u ? (lo >> 21) & 7u : (lo >> 28) & 7u;
     bool flip = (face == 1u || face == 3u || face == 4u);
     uint c = CORNERS[(flip ? 6u : 0u) + uint(gl_VertexID) % 6u];
