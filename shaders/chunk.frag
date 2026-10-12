@@ -5,7 +5,10 @@
 // is worked out in the textures' own (sRGB) space as before, then the
 // result is converted to linear; glow layers shine above 1.0 (bloom); the
 // sky light follows the sun and moon; distance + height fog take the sky's
-// colour in the view direction. Milestone 13: smooth light (each quad's 4 corner lights mixed
+// colour in the view direction. Milestone 15: water surfaces (translucent
+// pass) are shaded from copies of the opaque scene: refraction, depth-based
+// absorption and scattering, screen-space reflections with a sky fallback,
+// Fresnel, sun glints and shore foam. Milestone 13: smooth light (each quad's 4 corner lights mixed
 // bilinearly), ambient occlusion, sky light x daylight, RGB block light and
 // the held light.
 // u_pass: 0 opaque, 1 cutout (alpha test), 2 translucent (blended).
@@ -30,6 +33,11 @@ layout(location = 14) uniform vec3 u_sun_dir;      // towards the sun (unit)
 layout(location = 15) uniform float u_fog_base;    // height fog: thickest at and below this y
 layout(location = 17) uniform int u_shadows;       // cascades in use (0: off)
 layout(location = 18) uniform vec3 u_cam_mod;      // camera position mod 4096
+layout(location = 19) uniform int u_water;         // 1 refraction & co., 2 + reflections
+layout(location = 0) uniform mat4 u_viewproj;      // (shared with chunk.vert)
+layout(location = 4) uniform float u_time;         // (shared with chunk.vert)
+layout(binding = 8) uniform sampler2D u_refr_color;  // the opaque scene (HDR)
+layout(binding = 9) uniform sampler2D u_refr_depth;  // its depth (reverse-Z)
 layout(binding = 7) uniform sampler2DArrayShadow u_shadow_map;
 // milestone 14 part 2: shadow cascades (shaders/shadow_setup.comp)
 struct ShadowData { mat4 m[4]; vec4 splits; vec4 light; vec4 texel; vec4 origin[4]; };
@@ -112,6 +120,104 @@ vec3 sky_light(vec3 sun) {
     vec3 sunc = mix(vec3(1.0, 0.62, 0.42), vec3(1.0, 0.98, 0.94), smoothstep(0.0, 0.4, sun.y));
     return mix(vec3(0.16, 0.19, 0.30), sunc, day);
 }
+
+// ---- water (milestone 15) ---------------------------------------------------
+const float NEAR = 0.05;                 // camera near plane (camera.asm)
+
+// slope of the water surface: a few moving swells and ripples
+vec2 wave_slope(vec2 p, float t) {
+    vec2 g = vec2(0.0);
+    const vec4 W[4] = vec4[](vec4(0.82, 0.57, 0.23, 0.060), vec4(-0.45, 0.89, 0.37, 0.040),
+                             vec4(0.97, -0.24, 0.71, 0.022), vec4(-0.68, -0.73, 1.13, 0.014));
+    const float SPEED[4] = float[](1.1, 1.4, 2.1, 2.7);
+    for (int i = 0; i < 4; ++i) {
+        float ph = dot(W[i].xy, p) * W[i].z + t * SPEED[i];
+        g += W[i].xy * (W[i].z * W[i].w * cos(ph));
+    }
+    return g;
+}
+
+// screen-space reflection: march the reflected ray against the opaque
+// scene's depth; a = how much of it was found on screen
+vec4 ssr(vec3 o, vec3 r) {
+    float step = 0.6;
+    vec3 p = o + r * 0.3;
+    for (int i = 0; i < 28; ++i) {
+        p += r * step;
+        step *= 1.25;
+        vec4 c = u_viewproj * vec4(p, 1.0);
+        if (c.w <= NEAR) break;
+        vec3 ndc = c.xyz / c.w;
+        vec2 uv = ndc.xy * 0.5 + 0.5;
+        if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) break;
+        float zs = textureLod(u_refr_depth, uv, 0.0).r;
+        if (zs > ndc.z) {                       // the scene is in front of the ray
+            float behind = NEAR / ndc.z - NEAR / max(zs, 1e-7);
+            if (behind < step * 1.5 + 0.5) {
+                vec2 e = smoothstep(vec2(0.0), vec2(0.08), uv) * smoothstep(vec2(1.0), vec2(0.92), uv);
+                return vec4(textureLod(u_refr_color, uv, 0.0).rgb, e.x * e.y);
+            }
+            break;
+        }
+    }
+    return vec4(0.0);
+}
+
+// the water surface's colour (linear HDR). wcol: the biome's water colour
+// (linear); light: the surface's light (perceptual, as for blocks); sky:
+// how much open sky it sees (0..1); direct: sun/moon reaching it
+vec3 water_color(vec3 wcol, vec3 light, float sky, float direct) {
+    vec2 res = vec2(textureSize(u_refr_color, 0));
+    vec2 suv = gl_FragCoord.xy / res;
+    vec2 wp = v_tuv * (v_level > 0u ? 16384.0 : 4096.0);   // world x, z (mod 65536)
+    vec2 g = wave_slope(wp, u_time);
+    vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
+    if (!gl_FrontFacing) n = -n;                // seen from below
+    vec3 v = normalize(-v_rel);
+    float dist = length(v_rel);
+
+    // how much water the view ray crosses (to the opaque scene behind)
+    float zs = textureLod(u_refr_depth, suv, 0.0).r;
+    float vz_w = NEAR / gl_FragCoord.z;
+    float vz_f = zs > 0.0 ? NEAR / zs : 1e5;
+    float thick = max(vz_f - vz_w, 0.0) * dist / vz_w;
+
+    // refraction: the scene behind, bent by the waves (not where that
+    // would pick up something in front of the water)
+    vec2 ruv = suv + n.xz * 0.035 * clamp(thick * 0.25, 0.0, 1.0) / max(dist * 0.05, 1.0);
+    if (textureLod(u_refr_depth, ruv, 0.0).r > gl_FragCoord.z) ruv = suv;
+    vec3 behind = textureLod(u_refr_color, ruv, 0.0).rgb;
+    vec3 lin = pow(light, vec3(2.2));
+    vec3 absorb = exp(-thick * vec3(0.40, 0.11, 0.07));
+    vec3 scatter = wcol * lin * 0.55;
+    vec3 under = behind * absorb + scatter * (1.0 - exp(-thick * 0.20));
+
+    // reflection: the scene on screen, else the sky (dimmed where the
+    // surface sees little sky)
+    vec3 r = reflect(-v, n);
+    vec3 skyr = sky_color(r, normalize(u_sun_dir)) * smoothstep(0.0, 1.0, sky);
+    vec3 refl = skyr;
+    if ((u_water & 2) != 0 && gl_FrontFacing) {
+        vec4 h = ssr(v_rel, r);
+        refl = mix(skyr, h.rgb, h.a);
+    }
+    float fres = 0.02 + 0.98 * pow(1.0 - max(dot(n, v), 0.0), 5.0);
+    if (!gl_FrontFacing) fres = 0.0;            // (from below: mostly see through)
+    vec3 col = mix(under, refl, fres);
+
+    // sun / moon glint
+    vec3 hv = normalize(v + sd.light.xyz);
+    float spec = pow(max(dot(n, hv), 0.0), 400.0) * 8.0 * direct * sd.light.w;
+    col += spec * sky_light(u_sun_dir);
+
+    // foam where the water is shallow at the shore
+    float fn = fract(sin(dot(floor(wp * 2.0), vec2(12.9898, 78.233))) * 43758.5453);
+    float edge = 1.0 - smoothstep(0.0, 0.7, thick);
+    float foam = edge * smoothstep(0.35, 0.9, fn + 0.25 * sin(u_time * 2.0 + wp.x * 0.7 + wp.y * 0.5));
+    col = mix(col, vec3(0.95) * lin, clamp(foam, 0.0, 0.85));
+    return col;
+}
+
 const vec3 LUMA = vec3(0.30, 0.59, 0.11);
 const vec3 WATER_REF = vec3(0.051, 0.345, 0.812);   // water_reference (0D58CF)
 const float FACE_LIGHT[8] = float[](0.80, 0.80, 0.55, 1.0, 0.68, 0.68, 0.86, 0.86);
@@ -215,8 +321,17 @@ void main() {
     }
     float sky_part = mix(SKY_FILL, 1.0, direct);
     vec3 lit = max(curve(vec3(l.a)) * sky_light(u_sun_dir) * u_daylight * sky_part, curve(block));
-    color *= (AMBIENT + (1.0 - AMBIENT) * lit) * ao;
-    color = pow(max(color, vec3(0.0)), vec3(2.2));    // to linear
+    float alpha = (u_pass == 2) ? c.a : 1.0;
+    if (v_tint == 3u && u_pass == 2 && u_water != 0) {
+        // water: its own shading, opaque over the copied scene
+        vec3 wcol = pow(WATER_REF * tint(2.0), vec3(2.2));
+        color = water_color(wcol, AMBIENT + (1.0 - AMBIENT) * lit, l.a, direct);
+        alpha = 1.0;
+    } else {
+        if (u_pass == 2 && !gl_FrontFacing) discard;  // (only water is two-sided)
+        color *= (AMBIENT + (1.0 - AMBIENT) * lit) * ao;
+        color = pow(max(color, vec3(0.0)), vec3(2.2));    // to linear
+    }
     if (v_glow != 0u) {
         vec4 g = texture(u_blocks, vec3(v_uv, float(v_glow - 1u)));
         color = mix(color, pow(g.rgb, vec3(2.2)) * GLOW, g.a);
@@ -237,6 +352,5 @@ void main() {
     float sky_seen = max(l.a, smoothstep(48.0, 160.0, dist));
     vec3 fog_col = sky_color(normalize(v_rel), normalize(u_sun_dir))
                  * min(u_daylight * 1.5, 1.0) * sky_seen;
-    float alpha = (u_pass == 2) ? c.a : 1.0;
     o_color = vec4(mix(color, fog_col, clamp(fog, 0.0, 1.0)), alpha);
 }

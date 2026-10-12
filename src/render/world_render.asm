@@ -29,6 +29,11 @@
 ; shadow distance get draw records after the frame's own, which cull.comp
 ; tests against each cascade's square, and chunk.vert + shadow.frag draw
 ; them into one layer of a depth texture array each. chunk.frag samples it.
+; Water (milestone 15, D84): before the translucent pass the opaque scene's
+; colour and depth are copied (blit) into textures that chunk.frag's water
+; shading samples for refraction, absorption, reflections and foam; that
+; pass draws both sides (water is seen from below too). The camera's block
+; decides g_cam_in_water (post.asm's underwater fog).
 ;
 ; Public API:
 ;   world_render_init() -> eax 1/0      world_render_shutdown()
@@ -47,7 +52,7 @@
 
 global world_render_init, world_render_draw, world_render_shutdown, tint_upload
 global g_world_visible, g_world_drawn_quads, g_world_gpu_bytes, g_quad_buffer
-global g_light_buffer, g_held_on, g_daylight, g_shadow_records
+global g_light_buffer, g_held_on, g_daylight, g_shadow_records, g_cam_in_water
 global g_world_draws, g_vis_visited, g_world_gpu_visible, g_world_occluded
 
 extern g_cam_viewproj, g_cam_pos
@@ -58,7 +63,8 @@ extern g_scene_depth, g_viewport_w, g_viewport_h
 extern g_gpu_culling, g_occlusion_culling
 extern g_smooth_lighting, g_ambient_occlusion, g_held_light, g_height_fog
 extern g_sun_dir, g_sea_level, g_scene_fbo
-extern g_shadows, g_shadow_res, g_shadow_distance
+extern g_shadows, g_shadow_res, g_shadow_distance, g_water_quality
+extern world_block_at, g_block_water
 
 global g_lod_tint_tex, g_lod_records
 
@@ -118,6 +124,9 @@ endstruc
 %define S_CASCADES          8
 %define S_UPDATE            9           ; cascades redrawn this frame (bits)
 %define U_CAM_MOD           18          ; chunk.frag: camera position mod 4096
+%define U_WATER             19          ; chunk.frag: water quality (0..2)
+%define REFR_COLOR_UNIT     8
+%define REFR_DEPTH_UNIT     9
 %define LOD_TINT_SIZE       1024        ; LOD tint map texels per side (16 blocks each)
 %define FOG_DEFAULT         0.0013      ; without LOD
 %define FOG_LOD             1.8         ; / the LOD radius: the far edge ~85% fog
@@ -192,6 +201,12 @@ g_shadow_cmd:       resd SHADOW_CASCADES
 g_shadow_on:        resd 1              ; cascades in use (0: off)
 g_shadow_frame:     resd 1              ; frames drawn (the far cascades alternate)
 g_shadow_mask:      resd 1              ; cascades drawn this frame
+g_refr_fbo:         resd 1              ; copies of the opaque scene (water)
+g_refr_color:       resd 1
+g_refr_depth:       resd 1
+g_refr_w:           resd 1
+g_refr_h:           resd 1
+g_cam_in_water:     resd 1              ; the camera's block is water
 alignb 8
 g_shadow_records:   resq 1              ; shadow casters this frame
 g_shadow_base:      resq 1              ; their first record in the slot
@@ -982,6 +997,8 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     GL glProgramUniform1f, rbx, U_FOG_BASE
     GL glProgramUniform1i, rbx, U_SHADOWS, [rel g_shadow_on]
     GL glProgramUniform1i, rbx, U_CASCADE, 0
+    GL glProgramUniform1i, rbx, U_WATER, [rel g_water_quality]
+    call water_camera
     movss xmm2, [rel g_daylight]
     GL glProgramUniform1f, rbx, U_DAYLIGHT
     mov eax, [rel g_held_light]
@@ -1422,6 +1439,14 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     sub rax, [rel g_n_cutout]
     jz .p3_done
     mov [LOCAL(W_D)], eax
+    ; the opaque scene, for the water's refraction and reflections
+    cmp dword [rel g_water_quality], 0
+    je .no_copy
+    call refraction_copy
+    GL glBindTextureUnit, REFR_COLOR_UNIT, [rel g_refr_color]
+    GL glBindTextureUnit, REFR_DEPTH_UNIT, [rel g_refr_depth]
+.no_copy:
+    GL glDisable, GL_CULL_FACE          ; (water from below; others discard back faces)
     GL glProgramUniform1i, rbx, U_PASS, 2
     GL glEnable, GL_BLEND
     GL glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
@@ -1433,6 +1458,7 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     GL glMultiDrawArraysIndirect, GL_TRIANGLES, r8, r9, 0
     GL glDepthMask, GL_TRUE
     GL glDisable, GL_BLEND
+    GL glEnable, GL_CULL_FACE
     inc qword [rel g_world_draws]
 .p3_done:
     ; the depth pyramid for the next frame's occlusion test
@@ -1888,5 +1914,76 @@ PROC shadow_pass, 48, rbx, rsi, rdi, r12, r13
     mov rax, [LOCAL(SP_MAIN)]
     mov [rel g_rec_count], rax
 .done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; refraction_copy — copy the scene's colour and depth so far (the opaque
+; world) into the refraction textures, (re)creating them at the scene size.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC refraction_copy, 0, rbx, rsi
+    mov ebx, [rel g_viewport_w]
+    mov esi, [rel g_viewport_h]
+    cmp ebx, [rel g_refr_w]
+    jne .create
+    cmp esi, [rel g_refr_h]
+    jne .create
+    cmp dword [rel g_refr_fbo], 0
+    jne .copy
+.create:
+    mov [rel g_refr_w], ebx
+    mov [rel g_refr_h], esi
+    cmp dword [rel g_refr_fbo], 0
+    je .new
+    lea rdx, [rel g_refr_fbo]
+    GL glDeleteFramebuffers, 1, rdx
+    lea rdx, [rel g_refr_color]
+    GL glDeleteTextures, 1, rdx
+    lea rdx, [rel g_refr_depth]
+    GL glDeleteTextures, 1, rdx
+.new:
+    lea rdx, [rel g_refr_fbo]
+    GL glCreateFramebuffers, 1, rdx
+    lea r8, [rel g_refr_color]
+    GL glCreateTextures, GL_TEXTURE_2D, 1, r8
+    GL glTextureStorage2D, [rel g_refr_color], 1, GL_RGBA16F, rbx, rsi
+    GL glTextureParameteri, [rel g_refr_color], GL_TEXTURE_MIN_FILTER, GL_LINEAR
+    GL glTextureParameteri, [rel g_refr_color], GL_TEXTURE_MAG_FILTER, GL_LINEAR
+    GL glTextureParameteri, [rel g_refr_color], GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE
+    GL glTextureParameteri, [rel g_refr_color], GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE
+    lea r8, [rel g_refr_depth]
+    GL glCreateTextures, GL_TEXTURE_2D, 1, r8
+    GL glTextureStorage2D, [rel g_refr_depth], 1, GL_DEPTH_COMPONENT32F, rbx, rsi
+    GL glTextureParameteri, [rel g_refr_depth], GL_TEXTURE_MIN_FILTER, GL_NEAREST
+    GL glTextureParameteri, [rel g_refr_depth], GL_TEXTURE_MAG_FILTER, GL_NEAREST
+    GL glTextureParameteri, [rel g_refr_depth], GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE
+    GL glTextureParameteri, [rel g_refr_depth], GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE
+    GL glNamedFramebufferTexture, [rel g_refr_fbo], GL_COLOR_ATTACHMENT0, [rel g_refr_color], 0
+    GL glNamedFramebufferTexture, [rel g_refr_fbo], GL_DEPTH_ATTACHMENT, [rel g_refr_depth], 0
+.copy:
+    GL glBlitNamedFramebuffer, [rel g_scene_fbo], [rel g_refr_fbo], 0, 0, rbx, rsi, 0, 0, rbx, rsi, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; water_camera — is the camera's block water? (g_cam_in_water)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC water_camera, 0
+    movsd xmm0, [rel g_cam_pos]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si ecx, xmm0
+    movsd xmm0, [rel g_cam_pos + 8]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si edx, xmm0
+    movsd xmm0, [rel g_cam_pos + 16]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si r8d, xmm0
+    call world_block_at
+    xor ecx, ecx
+    cmp eax, [rel g_block_water]
+    sete cl
+    mov [rel g_cam_in_water], ecx
     RETURN
 ENDPROC

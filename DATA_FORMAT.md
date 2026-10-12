@@ -71,6 +71,7 @@ Settings: `mouse_sensitivity` (degrees per mouse count), `invert_mouse_y`
 | `shadow_resolution` | 512, 1024, 2048, 4096 (default 2048) | shadow map size: sharper but slower |
 | `shadow_distance` | 32–512 blocks (default 160) | how far shadows reach |
 | `clouds` | `0`/`1` (default 1) | the drifting cloud layer |
+| `water_quality` | `0`–`2` (default 2) | 0 simple see-through water, 1 refraction, depth colour and foam, 2 also reflections |
 | `smooth_lighting` | `0`/`1` (default 1) | `1` mixes each face's 4 corner lights smoothly; `0` lights a face flat |
 | `ambient_occlusion` | `0`/`1` (default 1) | `1` darkens inner corners and edges |
 | `held_light` | `r, g, b` (0–15, default 14, 11, 6) | colour of the held light (`toggle_held_light`), a stand-in for held torches until items |

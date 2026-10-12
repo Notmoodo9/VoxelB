@@ -1326,3 +1326,40 @@ block for their upper half (mossy cobblestone boulders).
 * Not done: cloud shadows on the ground, LOD tiles casting shadows,
   translucent coloured shadows.
 
+## D84 — Water rendering (M15 part 1)
+* **Water is drawn last, opaque, over a copy of the scene.** Before the
+  translucent pass the opaque + cut-out scene (colour and depth) is
+  blitted into a refraction target (`refraction_copy`, texture units 8
+  and 9). The water fragment then works out everything itself and writes
+  alpha 1. No second geometry pass, no extra render of the world.
+* **Surface normal:** 4 moving sine swells/ripples evaluated per pixel
+  from the world x, z (no normal texture, no vertex displacement, so the
+  meshes stay untouched and greedy-merged quads stay correct).
+* **Thickness:** from the copied depth behind the surface (reverse-Z,
+  infinite far: view z = near / depth), converted to the distance along
+  the ray.
+* **Refraction:** the copied colour, offset by the normal, scaled by
+  thickness and shrinking with distance; offsets that would land on
+  something in front of the water fall back to the straight sample.
+* **Depth colour:** Beer–Lambert absorption per channel (red goes first)
+  plus in-scattered light in the biome's water tint, lit like a block
+  (sky light, block light, sun direction).
+* **Reflection:** Schlick Fresnel between the underwater colour and the
+  reflection. The reflection is a screen-space march (28 growing steps
+  against the copied depth, faded at the screen edges), falling back to
+  the analytic sky colour, dimmed where the surface sees little sky (so
+  cave pools don't mirror a bright sky). Plus a sharp sun/moon glint.
+* **Foam:** where the water is thinner than ~0.7 blocks, a blocky noise
+  pattern that pulses slowly.
+* **From below:** water faces are two-sided (face culling off for the
+  translucent pass; other translucent faces discard back faces). From
+  below there is no reflection, only refraction.
+* **Underwater:** the camera's block is tested each frame
+  (`water_camera`); post.frag then covers the scene with a dense
+  blue-green fog by distance, dimmed at night.
+* `water_quality` (graphics.cfg): 0 = the old alpha-blended water, 1 =
+  refraction/depth colour/foam, 2 = also screen-space reflections.
+* **Flowing water is deferred** until the world can change (block edits
+  arrive with the sim split in M16). Generated water is static and level,
+  so a flow simulation would have nothing to do before then. It will run
+  on the 20 TPS simulation tick and remesh the touched sections.

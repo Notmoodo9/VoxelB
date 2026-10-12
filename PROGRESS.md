@@ -1,15 +1,68 @@
 # Progress
 
 ## Current state
-**Milestone 14: Sky, day/night, fog, shadows, HDR: DONE** (Windows CI green: run #72)
+**Milestone 15, part 1: Water rendering: DONE** (Windows CI: see below)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
 `design/BACKLOG.md`). Progressive LOD is planned as Milestone 34.
 
-Next: **Milestone 15: Water rendering** (reflections, refraction,
-depth-based colour, shore foam, underwater fog) **and flowing water
-simulation**. It is technical, so no design interview.
+Flowing water (M15 part 2) needs the world to change, so it comes with
+the block edits of Milestone 16 (D84).
+
+Next: **Milestone 16: Sim/client split + message queue; player physics
+and collision; break/place; Creative** (plus flowing water once blocks
+can change). It is technical, so no design interview.
+
+---
+
+## Milestone 15, part 1 — done (2026-10-12): water rendering
+
+### What was built (D84)
+* **Refraction:** the riverbed and lake floor show through the water,
+  bent by the moving waves.
+* **Depth colour:** shallow water is clear and turquoise; deep water
+  turns deep blue (red light is absorbed first), tinted by the biome's
+  water colour and lit by the sun, sky and block light.
+* **Reflections:** screen-space reflections of hills, trees and the shore
+  on calm water, falling back to the sky colour (Fresnel: stronger at
+  grazing angles), plus a sun/moon glint. Pools in caves don't reflect
+  the bright sky.
+* **Waves:** 4 moving swells and ripples shade the surface (per pixel).
+* **Shore foam:** a pulsing blocky foam where the water is very shallow.
+* **Underwater:** the surface is visible from below, and a dense
+  blue-green fog (darker at night) covers everything while the camera is
+  in water.
+* **Setting** `water_quality` (graphics.cfg): 0 simple, 1 refraction +
+  colour + foam, 2 also reflections (default).
+
+### Verified
+* Debug and release headless tests pass, with no GL errors or asserts.
+* Screenshots:
+  * river at 10:00 (`--pos -128 110 -165 --look 0 -25 --time 10`):
+    clear turquoise water, the riverbed and lily pads visible;
+  * lake at sunset (`--pos -128 98 -190 --look 0 -8 --time 17.5`): the
+    hill and its trees mirrored in the water, the pink sky reflected,
+    the shallows see-through;
+  * underwater (`--pos -128 94.5 -205 --look 0 -5 --time 10`): blue-green
+    fog, seagrass, the sandy bottom fading into the distance.
+* A camera inside a solid block sees black (expected; collision comes in
+  M16).
+
+### Performance (llvmpipe software GL, 1280×720, view loaded, lake view)
+| | Frame time |
+|---|---|
+| `water_quality = 0` | ~1890 ms |
+| `water_quality = 2` (default) | ~2140 ms |
+
+The full-screen copy and the per-pixel reflection march cost ~13% on the
+software renderer; on a GPU they cost well under a millisecond.
+
+### Deferred
+* **Flowing water simulation** (M15 part 2): with the block edits of M16.
+* Caustics on the bottom; biome-tinted underwater fog; rain ripples
+  (weather, M25).
+* Reflections of things off screen (only the sky is used there).
 
 ---
 

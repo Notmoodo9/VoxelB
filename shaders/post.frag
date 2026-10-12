@@ -7,6 +7,8 @@
 // terrain hides clouds behind it and clouds hide terrain below them), with
 // one sample towards the sun per step for darker undersides; drifting with
 // the wind, coloured by the time of day, fading with distance.
+// Underwater (milestone 15): dense blue-green fog over everything, lit by
+// the time of day.
 
 layout(binding = 0) uniform sampler2D u_scene;   // HDR, linear
 layout(binding = 1) uniform sampler2D u_bloom;   // half size, blurred highlights
@@ -18,6 +20,7 @@ layout(location = 3) uniform vec3 u_sun;         // towards the sun
 layout(location = 4) uniform float u_time;       // seconds (wind)
 layout(location = 5) uniform vec3 u_cam;         // camera world position
 layout(location = 6) uniform vec4 u_cloud;       // cover 0..1, base y, thickness, -
+layout(location = 7) uniform int u_underwater;   // the camera is in water
 
 in vec2 v_uv;
 in vec3 v_dir;
@@ -110,6 +113,18 @@ void main() {
         }
         vec4 cl = clouds(d, tmax);
         c = c * cl.a + cl.rgb;
+    }
+    if (u_underwater != 0) {
+        // water fog by the distance through it (the sky: far)
+        float z = texelFetch(u_depth, ivec2(gl_FragCoord.xy), 0).r;
+        float dist = 200.0;
+        if (z > 0.0) {
+            vec4 w = inverse(u_viewproj) * vec4(v_uv * 2.0 - 1.0, z, 1.0);
+            dist = length(w.xyz / w.w);
+        }
+        float day = smoothstep(-0.15, 0.2, normalize(u_sun).y);
+        vec3 fogc = vec3(0.012, 0.075, 0.095) * mix(0.08, 1.0, day);
+        c = mix(fogc, c * vec3(0.55, 0.85, 0.9), exp(-dist * 0.075));
     }
     if ((u_flags & 1) != 0)
         c += texture(u_bloom, v_uv).rgb * BLOOM;

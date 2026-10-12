@@ -19,6 +19,8 @@
 ;   g_height_fog (u32)           1 = height fog in low ground
 ;   g_shadows (u32)              1 = cascaded shadow maps (milestone 14 part 2)
 ;   g_clouds (u32)               1 = the cloud layer
+;   g_water_quality (u32)        0 simple water, 1 refraction and depth colour,
+;                                2 + reflections (milestone 15)
 ;   g_shadow_res (u32)           shadow map size, 512..4096 (power of two)
 ;   g_shadow_distance (u32)      shadows out to this many blocks, 32..512
 ;                                (0 or <= render_distance: no LOD)
@@ -32,7 +34,7 @@
 global settings_load, g_render_distance, g_opaque_leaves
 global g_gpu_culling, g_occlusion_culling, g_lod_distance
 global g_smooth_lighting, g_ambient_occlusion, g_held_light, g_bloom, g_height_fog
-global g_shadows, g_shadow_res, g_shadow_distance, g_clouds
+global g_shadows, g_shadow_res, g_shadow_distance, g_clouds, g_water_quality
 
 extern str_ieq, str_parse_u64, cfg_next_token
 
@@ -55,6 +57,7 @@ k_bloom:        db "bloom", 0
 k_hfog:         db "height_fog", 0
 k_shadows:      db "shadows", 0
 k_clouds:       db "clouds", 0
+k_water:        db "water_quality", 0
 k_shadow_res:   db "shadow_resolution", 0
 k_shadow_dist:  db "shadow_distance", 0
 str_unknown:    db "unknown setting: ", 0
@@ -74,6 +77,7 @@ g_bloom:            dd 1
 g_height_fog:       dd 1
 g_shadows:          dd 1
 g_clouds:           dd 1
+g_water_quality:    dd 2
 g_shadow_res:       dd 2048
 g_shadow_distance:  dd 160
 
@@ -148,6 +152,10 @@ PROC graphics_pair, 0, rbx, rsi, rdi, r12
     lea rdi, [rel g_clouds]
     test eax, eax
     jnz .flag
+    lea rdx, [rel k_water]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jnz .water
     lea rdx, [rel k_shadow_res]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
@@ -209,6 +217,15 @@ PROC graphics_pair, 0, rbx, rsi, rdi, r12
     test rax, rcx
     jnz .bad                            ; (not a power of two)
     mov [rel g_shadow_res], eax
+    RETURN
+.water:                                 ; 0, 1 or 2
+    mov rcx, rsi
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    cmp rax, 2
+    ja .bad
+    mov [rel g_water_quality], eax
     RETURN
 .shadow_dist:
     mov rcx, rsi

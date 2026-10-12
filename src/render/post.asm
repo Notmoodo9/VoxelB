@@ -23,7 +23,7 @@ global post_init, post_frame, post_shutdown
 
 extern g_scene_color, g_scene_depth, g_bloom, g_clouds
 extern g_cam_viewproj, g_cam_pos, g_sun_dir, g_cloud_cover, g_cloud_height
-extern timer_elapsed_us
+extern timer_elapsed_us, g_cam_in_water
 
 %define BLOOM_LEVELS    6
 %define B_MODE          0               ; bloom.comp uniforms
@@ -37,6 +37,7 @@ extern timer_elapsed_us
 %define P_TIME          4
 %define P_CAM           5
 %define P_CLOUD         6
+%define P_UNDERWATER    7
 %define CLOUD_THICKNESS 48.0
 
 section .rdata
@@ -313,6 +314,7 @@ PROC post_frame, 32, rbx
     mov dword [rcx + 12], 0
     lea r9, [rel g_post_tmp]
     GL glProgramUniform4fv, rbx, P_CLOUD, 1, r9
+    GL glProgramUniform1i, rbx, P_UNDERWATER, [rel g_cam_in_water]
     GL glBindTextureUnit, 2, [rel g_scene_depth]
     GL glBindTextureUnit, 0, [rel g_scene_color]
     cmp dword [rel g_bloom_tex], 0
