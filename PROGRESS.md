@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 16: Simulation/client split, physics, break/place, Creative, flowing liquids: DONE** (Windows CI: see below)
+**Milestone 16: Simulation/client split, physics, break/place, Creative, flowing liquids: DONE** (Windows CI green: run #80)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
