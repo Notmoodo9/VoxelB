@@ -22,7 +22,9 @@
 ;     the top texture, set by the texture loader), g_block_light (u16:
 ;     r | g << 4 | b << 8, 0..15 each), g_block_flags (BLOCKF_*, tint faces in
 ;     g_block_tintmask),
-;     g_block_tex (u16 texture index per face: -X +X -Y +Y -Z +Z)
+;     g_block_tex (u16 texture index per face: -X +X -Y +Y -Z +Z),
+;     g_block_phys (movement settings as written: BPHYS_* in block.inc;
+;     resolved by sim/physics.asm)
 ;   Mesher tables, 64 K entries so any u16 id can be looked up:
 ;     g_block_opaque (hides neighbour faces), g_block_layer (LAYER_*),
 ;     g_block_cullself (faces between two equal blocks are hidden),
@@ -45,7 +47,7 @@
 global blocks_load, block_find, tex_find, str_dup
 global g_block_count, g_block_names, g_block_colors, g_block_opaque
 global g_block_layer, g_block_cullself, g_block_light, g_block_flags, g_block_tex
-global g_block_water, g_block_lfilter
+global g_block_water, g_block_lfilter, g_block_phys
 global g_block_shape, g_block_state, g_block_nstates, g_block_tintmask
 global g_tex_count, g_tex_names, g_tex_frame_ms, g_tex_glow, g_tex_interp
 
@@ -91,6 +93,11 @@ k_light:        db "light", 0
 k_sway:         db "sway", 0
 k_waterlogged:  db "waterlogged", 0
 k_lfilter:      db "light_filter", 0
+k_collision:    db "collision", 0
+k_climbable:    db "climbable", 0
+k_liquid:       db "liquid", 0
+v_full:         db "full", 0
+v_lava:         db "lava", 0
 str_water:      db "water", 0
 k_tint:         db "tint", 0
 v_grass:        db "grass", 0
@@ -192,6 +199,7 @@ g_block_nstates:    resw MAX_BLOCK_TYPES
 g_block_flags:      resb MAX_BLOCK_TYPES
 g_block_tintmask:   resb MAX_BLOCK_TYPES
 g_block_lfilter:    resb MAX_BLOCK_TYPES ; light_filter (0..15), 0xFF = default
+g_block_phys:       resb MAX_BLOCK_TYPES ; collision / climbable / liquid (BPHYS_*)
 g_tex_interp:       resb MAX_TEXTURES
 alignb 16
 g_block_opaque:     resb 65536
@@ -360,6 +368,8 @@ PROC block_get, 0, rbx, rsi
     mov byte [rcx + rbx], 0
     lea rcx, [rel g_block_lfilter]
     mov byte [rcx + rbx], 0xFF
+    lea rcx, [rel g_block_phys]
+    mov byte [rcx + rbx], 0
     lea rcx, [rel g_block_layer]
     mov byte [rcx + rbx], LAYER_OPAQUE
     lea rcx, [rel g_block_tex]
@@ -553,6 +563,9 @@ PROC sync_states, 0, rbx, rsi, rdi
     mov cx, [rax + rbx * 2]
     mov [rax + r8 * 2], cx
     lea rax, [rel g_block_lfilter]
+    mov cl, [rax + rbx]
+    mov [rax + r8], cl
+    lea rax, [rel g_block_phys]
     mov cl, [rax + rbx]
     mov [rax + r8], cl
     ; textures: a door's upper half uses upper_textures when set
@@ -751,6 +764,18 @@ PROC block_apply_one, 0, rbx, rsi, rdi, r12, r13
     INVOKE str_ieq, rsi, rdx
     test eax, eax
     jnz .shape
+    lea rdx, [rel k_collision]
+    INVOKE str_ieq, rsi, rdx
+    test eax, eax
+    jnz .collision
+    lea rdx, [rel k_climbable]
+    INVOKE str_ieq, rsi, rdx
+    test eax, eax
+    jnz .climbable
+    lea rdx, [rel k_liquid]
+    INVOKE str_ieq, rsi, rdx
+    test eax, eax
+    jnz .liquid
     lea rdx, [rel k_tint]
     INVOKE str_ieq, rsi, rdx
     test eax, eax
@@ -914,6 +939,58 @@ PROC block_apply_one, 0, rbx, rsi, rdi, r12, r13
     lea rcx, [rel g_block_flags]
     and byte [rcx + rbx], ~BLOCKF_SWAY
     or [rcx + rbx], al                  ; BLOCKF_SWAY = 1
+    RETURN
+
+.collision:                             ; collision = none | full
+    mov r12d, BPHYS_COLL_NONE
+    lea rdx, [rel v_none]
+    INVOKE str_ieq, rdi, rdx
+    test eax, eax
+    jnz .coll_set
+    mov r12d, BPHYS_COLL_FULL
+    lea rdx, [rel v_full]
+    INVOKE str_ieq, rdi, rdx
+    test eax, eax
+    jz .bad
+.coll_set:
+    lea rcx, [rel g_block_phys]
+    and byte [rcx + rbx], ~BPHYS_COLL_MASK
+    or [rcx + rbx], r12b
+    RETURN
+
+.climbable:                             ; climbable = 0 | 1
+    mov rcx, rdi
+    mov edx, 1
+    call parse_small
+    cmp eax, -1
+    je .bad
+    lea r12d, [eax + 1]
+    shl r12d, BPHYS_CLIMB_SHIFT         ; 1 no, 2 yes
+    lea rcx, [rel g_block_phys]
+    and byte [rcx + rbx], ~BPHYS_CLIMB_MASK
+    or [rcx + rbx], r12b
+    RETURN
+
+.liquid:                                ; liquid = none | water | lava
+    xor r12d, r12d
+    lea rdx, [rel v_none]
+    INVOKE str_ieq, rdi, rdx
+    test eax, eax
+    jnz .liquid_set
+    mov r12d, BPHYS_LIQUID_WATER
+    lea rdx, [rel v_water]
+    INVOKE str_ieq, rdi, rdx
+    test eax, eax
+    jnz .liquid_set
+    mov r12d, BPHYS_LIQUID_LAVA
+    lea rdx, [rel v_lava]
+    INVOKE str_ieq, rdi, rdx
+    test eax, eax
+    jz .bad
+.liquid_set:
+    lea rcx, [rel g_block_phys]
+    and byte [rcx + rbx], ~BPHYS_LIQUID_MASK
+    or [rcx + rbx], r12b
     RETURN
 
 .waterlogged:

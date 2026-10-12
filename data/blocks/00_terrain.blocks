@@ -36,6 +36,7 @@ textures = side: sandstone, top: sandstone_top, bottom: sandstone_bottom
 render = translucent
 tint   = water
 light_filter = 1     # sunlight fades 1 level per block of water
+liquid  = water      # swim in it, no collision (milestone 16)
 
 # soft moss ground of old-growth forests
 [block moss_block]

@@ -1664,6 +1664,8 @@ PROC shadow_init, 0, rbx
     GL glTextureParameteri, [rel g_shadow_tex], GL_TEXTURE_COMPARE_FUNC, GL_GEQUAL
     lea rdx, [rel g_shadow_fbo]
     GL glCreateFramebuffers, 1, rdx
+    ; (attach a layer now: the FBO is bound before each cascade attaches its own)
+    GL glNamedFramebufferTextureLayer, [rel g_shadow_fbo], GL_DEPTH_ATTACHMENT, [rel g_shadow_tex], 0, 0
     xor ebx, ebx
 .cmd:
     lea rdx, [rel g_shadow_cmd]

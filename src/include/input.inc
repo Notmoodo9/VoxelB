@@ -35,7 +35,7 @@ extern input_on_key, input_on_raw_input, input_on_focus_lost
 extern input_down, input_pressed, input_vk_pressed
 extern input_set_capture, input_update_capture, input_key_name, input_action_name
 extern g_mouse_dx, g_mouse_dy, g_mouse_captured, g_bindings
-extern g_mouse_sensitivity, g_invert_mouse_y, g_fly_speed, g_fly_sprint_mult
+extern g_mouse_sensitivity, g_invert_mouse_y
 %endif
 
 %endif

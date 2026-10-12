@@ -2,14 +2,15 @@
 ; daycycle.asm — the time of day and the sun's direction (milestone 14).
 ;
 ; The day lasts day_length minutes (data/world/world.cfg) and starts at
-; start_time (hours, 0..24; the command line's --time overrides it). Holding
-; time_forward (T) runs the clock 240 times faster. The sun rises in the
+; start_time (hours, 0..24; the command line's --time overrides it). The
+; clock runs in the simulation (sim.asm, milestone 16; time_forward runs it
+; 240 times faster); the client sets the time it was sent. The sun rises in the
 ; east (+X) at 6:00, stands highest at 12:00 (tilted 25 degrees towards +Z),
 ; and sets in the west at 18:00; the moon is opposite it.
 ;
 ; Public API:
 ;   daycycle_init()         after world.cfg is read
-;   daycycle_update()       once per frame (main thread)
+;   daycycle_set(xmm0 = t)  the client's time of day (0..1) -> sun
 ;   g_time_of_day           f32 0..1 (0 midnight, 0.5 noon)
 ;   g_sun_dir               f32 x, y, z (unit, towards the sun)
 ;   g_day_length, g_start_hour   f32 settings (world.cfg)
@@ -19,25 +20,16 @@
 ; =============================================================================
 %include "macros.inc"
 %include "log.inc"
-%include "input.inc"
 
-global daycycle_init, daycycle_update
+global daycycle_init, daycycle_set
 global g_time_of_day, g_sun_dir, g_day_length, g_start_hour, g_time_override
 global g_cloud_cover, g_cloud_height
-
-extern g_frame_us
-
-%define FAST_FORWARD    240.0           ; clock speed while time_forward is held
 
 section .rdata
 align 4
 c_two_pi:       dd 6.28318530718
 c_quarter:      dd 0.25
 c_24:           dd 24.0
-c_60:           dd 60.0
-c_us:           dd 0.000001
-c_one:          dd 1.0
-c_fast:         dd FAST_FORWARD
 c_cos_tilt:     dd 0.906307787              ; cos 25 degrees
 c_sin_tilt:     dd 0.422618262              ; sin 25 degrees
 
@@ -76,27 +68,12 @@ PROC daycycle_init, 0
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; daycycle_update — advance the clock by the last frame's time.
+; daycycle_set — the client's time of day (from the simulation's packets,
+; interpolated between ticks), and the sun's direction for it.
+;   in:  xmm0 = time of day (f32, wrapped to 0..1)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC daycycle_update, 16
-    mov rax, [rel g_frame_us]
-    cvtsi2ss xmm0, rax
-    mulss xmm0, [rel c_us]
-    minss xmm0, [rel c_one]             ; (at most 1 s per frame)
-    movss [LOCAL(0)], xmm0
-    mov ecx, ACT_TIME_FORWARD
-    call input_down
-    movss xmm0, [LOCAL(0)]
-    test eax, eax
-    jz .speed
-    mulss xmm0, [rel c_fast]
-.speed:
-    movss xmm1, [rel g_day_length]
-    mulss xmm1, [rel c_60]              ; seconds per day
-    maxss xmm1, [rel c_one]
-    divss xmm0, xmm1
-    addss xmm0, [rel g_time_of_day]
+PROC daycycle_set, 0
     call wrap_time
     movss [rel g_time_of_day], xmm0
     call sun_from_time

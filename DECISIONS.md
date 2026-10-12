@@ -1363,3 +1363,56 @@ block for their upper half (mossy cobblestone boulders).
   arrive with the sim split in M16). Generated water is static and level,
   so a flow simulation would have nothing to do before then. It will run
   on the 20 TPS simulation tick and remesh the touched sections.
+
+## D85 — Simulation / client split, packets, player physics (M16 part 1)
+* **Two sides, one process.** `src/sim/` is the server side (the world's
+  changing state: the player's body, the clock), `src/client/` plus the
+  renderer, input and UI are the client. They talk only through two packet
+  queues (`src/core/packet.asm`): fixed 64-byte packets in lock-free
+  single-producer single-consumer rings, plain data with no pointers, so a
+  network transport or a simulation thread can replace the hand-off later.
+  * Client → sim: `INPUT` every frame (movement axes, view yaw/pitch,
+    buttons), `TOGGLE_FLY` (double tap of move_up, detected on the client
+    where frame timing is exact).
+  * Sim → client: `PLAYER` and `TIME` every tick.
+  * World storage is shared for now (an integrated server): the client
+    renders the chunks the sim reads. Block changes (part 2) will still go
+    as requests and change notices through the queues.
+* **Fixed 20 TPS** on the main thread: an accumulator runs the due ticks
+  each frame (at most 10; a slower machine runs the simulation slower
+  rather than spiralling). Within a tick, all inputs since the last tick
+  are read and their buttons OR-ed, so a short tap is never lost.
+* **Interpolation:** the client keeps the last two `PLAYER` / `TIME` states
+  and draws between them by the accumulator's fraction, so motion is
+  smooth at any frame rate (the view trails by up to one tick, 50 ms;
+  mouse look is immediate, it stays on the client).
+* **The clock moved to the simulation** (time_forward is an input button);
+  daycycle.asm now only turns the client's time into the sun direction.
+* **Collision** (`src/sim/physics.asm`), all in doubles (exact far from
+  the origin):
+  * every block id resolves to none / full cube / boxes by shape+state
+    (1/16 units, rotated by facing, fences/walls connect like the mesher
+    draws them, 1.5 high so they can't be jumped); data overrides with
+    `collision`, `climbable`, `liquid` in the block files;
+  * per tick the solid boxes around body + move (+ margins) are gathered
+    once (unknown columns count as solid), then the move is clipped axis by
+    axis (Y, X, Z, Minecraft's order) against them; boxes already
+    overlapping are ignored so a body inside a block can walk out;
+  * step-up: when blocked sideways on the ground, try up `step_height`,
+    across, back down, and keep it if it went farther;
+  * sneak edge guard: on the ground while sneaking, shorten x, z and the
+    diagonal move in 0.05 steps until the body would still have support
+    within `step_height` below.
+* **Movement model:** horizontal velocity approaches the wanted velocity by
+  a share per tick (ground / air / water / flight rates), vertical by
+  gravity (world.cfg, per realm later) with a terminal speed; swimming
+  approaches a sink / swim-up target; ladders clamp the fall and climb on
+  jump or when pushing against the wall. The body is always 1.8 high
+  (sneaking only lowers the eyes; crawling under 1.5-high gaps is not
+  modelled). Liquids count when the lower third of the body is in them.
+* The player waits (frozen) until the column under it is generated.
+* **Spawn:** the terrain's spawn point, walking (falls to the ground);
+  `--pos` starts flying there (so screenshot positions stay valid);
+  `--flytest` is noclip flight at `flytest_speed`.
+* All movement numbers are in `data/entities/player.cfg` (Minecraft-like
+  defaults; the owner can tune the feel).

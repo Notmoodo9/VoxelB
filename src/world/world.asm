@@ -29,6 +29,7 @@
 global world_init, world_column, world_section_at, world_block_at
 global world_column_alloc, world_column_free, world_column_insert, world_column_remove
 global gen_column_job, atomic_max, world_hash_selftest
+global g_gravity
 global world_spawn, g_generator, g_seed_override, g_seed_override_set, g_force_flat
 global g_world_gen_count, g_world_gen_total_us, g_world_gen_max_us
 
@@ -62,6 +63,7 @@ k_day_length:   db "day_length", 0
 k_start_time:   db "start_time", 0
 k_cloud_cover:  db "cloud_cover", 0
 k_cloud_height: db "cloud_height", 0
+k_gravity:      db "gravity", 0
 v_terrain:      db "terrain", 0
 v_flat:         db "flat_test", 0
 str_cfg_label:  db "flat_test.cfg", 0
@@ -83,6 +85,7 @@ door_lower:     db 0, 1, 2, 3, 8, 9, 10, 11, 16   ; door states shown in the gal
 section .data
 align 4
 g_generator:        dd GEN_TERRAIN
+g_gravity:          dd 32.0             ; blocks/s^2 (world.cfg; per realm later)
 g_seed_override:    dd 0
 g_seed_override_set: dd 0
 g_force_flat:       dd 0
@@ -1319,6 +1322,17 @@ PROC world_cfg_pair, 0, rbx, rsi
     movss [rel g_cloud_height], xmm0
     RETURN
 .not_cloud_height:
+    lea rdx, [rel k_gravity]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_gravity
+    mov rcx, rsi
+    call str_parse_float
+    test eax, eax
+    jz .bad
+    movss [rel g_gravity], xmm0
+    RETURN
+.not_gravity:
     lea rdx, [rel k_generator]
     INVOKE str_ieq, rbx, rdx
     test eax, eax

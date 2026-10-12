@@ -1,0 +1,231 @@
+; =============================================================================
+; sim.asm — the simulation (server side): fixed 20 ticks per second
+; (milestone 16, DECISIONS D85).
+;
+; The simulation owns the world's changing state: the player's body and the
+; time of day. It talks to the client only through packets (packet.inc):
+; each tick it reads every packet in g_to_sim (inputs, requests), moves
+; the player, advances the clock, and sends the player's state and the time
+; to g_to_client. It runs on the main thread for now, driven by sim_update
+; from the frame loop with a fixed-step accumulator; the client draws the
+; state interpolated between the last two ticks (g_sim_alpha).
+;
+; Public API:
+;   sim_init(rcx = eye position 3 doubles, edx = PF_FLYING / PF_NOCLIP)
+;                       after world_init and daycycle_init
+;   sim_update()        once per frame: runs the ticks that are due (at most
+;                       MAX_TICKS_PER_FRAME; a slower machine runs slow)
+;   g_sim_alpha         f32 0..1: how far the frame is past the last tick
+;   g_sim_tick          ticks run
+;   g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us   statistics (overlay)
+; =============================================================================
+%include "macros.inc"
+%include "log.inc"
+%include "packet.inc"
+%include "physics.inc"
+
+global sim_init, sim_update, g_sim_alpha, g_sim_tick
+global g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us
+
+extern player_load, player_spawn, player_tick, player_toggle_fly, player_fill
+extern timer_elapsed_us, g_frame_us, g_time_of_day, g_day_length
+
+%define TICK_US             50000       ; 20 TPS
+%define MAX_TICKS_PER_FRAME 10
+%define MAX_FRAME_US        500000      ; (longer frames count as this)
+%define STATS_US            1000000
+%define FAST_FORWARD        240.0       ; time_forward: the clock's speed
+
+section .rdata
+align 8
+c_tick_s:       dq 0.05
+c_fast:         dq FAST_FORWARD
+c_60:           dq 60.0
+c_one_d:        dq 1.0
+c_tick_us_f:    dd 50000.0
+
+section .bss
+alignb 8
+g_sim_time:         resq 1              ; f64 time of day 0..1
+g_sim_acc:          resq 1              ; microseconds not yet simulated
+g_sim_tick:         resq 1
+g_sim_tick_us:      resq 1              ; average over the last second
+g_sim_tick_max_us:  resq 1
+g_stat_start:       resq 1
+g_stat_ticks:       resq 1
+g_stat_us:          resq 1
+g_stat_max:         resq 1
+g_sim_tps_x10:      resd 1
+g_sim_alpha:        resd 1
+g_pressed:          resd 1              ; buttons seen since the last tick
+alignb 16
+g_input:            resb INPUT_PKT_size ; latest input
+g_pkt:              resb PKT_SIZE
+g_out:              resb PKT_PAYLOAD_MAX
+
+section .text
+
+; -----------------------------------------------------------------------------
+; sim_init — start the simulation: physics tables, player, clock.
+;   in:  rcx = eye position (3 doubles), edx = starting PF_FLYING / PF_NOCLIP
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC sim_init, 16, rbx, rsi
+    mov rbx, rcx
+    mov esi, edx
+    call phys_init
+    call player_load
+    mov rcx, rbx
+    mov edx, esi
+    call player_spawn
+    cvtss2sd xmm0, [rel g_time_of_day]
+    movsd [rel g_sim_time], xmm0
+    mov qword [rel g_sim_acc], 0
+    mov qword [rel g_sim_tick], 0
+    call timer_elapsed_us
+    mov [rel g_stat_start], rax
+    call send_state                     ; the client starts from this
+    LOG_INFO "simulation: 20 ticks per second, player spawned (Creative)"
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; sim_update — run the ticks that are due by now.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC sim_update, 0, rbx
+    mov rax, [rel g_frame_us]
+    cmp rax, MAX_FRAME_US
+    jbe .add
+    mov eax, MAX_FRAME_US
+.add:
+    add rax, [rel g_sim_acc]
+    mov [rel g_sim_acc], rax
+    xor ebx, ebx
+.tick:
+    cmp qword [rel g_sim_acc], TICK_US
+    jb .alpha
+    cmp ebx, MAX_TICKS_PER_FRAME
+    jae .behind
+    call sim_tick
+    sub qword [rel g_sim_acc], TICK_US
+    inc ebx
+    jmp .tick
+.behind:
+    mov qword [rel g_sim_acc], 0        ; too slow: drop the rest
+.alpha:
+    cvtsi2ss xmm0, qword [rel g_sim_acc]
+    divss xmm0, [rel c_tick_us_f]
+    movss [rel g_sim_alpha], xmm0
+    call update_stats
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; sim_tick — one tick: packets in, player, clock, packets out.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC sim_tick, 16, rbx, rsi, rdi
+    call timer_elapsed_us
+    mov [LOCAL(0)], rax
+    mov dword [rel g_pressed], 0
+.packet:
+    lea rcx, [rel g_to_sim]
+    lea rdx, [rel g_pkt]
+    call pkt_recv
+    test eax, eax
+    jz .packets_done
+    cmp eax, PKT_C_INPUT
+    jne .not_input
+    lea rsi, [rel g_pkt + PKT.data]
+    lea rdi, [rel g_input]
+    mov ecx, INPUT_PKT_size
+    rep movsb
+    mov eax, [rel g_input + INPUT_PKT.buttons]
+    or [rel g_pressed], eax
+    jmp .packet
+.not_input:
+    cmp eax, PKT_C_TOGGLE_FLY
+    jne .packet                         ; (unknown packets are ignored)
+    call player_toggle_fly
+    jmp .packet
+.packets_done:
+    lea rcx, [rel g_input]
+    mov edx, [rel g_pressed]
+    call player_tick
+
+    ; the clock: one tick of the day (faster while time_forward is held)
+    cvtss2sd xmm1, [rel g_day_length]
+    mulsd xmm1, [rel c_60]              ; seconds per day
+    maxsd xmm1, [rel c_one_d]
+    movsd xmm0, [rel c_tick_s]
+    divsd xmm0, xmm1
+    test dword [rel g_input + INPUT_PKT.buttons], INB_TIME_FORWARD
+    jz .clock
+    mulsd xmm0, [rel c_fast]
+.clock:
+    addsd xmm0, [rel g_sim_time]
+    roundsd xmm1, xmm0, 9
+    subsd xmm0, xmm1
+    movsd [rel g_sim_time], xmm0
+
+    inc qword [rel g_sim_tick]
+    call send_state
+    call timer_elapsed_us
+    sub rax, [LOCAL(0)]
+    add [rel g_stat_us], rax
+    inc qword [rel g_stat_ticks]
+    cmp rax, [rel g_stat_max]
+    jbe .done
+    mov [rel g_stat_max], rax
+.done:
+    RETURN
+ENDPROC
+
+; send_state — PKT_S_PLAYER and PKT_S_TIME to the client.  clobbers: volatile
+PROC send_state, 0
+    lea rcx, [rel g_out]
+    call player_fill
+    lea rcx, [rel g_to_client]
+    lea r8, [rel g_out]
+    INVOKE pkt_send, rcx, PKT_S_PLAYER, r8, PLAYER_PKT_size
+    cvtsd2ss xmm0, [rel g_sim_time]
+    movss [rel g_out + TIME_PKT.time], xmm0
+    mov eax, [rel g_sim_tick]
+    mov [rel g_out + TIME_PKT.tick], eax
+    lea rcx, [rel g_to_client]
+    lea r8, [rel g_out]
+    INVOKE pkt_send, rcx, PKT_S_TIME, r8, TIME_PKT_size
+    RETURN
+ENDPROC
+
+; update_stats — ticks per second and tick times, once a second.
+PROC update_stats, 0
+    call timer_elapsed_us
+    mov rcx, rax
+    sub rcx, [rel g_stat_start]
+    cmp rcx, STATS_US
+    jb .done
+    mov [rel g_stat_start], rax
+    ; tps * 10 = ticks * 10^7 / us
+    mov rax, [rel g_stat_ticks]
+    imul rax, rax, 10000000
+    xor edx, edx
+    div rcx
+    mov [rel g_sim_tps_x10], eax
+    mov rax, [rel g_stat_us]
+    mov rcx, [rel g_stat_ticks]
+    test rcx, rcx
+    jz .no_ticks
+    xor edx, edx
+    div rcx
+.no_ticks:
+    mov [rel g_sim_tick_us], rax
+    mov rax, [rel g_stat_max]
+    mov [rel g_sim_tick_max_us], rax
+    mov qword [rel g_stat_ticks], 0
+    mov qword [rel g_stat_us], 0
+    mov qword [rel g_stat_max], 0
+.done:
+    RETURN
+ENDPROC

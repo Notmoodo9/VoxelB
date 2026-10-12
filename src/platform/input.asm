@@ -22,7 +22,7 @@ global input_on_key, input_on_raw_input, input_on_focus_lost
 global input_down, input_pressed, input_vk_pressed
 global input_set_capture, input_update_capture, input_key_name, input_action_name
 global g_mouse_dx, g_mouse_dy, g_mouse_captured, g_bindings
-global g_mouse_sensitivity, g_invert_mouse_y, g_fly_speed, g_fly_sprint_mult
+global g_mouse_sensitivity, g_invert_mouse_y
 
 extern str_ieq, str_parse_float
 
@@ -66,13 +66,9 @@ action_name_table:  dq an_0, an_1, an_2, an_3, an_4, an_5, an_6, an_7, an_8, an_
 ; settings that live in controls.cfg next to the bindings: name, float*
 set_sens:   db "mouse_sensitivity", 0
 set_inv:    db "invert_mouse_y", 0
-set_speed:  db "fly_speed", 0
-set_sprint: db "fly_sprint_multiplier", 0
 align 8
 setting_table:      dq set_sens, g_mouse_sensitivity
                     dq set_inv, g_invert_mouse_y
-                    dq set_speed, g_fly_speed
-                    dq set_sprint, g_fly_sprint_mult
 setting_count equ ($ - setting_table) / 16
 
 str_cfg_label:      db "controls.cfg", 0
@@ -91,8 +87,6 @@ align 4
 ; Fallback values, used only if controls.cfg omits a setting.
 g_mouse_sensitivity:    dd 0.12         ; degrees per mouse count
 g_invert_mouse_y:       dd 0.0          ; nonzero = invert
-g_fly_speed:            dd 12.0         ; blocks per second
-g_fly_sprint_mult:      dd 5.0
 
 section .bss
 alignb 16

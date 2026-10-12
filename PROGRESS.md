@@ -1,18 +1,78 @@
 # Progress
 
 ## Current state
-**Milestone 15, part 1: Water rendering: DONE** (Windows CI green: run #74)
+**Milestone 16, part 1: Simulation/client split + player physics: DONE** (Windows CI: see below)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
 `design/BACKLOG.md`). Progressive LOD is planned as Milestone 34.
 
-Flowing water (M15 part 2) needs the world to change, so it comes with
-the block edits of Milestone 16 (D84).
+Next: **Milestone 16, part 2: breaking and placing blocks** (requests and
+change notices through the packet queues, remeshing and relighting the
+touched sections, a block outline, Creative instant break), then
+**part 3: flowing water** (M15 part 2, D84).
 
-Next: **Milestone 16: Sim/client split + message queue; player physics
-and collision; break/place; Creative** (plus flowing water once blocks
-can change). It is technical, so no design interview.
+---
+
+## Milestone 16, part 1 — done (2026-10-12): simulation, packets, player physics
+
+### What was built (D85)
+* **Simulation / client split.** The simulation (`src/sim/`) runs at a
+  fixed 20 ticks per second and owns the player's body and the clock; the
+  client (`src/client/`) sends inputs and draws what the simulation sends
+  back. They talk only through two packet queues (`src/core/packet.asm`).
+* **Smooth view:** the camera is placed at the player's eyes between the
+  last two ticks, so movement is smooth at any frame rate.
+* **Player physics with collision** against every block, including shaped
+  blocks (slabs, stairs, fences 1.5 high, doors, trapdoors, panes, walls,
+  ladders):
+  * walking, sprinting (forward), sneaking (never walks off an edge),
+    jumping, gravity;
+  * automatic step-up onto slabs and stairs;
+  * swimming in water (slower in lava), climbing out onto banks;
+  * climbing ladders and vines (jump or walk into them; sneak holds on);
+  * **Creative flight:** press Space twice quickly to start or stop
+    flying; Space / Shift go up and down; Ctrl flies 5× faster; landing
+    ends the flight.
+* **Data:** `data/entities/player.cfg` (all sizes and speeds),
+  `gravity` in world.cfg; block settings `collision`, `climbable`,
+  `liquid` (water and lava are marked as liquids, cocoa pods are not
+  climbable). The fly speeds moved from controls.cfg to player.cfg.
+* **Debug overlay:** `player` line (mode, on ground / in water / climbing /
+  sneaking / sprinting, speed) and `sim` line (tick, TPS, tick time,
+  packets).
+* **Fix:** the shadow framebuffer was used before it had an attachment (a
+  GL warning on every start since M14 part 2).
+
+### Verified (scripted keys with xdotool, Wine + llvmpipe)
+* Default spawn: the player falls and stands on the sand, eyes at 1.62.
+* Holding W: walks 14 blocks north, drops down a one-block step, stops
+  at a one-block wall. W + Space: jumps up the wall and walks on through
+  tall grass (no collision with plants).
+* Block gallery (`--flat`): walking north over an oak slab steps up to
+  y 100.5 without jumping and back down after it.
+* Lake: Shift flies down into the water and lands on the bottom (flight
+  ends), Space swims up to the surface.
+* `--flytest`: noclip flight at 60 blocks/s, 20.2 TPS, streaming keeps up.
+* Debug and release headless tests pass, no GL warnings left.
+
+### Performance
+* A tick takes 2–13 µs on average (max ~30 µs): gathering ~50–600
+  collision boxes and clipping against them. Negligible next to a frame.
+* On the software renderer (~2 s per frame) the simulation is capped at
+  10 ticks per frame, so it runs at ~4.5 TPS there (slow motion); on a
+  real GPU it runs at the full 20 TPS.
+
+### Known issues
+* Stairs collide as slab + back half (inner and outer corners are not
+  modelled).
+* At a water surface with Space held the player bobs with the feet at the
+  surface.
+
+### Deferred
+* Fall damage and health (milestone 20).
+* Crawling under 1.5-high gaps (the body stays 1.8 high while sneaking).
+* A simulation thread (the queues already allow it).
 
 ---
 

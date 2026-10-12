@@ -21,6 +21,7 @@
 %include "text.inc"
 %include "jobs.inc"
 %include "world_api.inc"
+%include "packet.inc"
 
 global overlay_draw, overlay_toggle, g_overlay_visible
 
@@ -41,6 +42,8 @@ extern g_lod_gen_count, g_lod_gen_total_us, g_lod_gen_max_us, g_lod_distance
 extern g_light_count, g_light_total_us, g_light_max_us, g_held_on
 extern g_time_of_day, g_day_length, g_shadow_records
 extern g_block_names
+extern g_cl_player, g_sim_tick, g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us
+extern g_pkt_sent_sim, g_pkt_sent_client, g_pkt_dropped
 
 %define TEXT_CAP        6144
 %define PAD             6               ; panel padding (unscaled pixels)
@@ -129,6 +132,27 @@ s_casters:      db "   shadow casters ", 0
 align 4
 c_day_minutes:  dd 1440.0
 s_held_off:     db " us   held light off", 10, 0
+s_player:       db "player  creative  ", 0
+s_p_noclip:     db "noclip", 0
+s_p_flying:     db "flying", 0
+s_p_walking:    db "walking", 0
+s_p_ground:     db "  on ground", 0
+s_p_water:      db "  in water", 0
+s_p_lava:       db "  in lava", 0
+s_p_climb:      db "  climbing", 0
+s_p_sneak:      db "  sneaking", 0
+s_p_sprint:     db "  sprinting", 0
+s_p_frozen:     db "  (waiting for the ground)", 0
+s_p_speed:      db "   speed ", 0
+s_p_vy:         db "  vertical ", 0
+s_sim:          db "sim     tick ", 0
+s_s_tps:        db "  TPS ", 0
+s_s_us:         db "  tick avg ", 0
+s_s_packets:    db " us   packets to sim ", 0
+s_s_to_cl:      db "  to client ", 0
+s_s_dropped:    db "  dropped ", 0
+align 4
+c_ten:          dd 10.0
 s_sp:           db " ", 0
 s_ground:       db "   ground below: ", 0
 s_at_y:         db " at y ", 0
@@ -470,6 +494,64 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
     PUTNUM rax, 0
     PUT s_casters
     PUTNUM [rel g_shadow_records], 0
+    PUT s_nl
+    ; the player and the simulation (milestone 16)
+    PUT s_player
+    mov r13d, [rel g_cl_player + PLAYER_PKT.flags]
+    lea rdx, [rel s_p_walking]
+    test r13d, PF_FLYING
+    jz .p_mode
+    lea rdx, [rel s_p_flying]
+    test r13d, PF_NOCLIP
+    jz .p_mode
+    lea rdx, [rel s_p_noclip]
+.p_mode:
+    PUTP rdx
+%macro PUT_FLAG 2
+    test r13d, %1
+    jz %%no
+    PUT %2
+%%no:
+%endmacro
+    PUT_FLAG PF_ON_GROUND, s_p_ground
+    PUT_FLAG PF_IN_WATER, s_p_water
+    PUT_FLAG PF_IN_LAVA, s_p_lava
+    PUT_FLAG PF_CLIMBING, s_p_climb
+    PUT_FLAG PF_SNEAKING, s_p_sneak
+    PUT_FLAG PF_SPRINTING, s_p_sprint
+    PUT_FLAG PF_FROZEN, s_p_frozen
+    PUT s_p_speed
+    movss xmm0, [rel g_cl_player + PLAYER_PKT.vel]
+    mulss xmm0, xmm0
+    movss xmm1, [rel g_cl_player + PLAYER_PKT.vel + 8]
+    mulss xmm1, xmm1
+    addss xmm0, xmm1
+    sqrtss xmm0, xmm0
+    mulss xmm0, [rel c_ten]
+    cvtss2si eax, xmm0
+    PUTNUM rax, 1
+    PUT s_p_vy
+    movss xmm0, [rel g_cl_player + PLAYER_PKT.vel + 4]
+    mulss xmm0, [rel c_ten]
+    cvtss2si eax, xmm0
+    movsxd rax, eax
+    PUTSNUM rax, 1
+    PUT s_nl
+    PUT s_sim
+    PUTNUM [rel g_sim_tick], 0
+    PUT s_s_tps
+    mov eax, [rel g_sim_tps_x10]
+    PUTNUM rax, 1
+    PUT s_s_us
+    PUTNUM [rel g_sim_tick_us], 0
+    PUT s_l_slash
+    PUTNUM [rel g_sim_tick_max_us], 0
+    PUT s_s_packets
+    PUTNUM [rel g_pkt_sent_sim], 0
+    PUT s_s_to_cl
+    PUTNUM [rel g_pkt_sent_client], 0
+    PUT s_s_dropped
+    PUTNUM [rel g_pkt_dropped], 0
     PUT s_nl
     ; distant terrain tiles (milestone 12)
     PUT s_lod

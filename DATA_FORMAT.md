@@ -39,7 +39,8 @@ warnings, as above.
 | `data/config/controls.cfg` | `src/platform/input.asm` | key bindings (actions → up to 2 keys) and mouse/fly settings |
 | `data/config/graphics.cfg` | `src/core/settings.asm` | graphics settings (render distance, opaque leaves) |
 | `data/blocks/*.blocks` | `src/world/block.asm` | the block registry: every block, its textures and render settings |
-| `data/world/world.cfg` | `src/world/world.asm` | world seed and generator (`terrain` or `flat_test`) |
+| `data/world/world.cfg` | `src/world/world.asm` | world seed and generator (`terrain` or `flat_test`), day length, clouds, gravity |
+| `data/entities/player.cfg` | `src/sim/player.asm` | the player's body size and movement speeds (walking, swimming, climbing, flying) |
 | `data/world/terrain.cfg` | `src/world/terrain.asm` | the terrain generator: noise fields, splines, heights, surface blocks |
 | `data/world/caves.cfg` | `src/world/terrain.asm` (used by `caves.asm`) | caves, ravines, shafts, aquifers, lava, cave decoration |
 | `data/biomes/*.biome` | `src/world/biome.asm` | climate fields, tree generators, biomes (colours, terrain, plants, flowers, meadows, trees, ponds) |
@@ -55,7 +56,12 @@ Actions: `move_forward`, `move_back`, `move_left`, `move_right`, `move_up`,
 names is at the top of the file).
 
 Settings: `mouse_sensitivity` (degrees per mouse count), `invert_mouse_y`
-(0/1), `fly_speed` (blocks/s), `fly_sprint_multiplier`.
+(0/1). (The flying speeds moved to `player.cfg` in milestone 16.)
+
+Movement (milestone 16): `move_up` jumps, swims up, climbs and flies up;
+pressing it twice within 0.3 s starts or stops flying (Creative).
+`move_down` sneaks (never walking off an edge), dives and flies down.
+`sprint` runs forward.
 
 ### `graphics.cfg`
 
@@ -99,6 +105,9 @@ Defines a block, or changes one defined earlier (the later settings win).
 | `waterlogged` | `1`: the block is drawn inside water (river weed): the mesher treats its cell as water for faces |
 | `shape` | see below (default `cube`) | a non-cube shape. **Must be the first setting of a new block** (in a template: the first line after `name`), because it reserves one block id per state |
 | `upper_textures` | like `textures` | door shapes only: textures of the upper half |
+| `collision` | `none` / `full` | what the player bumps into. Default: cubes are solid, shapes collide as their parts (fences, fence gates and walls 1.5 blocks high), plants, signs, pressure plates and liquids not at all |
+| `climbable` | `0`/`1` | ladders and vines can be climbed (default: `1` for the `ladder` shape) |
+| `liquid` | `none` / `water` / `lava` | the player swims in it (lava slows more); liquids have no collision |
 
 Shapes and their states (each state is its own block id, base id + state;
 every setting applies to all states):
@@ -186,6 +195,31 @@ you run it.
 | `start_time` | hour 0–24 (default 8) | time of day at the start (`--time <hour>` overrides) |
 | `cloud_cover` | 0–1 (default 0.45) | share of the sky the cloud layer covers |
 | `cloud_height` | world y (default 230) | bottom of the cloud layer (48 blocks thick) |
+| `gravity` | blocks/s² (default 32) | how fast the player falls |
+
+### `player.cfg` (Milestone 16)
+
+The player's body and movement. All values are numbers ≥ 0; speeds are
+blocks per second.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `width`, `height` | 0.6, 1.8 | the body's box |
+| `eye_height`, `sneak_eye_height` | 1.62, 1.27 | eyes above the feet |
+| `walk_speed`, `sprint_speed`, `sneak_speed` | 4.317, 5.612, 1.31 | on foot (sprint: forward only) |
+| `jump_velocity` | 8.95 | upward speed of a jump (≈1.25 blocks with gravity 32) |
+| `ground_accel`, `air_accel` | 0.5, 0.08 | share of the gap to the wanted speed closed per tick (20 per second) |
+| `terminal_speed` | 78 | fastest fall |
+| `step_height` | 0.6 | walks up slabs and stairs without jumping |
+| `swim_speed`, `swim_sprint_speed` | 2.2, 4.0 | in water |
+| `swim_up_speed`, `sink_speed` | 3.5, 1.5 | rising with `move_up` (diving with `move_down`), sinking otherwise |
+| `water_accel` | 0.2 | like `ground_accel`, in liquids |
+| `lava_slowdown` | 0.5 | swim speeds are multiplied by this in lava |
+| `climb_speed`, `climb_down_speed` | 2.35, 3.0 | ladders and vines: up, and the slowest slide down |
+| `fly_speed`, `fly_sprint_multiplier` | 12, 5 | Creative flight |
+| `fly_vertical` | 0.6 | share of the flight speed for going up and down |
+| `fly_accel` | 0.35 | like `ground_accel`, flying |
+| `flytest_speed` | 60 | `--flytest` (streaming test): flies north through everything |
 
 ### `terrain.cfg` (Milestone 8)
 

@@ -2,6 +2,7 @@
 
 [block lava]
 light = 15, 8, 2
+liquid = lava
 
 [block dripstone_block]
 

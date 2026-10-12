@@ -1,5 +1,7 @@
 ; =============================================================================
-; camera.asm — debug fly camera (client side).
+; camera.asm — the view: mouse look and the view-projection (client side).
+; Its position (g_cam_pos) is the player's eyes, set by client.asm from the
+; simulation (milestone 16; before that this was a free fly camera).
 ;
 ; Conventions: right-handed, +Y up, yaw 0 looks toward -Z ("north"), yaw grows
 ; turning right (toward +X, "east"), pitch > 0 looks up.
@@ -11,19 +13,17 @@
 ;
 ; Public API:
 ;   camera_init()                   default position/orientation
-;   camera_update(ecx=w, edx=h)     apply mouse + movement actions for this
-;                                   frame and rebuild g_cam_viewproj
+;   camera_update(ecx=w, edx=h)     apply the mouse for this frame and
+;                                   rebuild g_cam_viewproj
 ;   g_cam_pos (3 doubles), g_cam_yaw, g_cam_pitch (radians), g_cam_viewproj
-;   g_cam_autofly: nonzero = always fly forward (streaming tests, --flytest)
 ; =============================================================================
 %include "macros.inc"
 %include "input.inc"
 
 global camera_init, camera_update
-global g_cam_pos, g_cam_yaw, g_cam_pitch, g_cam_viewproj, g_cam_autofly
+global g_cam_pos, g_cam_yaw, g_cam_pitch, g_cam_viewproj
 
 extern sincosf
-extern g_frame_us
 
 section .rdata
 align 16
@@ -33,10 +33,6 @@ c_two_pi:       dd 6.283185307
 c_pitch_limit:  dd 1.553343         ; 89 degrees
 c_half_fov:     dd 0.610865238      ; 70 degree vertical FOV / 2
 c_near:         dd 0.05
-c_us_to_s:      dd 0.000001
-c_max_dt:       dd 0.1
-c_one:          dd 1.0
-c_zero:         dd 0.0
 ; start position: south of the block gallery and the test structures,
 ; looking north, slightly down
 align 8
@@ -48,7 +44,6 @@ alignb 64
 g_cam_viewproj: resd 16
 alignb 8
 g_cam_pos:      resq 3                  ; doubles: precise far from the origin
-g_cam_autofly:  resd 1
 g_cam_yaw:      resd 1
 g_cam_pitch:    resd 1
 alignb 4
@@ -76,33 +71,12 @@ camera_init:
     ret
 
 ; -----------------------------------------------------------------------------
-; axis_value — +1/-1/0 from a pair of actions.
-;   in:  ecx = positive action, edx = negative action
-;   out: xmm0 = 1.0, -1.0 or 0.0
-;   clobbers: volatile registers
-; -----------------------------------------------------------------------------
-PROC axis_value, 0, rbx, rsi
-    mov esi, edx
-    call input_down
-    mov ebx, eax
-    mov ecx, esi
-    call input_down
-    sub ebx, eax
-    cvtsi2ss xmm0, ebx
-    RETURN
-ENDPROC
-
-; -----------------------------------------------------------------------------
-; camera_update — mouse look, fly movement and matrix rebuild.
+; camera_update — mouse look and matrix rebuild.
 ;   in:  ecx = framebuffer width, edx = framebuffer height (both > 0)
 ;   out: none
 ;   clobbers: volatile registers (incl. xmm0-xmm5)
 ; -----------------------------------------------------------------------------
 %define CU_ASPECT   0
-%define CU_DT       4
-%define CU_F        8
-%define CU_R        12
-%define CU_U        16
 %define CU_XMM6     32                  ; saved xmm6/xmm7 (nonvolatile)
 %define CU_XMM7     48
 PROC camera_update, 64
@@ -112,13 +86,6 @@ PROC camera_update, 64
     cvtsi2ss xmm1, edx
     divss xmm0, xmm1
     movss [LOCAL(CU_ASPECT)], xmm0
-
-    ; dt in seconds, clamped (no huge jumps after a hitch)
-    mov rax, [rel g_frame_us]
-    cvtsi2ss xmm0, rax
-    mulss xmm0, [rel c_us_to_s]
-    minss xmm0, [rel c_max_dt]
-    movss [LOCAL(CU_DT)], xmm0
 
     ; ---- mouse look --------------------------------------------------------------
     cmp dword [rel g_mouse_captured], 0
@@ -165,75 +132,6 @@ PROC camera_update, 64
     movss [rel t_sp], xmm0
     movss [rel t_cp], xmm1
 
-    ; ---- movement -----------------------------------------------------------------------
-    INVOKE axis_value, ACT_MOVE_FORWARD, ACT_MOVE_BACK
-    cmp dword [rel g_cam_autofly], 0
-    je .manual_forward
-    movss xmm0, [rel c_one]             ; test mode: always forward
-.manual_forward:
-    movss [LOCAL(CU_F)], xmm0
-    INVOKE axis_value, ACT_MOVE_RIGHT, ACT_MOVE_LEFT
-    movss [LOCAL(CU_R)], xmm0
-    INVOKE axis_value, ACT_MOVE_UP, ACT_MOVE_DOWN
-    movss [LOCAL(CU_U)], xmm0
-    ; wish = f*(sy,0,-cy) + r*(cy,0,sy) + u*(0,1,0)
-    movss xmm3, [LOCAL(CU_F)]
-    movss xmm4, [LOCAL(CU_R)]
-    movss xmm0, xmm3
-    mulss xmm0, [rel t_sy]
-    movss xmm1, xmm4
-    mulss xmm1, [rel t_cy]
-    addss xmm0, xmm1                    ; wx
-    movss xmm2, xmm4
-    mulss xmm2, [rel t_sy]
-    movss xmm1, xmm3
-    mulss xmm1, [rel t_cy]
-    subss xmm2, xmm1                    ; wz
-    movss xmm1, [LOCAL(CU_U)]           ; wy
-    ; normalise (diagonals are not faster)
-    movss xmm5, xmm0
-    mulss xmm5, xmm0
-    movss xmm6, xmm1
-    mulss xmm6, xmm1
-    addss xmm5, xmm6
-    movss xmm6, xmm2
-    mulss xmm6, xmm2
-    addss xmm5, xmm6
-    xorps xmm6, xmm6
-    comiss xmm5, xmm6
-    jbe .no_move
-    sqrtss xmm5, xmm5
-    ; scale = speed * (sprint ? mult : 1) * dt / len
-    movss xmm6, [rel g_fly_speed]
-    mulss xmm6, [LOCAL(CU_DT)]
-    divss xmm6, xmm5
-    movss [LOCAL(CU_F)], xmm0           ; keep wx/wy/wz across the call
-    movss [LOCAL(CU_R)], xmm1
-    movss [LOCAL(CU_U)], xmm2
-    movss [LOCAL(CU_ASPECT) + 24], xmm6
-    mov ecx, ACT_SPRINT
-    call input_down
-    movss xmm6, [LOCAL(CU_ASPECT) + 24]
-    test eax, eax
-    jz .no_sprint
-    mulss xmm6, [rel g_fly_sprint_mult]
-.no_sprint:
-    movss xmm0, [LOCAL(CU_F)]           ; (CU_F/R/U hold wish x/y/z here)
-    mulss xmm0, xmm6
-    cvtss2sd xmm0, xmm0
-    addsd xmm0, [rel g_cam_pos]
-    movsd [rel g_cam_pos], xmm0
-    movss xmm0, [LOCAL(CU_R)]
-    mulss xmm0, xmm6
-    cvtss2sd xmm0, xmm0
-    addsd xmm0, [rel g_cam_pos + 8]
-    movsd [rel g_cam_pos + 8], xmm0
-    movss xmm0, [LOCAL(CU_U)]
-    mulss xmm0, xmm6
-    cvtss2sd xmm0, xmm0
-    addsd xmm0, [rel g_cam_pos + 16]
-    movsd [rel g_cam_pos + 16], xmm0
-.no_move:
 
     ; ---- view-projection (rotation only; column-major) --------------------------------------
     ; F = (sy*cp, sp, -cy*cp)   R = (cy, 0, sy)   U = (-sy*sp, cp, cy*sp)

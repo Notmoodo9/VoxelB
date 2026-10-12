@@ -26,6 +26,7 @@ textures = shelf_fungus
 shape    = ladder
 textures = cocoa_pod
 render   = cutout
+climbable = 0
 
 [block melon]
 textures = side: melon_side, end: melon_top

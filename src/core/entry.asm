@@ -6,8 +6,9 @@
 ;                      (automated test runs; exit code stays 0)
 ;   --novsync          start with vsync off (toggle_vsync action at runtime)
 ;   --workers <n>      number of job worker threads (default: CPUs - 1)
-;   --flytest          fly north automatically at 60 blocks/s (streaming test)
-;   --pos <x> <y> <z>  start the camera at this position (blocks)
+;   --flytest          fly north through everything at flytest_speed
+;                      (data/entities/player.cfg; streaming test)
+;   --pos <x> <y> <z>  start with the player's eyes here, flying (blocks)
 ;   --seed <n>         world seed (overrides data/world/world.cfg)
 ;   --flat             use the flat test world (block gallery)
 ;   --survey           log terrain statistics and places to visit
@@ -22,10 +23,12 @@
 ;
 ; Startup: log -> CPU check -> memory arenas -> job workers -> self test ->
 ; paths (find data\) -> controls.cfg -> window -> OpenGL ->
-; input -> renderer -> text -> camera -> timer.
+; input -> renderer -> text -> camera -> world -> day cycle -> client +
+; simulation -> timer.
 ; Frame loop: reset frame arena -> new input frame -> pump messages -> actions (menu, capture,
-; vsync, overlay, shader reload) -> shader hot-reload poll -> camera ->
-; render -> overlay -> swap -> timing.
+; vsync, overlay, shader reload) -> shader hot-reload poll -> camera (look)
+; -> client input -> simulation ticks -> client view (camera position,
+; time) -> streaming, LOD -> render -> overlay -> swap -> timing.
 ; Every stats window (0.5 s) the title bar shows FPS and frame times; every
 ; PERF_LOG_EVERY windows the same line goes to the log.
 ; =============================================================================
@@ -39,6 +42,7 @@
 %include "shader.inc"
 %include "text.inc"
 %include "jobs.inc"
+%include "packet.inc"
 
 global main_entry
 
@@ -52,9 +56,10 @@ extern terrain_survey
 extern world_spawn, g_seed_override, g_seed_override_set, g_force_flat
 extern stream_init, stream_update, stream_shutdown, settings_load
 extern lod_init, lod_update, lod_shutdown, g_held_on, g_daylight
-extern daycycle_init, daycycle_update, g_time_override
+extern daycycle_init, g_time_override
+extern sim_init, sim_update, client_init, client_input, client_view
 extern block_textures_poll
-extern g_cam_autofly, g_fly_speed, g_cam_pos, g_cam_yaw, g_cam_pitch
+extern g_cam_pos, g_cam_yaw, g_cam_pitch
 extern timer_init, timer_frame, timer_reset, timer_elapsed_us
 extern g_total_frames, g_stat_fps_x10, g_stat_avg_us, g_stat_min_us, g_stat_max_us
 
@@ -85,7 +90,6 @@ opt_time:           db "--time ", 0
 align 4
 c_deg_to_rad:       dd 0.0174532925
 align 4
-c_flytest_speed:    dd 60.0
 c_hundred:          dd 100.0
 str_cpu_fail:       db "This CPU lacks SSE4.2, which VoxelB requires.", 0
 str_mem_fail:       db "Could not reserve memory. See voxel.log for details.", 0
@@ -117,6 +121,8 @@ str_build:          db "VoxelB starting (release build)", 0
 section .bss
 g_stats_text:       resb 256            ; "60.0 FPS | 16.667 ms (...) | ..."
 g_title_text:       resb 300
+g_start_flags:      resd 1              ; PF_FLYING / PF_NOCLIP for the player
+g_flytest:          resd 1
 
 section .text
 
@@ -353,6 +359,7 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     inc esi
     cmp esi, 3
     jb .pos_coord
+    or dword [rel g_start_flags], PF_FLYING   ; (hover where --pos says)
     LOG_INFO "camera: start position from --pos"
 .no_pos:
     ; --look yaw pitch (degrees)
@@ -408,11 +415,16 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     INVOKE str_find, rbx, rdx
     test rax, rax
     jz .no_flytest
-    mov dword [rel g_cam_autofly], 1
-    movss xmm0, [rel c_flytest_speed]
-    movss [rel g_fly_speed], xmm0
-    LOG_INFO "flytest: flying north at 60 blocks/s"
+    or dword [rel g_start_flags], PF_FLYING | PF_NOCLIP
+    mov dword [rel g_flytest], 1
+    LOG_INFO "flytest: flying north through everything"
 .no_flytest:
+    mov ecx, [rel g_flytest]
+    call client_init
+    lea rcx, [rel g_cam_pos]
+    mov edx, [rel g_start_flags]
+    call sim_init
+    call client_view                    ; (the spawn state)
     call timer_init
     cmp dword [rel g_window_active], 0
     je .no_initial_capture
@@ -498,9 +510,11 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     mov ecx, [rel g_client_w]
     mov edx, [rel g_client_h]
     call camera_update
+    call client_input
+    call sim_update
+    call client_view
     call stream_update
     call lod_update
-    call daycycle_update
     mov ecx, [rel g_client_w]
     mov edx, [rel g_client_h]
     call renderer_frame
