@@ -3,7 +3,7 @@
 #   powershell -ExecutionPolicy Bypass -File tools\smoke_test.ps1 -Config debug
 param(
     [ValidateSet('debug', 'release')] [string] $Config = 'release',
-    [int] $AutocloseMs = 20000,
+    [int] $AutocloseMs = 40000,
     [int] $TimeoutMs = 120000
 )
 $ErrorActionPreference = 'Stop'
