@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 14 part 1 (sky, day/night, fog, HDR, bloom): DONE** (Windows CI: see below)
+**Milestone 14 part 1 (sky, day/night, fog, HDR, bloom): DONE** (Windows CI green: run #70)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
