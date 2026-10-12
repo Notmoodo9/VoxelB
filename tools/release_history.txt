@@ -1,0 +1,19 @@
+# Past versions for the Release history workflow (.github/workflows/release-history.yml):
+# version | commit | title. Each is the last commit of that milestone.
+0.1.0 | 1e5baf03fad909f0e46a0e467ff086ab08c55186 | First window
+0.2.0 | c06131103209acc14d956e5de535a0427418811e | OpenGL context
+0.3.0 | b61a57550ea778b34eaa55bcf299f2e0fd49b467 | Fly camera and input
+0.4.0 | 9bd9df7062408bb015b715cb8b6cab29f7b074f4 | Job system
+0.5.0 | c9a58e2576b163fb428f78b427eee6cfb53494c0 | Chunks and meshing
+0.6.0 | a071b94aa6682e6581686038855dcaecf73ffbba | Infinite world streaming
+0.7.0 | 8372a14ced0ef7b02a27749ed8fbe177f7e41edf | Block registry and textures
+0.7.1 | 71aba885908d869eeaa3e00ebb3adb998bda28be | Shaped blocks
+0.8.0 | d42c958475839a72004d037bac8a80deed890428 | Terrain and mountains
+0.9.0 | ecb32cd66075874eacc7d27dc4a0ad53da874303 | Caves, ravines and ores
+0.10.0 | 4ab82371c8208636cb427b7ae7181e106b318583 | Biomes
+0.11.0 | 3b0728c4aaa8dc0592801e42359a3c7f53a5673f | GPU-driven rendering
+0.12.0 | 9d5aa415fbec70590f03ab390cc7a5c7a0c5e716 | Far terrain (LOD)
+0.13.0 | f921ec20277b202c9f3d0411bff960a9a4d0e4e8 | Lighting
+0.14.0 | a74d2dc612172b52661482aa82b80b1ddf2d6c3c | Sky, shadows and clouds
+0.15.0 | 09d5244d604664ee09fb19282c62044b6f9dec30 | Water
+0.16.0 | 533427025fb03f6637059ea839f341f369983b51 | Physics, building and flowing water

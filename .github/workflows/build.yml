@@ -17,6 +17,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # tags and history for the release notes
 
       - name: Install NASM
         uses: ilammy/setup-nasm@v1
@@ -106,13 +108,47 @@ jobs:
         run: |
           $sha = "${{ github.sha }}".Substring(0, 7)
           gh release delete latest --yes --cleanup-tag 2>$null
+          $ver = ""
+          if (Test-Path data\version.cfg) {
+            $m = (Get-Content data\version.cfg | Select-String '^\s*version\s*=\s*(.+)$')
+            if ($m) { $ver = " (v" + $m.Matches[0].Groups[1].Value.Trim() + ")" }
+          }
           gh release create latest `
             "dist\${{ steps.package.outputs.name }}.zip" `
             "dist\voxelb-windows.zip" `
-            --title "Latest build" `
+            --title "Latest build$ver" `
             --notes "Automatic Windows build of ${{ github.ref_name }} at $sha. Download voxelb-windows.zip, unzip, run VoxelB\voxelb.exe." `
             --target "${{ github.sha }}" `
             --latest
+
+      # A permanent, named release per version (data/version.cfg: version
+      # and title), e.g. "VoxelB v0.18.1 - Items and inventory", so every
+      # version stays downloadable. Made once, by the first push that
+      # carries a new version number.
+      - name: Publish versioned release
+        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if (-not (Test-Path data\version.cfg)) { Write-Host "no data/version.cfg"; exit 0 }
+          $cfg = Get-Content data\version.cfg
+          $ver = (($cfg | Select-String '^\s*version\s*=\s*(.+)$').Matches[0].Groups[1].Value).Trim()
+          $title = (($cfg | Select-String '^\s*title\s*=\s*(.+)$').Matches[0].Groups[1].Value).Trim()
+          $tag = "v$ver"
+          gh release view $tag 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { Write-Host "$tag already released"; exit 0 }
+          $prev = git describe --tags --match "v*" --abbrev=0 2>$null
+          $range = if ($prev) { "$prev..HEAD" } else { "HEAD~10..HEAD" }
+          $changes = git log --format="- %s" $range | Where-Object { $_ -notmatch 'PROGRESS: record' }
+          $sha = "${{ github.sha }}".Substring(0, 7)
+          $notes = "**$title** (commit $sha).`n`nDownload voxelb-$tag-windows.zip, unzip it and run VoxelB\voxelb.exe.`n`nChanges since $(if ($prev) { $prev } else { 'the last builds' }):`n" + ($changes -join "`n")
+          Copy-Item "dist\voxelb-windows.zip" "dist\voxelb-$tag-windows.zip"
+          gh release create $tag "dist\voxelb-$tag-windows.zip" `
+            --title "VoxelB $tag - $title" `
+            --notes $notes `
+            --target "${{ github.sha }}" `
+            --latest=false
 
       - name: Show game logs
         if: always()

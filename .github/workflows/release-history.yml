@@ -1,0 +1,123 @@
+name: Release history
+
+# Builds the past versions listed in tools/release_history.txt (one line per
+# version: "version | commit | title") and publishes each as its own
+# release "VoxelB v<version> - <title>" with tag v<version>, so older
+# versions stay downloadable. Versions that already have a release are
+# skipped, so it is safe to run again after adding lines. Run it from the
+# Actions tab ("Run workflow").
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-history
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      any: ${{ steps.plan.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versions without a release yet
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          existing=$(gh release list -R "${{ github.repository }}" --limit 500 --json tagName --jq '.[].tagName')
+          items='[]'
+          while IFS='|' read -r ver sha title; do
+            ver=$(echo "$ver" | xargs); sha=$(echo "$sha" | xargs); title=$(echo "$title" | xargs)
+            [ -z "$ver" ] && continue
+            case "$ver" in \#*) continue;; esac
+            if echo "$existing" | grep -qx "v$ver"; then echo "v$ver exists"; continue; fi
+            items=$(echo "$items" | jq -c --arg v "$ver" --arg s "$sha" --arg t "$title" '. + [{version:$v, sha:$s, title:$t}]')
+          done < tools/release_history.txt
+          echo "matrix={\"include\":$items}" >> "$GITHUB_OUTPUT"
+          if [ "$items" = "[]" ]; then echo "any=false" >> "$GITHUB_OUTPUT"; else echo "any=true" >> "$GITHUB_OUTPUT"; fi
+          echo "to build: $items"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.sha }}
+
+      - name: Install NASM
+        uses: ilammy/setup-nasm@v1
+
+      - name: Set up MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Put LLVM (lld-link) on PATH
+        shell: pwsh
+        run: |
+          if (-not (Get-Command lld-link -ErrorAction SilentlyContinue)) {
+            "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          }
+
+      - name: Build release
+        shell: cmd
+        run: call build.bat release clean
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $stage = "dist\VoxelB"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item build\release\voxelb.exe $stage
+          foreach ($d in 'data', 'shaders', 'assets') {
+            if (Test-Path $d) { Copy-Item $d $stage -Recurse }
+          }
+          Compress-Archive -Path $stage -DestinationPath "dist\voxelb-v${{ matrix.version }}-windows.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v${{ matrix.version }}
+          path: dist/voxelb-v${{ matrix.version }}-windows.zip
+          if-no-files-found: error
+
+  publish:
+    needs: [plan, build]
+    if: always() && needs.plan.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: zips
+      # one at a time, oldest first, so the release list reads in order
+      - name: Publish releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          while IFS='|' read -r ver sha title; do
+            ver=$(echo "$ver" | xargs); sha=$(echo "$sha" | xargs); title=$(echo "$title" | xargs)
+            [ -z "$ver" ] && continue
+            case "$ver" in \#*) continue;; esac
+            zip="zips/v$ver/voxelb-v$ver-windows.zip"
+            [ -f "$zip" ] || { echo "no build for v$ver (skipped or failed)"; continue; }
+            if gh release view "v$ver" >/dev/null 2>&1; then continue; fi
+            date=$(git log -1 --format=%ad --date=short "$sha" 2>/dev/null || echo "")
+            gh release create "v$ver" "$zip" \
+              --target "$sha" \
+              --title "VoxelB v$ver - $title" \
+              --notes "Milestone version $ver: **$title** (commit ${sha:0:7}, $date). Rebuilt from that commit for the version history. Download the zip, unzip it and run VoxelB\\voxelb.exe. What each milestone added: PROGRESS.md." \
+              --latest=false
+            echo "published v$ver"
+          done < tools/release_history.txt
