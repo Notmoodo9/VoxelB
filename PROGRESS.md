@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 17, part 2a: Main menu, flyover, pause menu, world switching: DONE** (Windows CI: see below)
+**Milestone 17, part 2a: Main menu, flyover, pause menu, world switching: DONE** (Windows CI green: run #84)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
