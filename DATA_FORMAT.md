@@ -203,6 +203,7 @@ you run it.
 | `cloud_cover` | 0–1 (default 0.45) | share of the sky the cloud layer covers |
 | `cloud_height` | world y (default 230) | bottom of the cloud layer (48 blocks thick) |
 | `gravity` | blocks/s² (default 32) | how fast the player falls |
+| `autosave_minutes` | minutes (default 5; `0` = only on exit) | how often the world is saved |
 
 ### `player.cfg` (Milestone 16)
 
@@ -465,3 +466,42 @@ test structures are near the start position. Blocks are named as in
 
 The parser is shared (`src/core/cfg.asm`). Every reader reports problems as
 `<file>: <message>` warnings and keeps going.
+
+## Saved worlds (`saves/<name>/`, Milestone 17)
+
+Written by the game; `--world <name>` picks the world (default `world`,
+created if missing), `--nosave` neither loads nor saves. Only the parts
+of the world that changed are stored: everything else is generated again
+from the seed, identically.
+
+### `world.dat` and `player.dat`
+
+Text in the format above (the game rewrites them on every save, via a
+`.tmp` file and a rename, so a crash never leaves half a file).
+
+| File | Key | Meaning |
+|---|---|---|
+| world.dat | `format_version` | 1 (a newer version is logged as a warning) |
+| | `name`, `seed`, `generator` | the world; `seed` and `generator` override world.cfg and `--seed` |
+| | `game_mode` | `creative` (the only mode so far) |
+| | `time` | time of day, 0–1 (0 = midnight); `--time` overrides it |
+| player.dat | `eye_position` | x, y, z of the eyes (blocks, 4 decimals) |
+| | `look` | yaw, pitch in radians |
+| | `flying` | `0`/`1` |
+| | `held_block` | block name |
+
+### Region files (`overworld/region/r.<rx>.<rz>.vxr`)
+
+Binary, little endian, 4096-byte sectors. One file holds 32 × 32 columns
+(column `cx, cz` is in region `cx >> 5, cz >> 5`).
+
+* Header (3 sectors): `VXRG`, u32 version (1), 8 reserved bytes, then
+  1024 × {u32 first sector, u32 byte length}, index `(cx & 31) + (cz & 31) * 32`;
+  0 = not saved.
+* A record: `VXCZ`, u32 raw length, u32 compressed length, then the column
+  compressed with the LZ format of `src/core/lz.asm` (LZ4-like). Raw:
+  `VXCR`, u32 version, i32 cx, i32 cz, u32 section count, then per section
+  u8 section index (0–39 from y −256), u8 kind and the blocks (index
+  `y << 10 | z << 5 | x`): kind 0 one block id (u16); kind 1 a palette
+  (u16 count, u16 ids) and one byte per block; kind 2 u16 per block.
+  Sections that are all air are left out.

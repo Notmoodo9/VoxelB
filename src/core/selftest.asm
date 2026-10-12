@@ -18,6 +18,7 @@
 ;              worker scratch-arena use
 ; =============================================================================
 %include "macros.inc"
+extern lz_compress, lz_decompress
 %include "log.inc"
 %include "jobs.inc"
 %include "section.inc"
@@ -1038,6 +1039,92 @@ ENDPROC
 ;   out: eax = 1 if everything passed, 0 otherwise (failures logged)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
+; test_lz — compress and expand 192 KB of mixed data (runs, a repeating
+; pattern, noise, a block-id-like array) and compare (milestone 17).
+;   out: eax = 1 pass / 0 fail
+; -----------------------------------------------------------------------------
+%define LZT_N   (192 * 1024)
+PROC test_lz, 32, rbx, rsi, rdi, r12, r13
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [LOCAL(0)], rax
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_alloc, rcx, LZT_N * 3 + 65536, 64
+    test rax, rax
+    jz .fail
+    mov rbx, rax                        ; source
+    lea r12, [rax + LZT_N]              ; compressed (bound < 2 n)
+    lea r13, [rax + LZT_N * 2 + 4096]   ; expanded (+ room for the table)
+    ; data: 64 KB zero run, 32 KB pattern, 32 KB noise, 64 KB u16 ids
+    mov rdi, rbx
+    xor eax, eax
+    mov ecx, 65536
+    rep stosb
+    xor ecx, ecx
+.pattern:
+    mov eax, ecx
+    and eax, 7
+    add al, 'a'
+    mov [rdi + rcx], al
+    inc ecx
+    cmp ecx, 32768
+    jb .pattern
+    add rdi, 32768
+    mov eax, 12345
+    xor ecx, ecx
+.noise:
+    imul eax, eax, 1103515245
+    add eax, 12345
+    mov edx, eax
+    shr edx, 16
+    mov [rdi + rcx], dl
+    inc ecx
+    cmp ecx, 32768
+    jb .noise
+    add rdi, 32768
+    xor ecx, ecx
+.ids:
+    mov eax, ecx
+    shr eax, 10                         ; layers of 1024 blocks
+    and eax, 3
+    add eax, 17
+    mov [rdi + rcx * 2], ax
+    inc ecx
+    cmp ecx, 32768
+    jb .ids
+    ; round trip (the hash table lives after the expanded buffer)
+    lea r9, [r13 + LZT_N]
+    INVOKE lz_compress, rbx, LZT_N, r12, r9
+    mov rsi, rax                        ; compressed size
+    INVOKE lz_decompress, r12, rsi, r13, LZT_N
+    cmp rax, LZT_N
+    jne .fail_reset
+    mov rcx, LZT_N
+    mov rdi, r13
+    mov rax, rsi
+    mov rsi, rbx
+    repe cmpsb
+    jne .fail_reset
+    LOG_VAL LOG_LEVEL_INFO, "selftest: lz round trip ok, 196608 bytes ->", rax
+    ; a corrupt stream is refused, not overrun
+    mov byte [r12], 0xFF
+    INVOKE lz_decompress, r12, 8, r13, LZT_N
+    cmp rax, -1
+    jne .fail_reset
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(0)]
+    mov eax, 1
+    RETURN
+.fail_reset:
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(0)]
+.fail:
+    LOG_ERROR "selftest: lz compression round trip failed"
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 PROC selftest_run, 0, rbx
     mov ebx, 1
     call test_arenas
@@ -1055,6 +1142,8 @@ PROC selftest_run, 0, rbx
     call test_png
     and ebx, eax
     call test_vis
+    and ebx, eax
+    call test_lz
     and ebx, eax
     call world_hash_selftest
     test eax, eax

@@ -26,7 +26,7 @@
 %include "physics.inc"
 
 global sim_init, sim_update, g_sim_alpha, g_sim_tick
-global g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us
+global g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us, g_sim_time
 
 extern player_load, player_spawn, player_tick, player_toggle_fly, player_fill
 extern edit_request, edit_tick, fluid_tick

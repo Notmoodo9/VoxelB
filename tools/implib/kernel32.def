@@ -40,3 +40,6 @@ EXPORTS
     VirtualFree
     WaitForSingleObject
     WriteFile
+    CreateDirectoryA
+    MoveFileExA
+    SetFilePointerEx

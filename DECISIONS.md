@@ -1489,3 +1489,34 @@ block for their upper half (mossy cobblestone boulders).
   stone.
 * `--held <block>` (command line) starts with any block in hand, e.g.
   water or lava, since liquids can't be targeted for pick_block.
+
+## D88 — Saving: region files of changed columns (M17 part 1)
+* **Only changed columns are saved.** Generation is deterministic, so a
+  column that was never edited is generated again instead of read; a
+  world's save is tiny (a few KB per edited column) and saving costs
+  nothing while exploring. `COLUMN.modified` is set by `world_set_block`
+  (edits and flowing liquids) and cleared when the column is written.
+* **Region files** of 32 × 32 columns (Minecraft-like): a 3-sector header
+  table, records in whole 4 KB sectors; a record that no longer fits its
+  sectors moves to the end of the file (the old space is not reused yet);
+  the table entry is written after the record. One SRW lock serialises all
+  region access; a 16-slot cache keeps headers.
+* **Compression:** our own LZ77 (LZ4-like token format, greedy, 4096-entry
+  hash), in asm (`src/core/lz.asm`); sections are first written as a
+  palette + one byte per block when they have ≤ 256 kinds of block. A
+  typical edited column: 25 KB.
+* **When:** an edited column is written on the main thread as it unloads
+  (so edits survive moving away, fixing M16's known issue), every
+  `autosave_minutes` (world.cfg, default 5) together with `world.dat` and
+  `player.dat`, and on exit. Saving one column takes ~1–3 ms.
+* **Loading** happens in the generation job: the column is generated as
+  usual (biome tints and everything else derived from it exist), then its
+  saved sections replace the generated ones before it is published. A
+  damaged record or region file is logged and the column is generated.
+* **Text for metadata:** `world.dat` / `player.dat` use the data-file
+  format (readable, versioned with `format_version`), written to a
+  `.tmp` file and renamed over the old one.
+* The save system reads the simulation's state (player, clock) directly;
+  with a separate server this moves to the server side as is.
+* Not done yet: reusing freed sectors, saving liquid updates still
+  pending, saving in a background job.

@@ -14,6 +14,9 @@
 ;   --survey           log terrain statistics and places to visit
 ;   --held-light       start with the held light on (toggle_held_light)
 ;   --held <block>     start holding this block (placing tests; e.g. water)
+;   --world <name>     play the world saved in saves/<name>/ (default "world";
+;                      created if missing)
+;   --nosave           neither load nor save anything (tests)
 ;   --time <0..24>     start at this hour (overrides world.cfg's start_time)
 ;   --daylight <0..100>  sky light strength in percent (preview of night
 ;                      lighting until the day/night cycle, milestone 14)
@@ -60,6 +63,8 @@ extern lod_init, lod_update, lod_shutdown, g_held_on, g_daylight
 extern daycycle_init, g_time_override
 extern sim_init, sim_update, client_init, client_input, client_view
 extern block_find, g_held_block
+extern save_open, save_load_player, save_update, save_all
+extern g_save_enabled, g_save_player_flags, g_save_held
 extern block_textures_poll
 extern g_cam_pos, g_cam_yaw, g_cam_pitch
 extern timer_init, timer_frame, timer_reset, timer_elapsed_us
@@ -88,6 +93,8 @@ opt_survey:         db "--survey", 0
 opt_look:           db "--look ", 0
 opt_held:           db "--held-light", 0
 opt_held_block:     db "--held ", 0
+opt_world:          db "--world ", 0
+opt_nosave:         db "--nosave", 0
 opt_daylight:       db "--daylight ", 0
 opt_time:           db "--time ", 0
 align 4
@@ -127,6 +134,7 @@ g_title_text:       resb 300
 g_start_flags:      resd 1              ; PF_FLYING / PF_NOCLIP for the player
 g_flytest:          resd 1
 g_held_name:        resb 64
+g_world_arg:        resb 64
 
 section .text
 
@@ -318,6 +326,42 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     jz .no_flat
     mov dword [rel g_force_flat], 1
 .no_flat:
+    ; the save (milestone 17): --nosave, --world <name>; world.dat may set
+    ; the seed, generator and time
+    lea rdx, [rel opt_nosave]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .save_on
+    mov dword [rel g_save_enabled], 0
+.save_on:
+    xor esi, esi                        ; world name (0: default)
+    lea rdx, [rel opt_world]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .world_named
+    lea rdx, [rax + 8]
+    lea rdi, [rel g_world_arg]
+    xor ecx, ecx
+.world_copy:
+    mov al, [rdx + rcx]
+    cmp al, ' '
+    jbe .world_end
+    cmp al, '\'
+    je .world_end                       ; (a folder name, not a path)
+    cmp al, '/'
+    je .world_end
+    mov [rdi + rcx], al
+    inc ecx
+    cmp ecx, 63
+    jb .world_copy
+.world_end:
+    mov byte [rdi + rcx], 0
+    test ecx, ecx
+    jz .world_named
+    mov rsi, rdi
+.world_named:
+    mov rcx, rsi
+    call save_open
     call world_init
     test eax, eax
     jz .world_fail
@@ -345,6 +389,13 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     jz .no_survey
     call terrain_survey
 .no_survey:
+    ; a saved player: where they were, flying or not (--pos still wins)
+    call save_load_player
+    test eax, eax
+    jz .no_saved_player
+    mov eax, [rel g_save_player_flags]
+    or [rel g_start_flags], eax
+.no_saved_player:
     ; --pos x y z
     lea rdx, [rel opt_pos]
     INVOKE str_find, rbx, rdx
@@ -425,6 +476,11 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
 .no_flytest:
     mov ecx, [rel g_flytest]
     call client_init
+    mov eax, [rel g_save_held]
+    test eax, eax
+    jz .no_saved_held
+    mov [rel g_held_block], eax
+.no_saved_held:
     ; --held <block name>
     lea rdx, [rel opt_held_block]
     INVOKE str_find, rbx, rdx
@@ -541,6 +597,7 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     call client_input
     call sim_update
     call client_view
+    call save_update                    ; autosave
     call stream_update
     call lod_update
     mov ecx, [rel g_client_w]
@@ -615,6 +672,7 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     ; ---- shutdown (reverse order) ------------------------------------------------
     xor ecx, ecx
     call input_set_capture
+    call save_all                       ; (before the columns are freed)
     call text_shutdown
     call lod_shutdown
     call stream_shutdown

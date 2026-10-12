@@ -111,6 +111,7 @@ struc COLUMN
     ; the upload swaps them in, so a READY column keeps drawing its old mesh
     ; while it is remeshed
     .dirty      resd 1                  ; a block changed: mesh again (main thread)
+    .modified   resd 1                  ; changed since generated / saved (M17)
     .remesh     resd 1                  ; REMESH_* (READY columns)
     .minfo      resd 4 * SECTIONS_PER_COLUMN  ; per section: quads, opaque,
                                         ;  cut-out, first quad in mesh_buf

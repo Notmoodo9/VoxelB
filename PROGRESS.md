@@ -1,15 +1,57 @@
 # Progress
 
 ## Current state
-**Milestone 16: Simulation/client split, physics, break/place, Creative, flowing liquids: DONE** (Windows CI green: run #80)
+**Milestone 17, part 1: Saving and loading worlds: DONE** (Windows CI: see below)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
 `design/BACKLOG.md`). Progressive LOD is planned as Milestone 34.
 
-Next: **Milestone 17: Save/load (region files) + main menu, world creation
-with seed, settings menus.** Mostly technical; the menus' look may need a
-short design interview.
+Next: **Milestone 17, part 2: main menu, world list and creation, pause
+menu, settings menus.** Waiting for the owner's answers to the menu
+design questions (look and feel of the menus).
+
+---
+
+## Milestone 17, part 1 — done (2026-10-12): saving and loading (D88)
+
+### What was built
+* **Worlds are saved** in `saves/<name>/` next to `data/`: `world.dat`
+  (seed, generator, game mode, time of day), `player.dat` (position,
+  look, flying, held block) and region files with every changed column.
+* Saved on exit, every 5 minutes (`autosave_minutes` in world.cfg), and
+  whenever an edited part of the world leaves the view, so edits are
+  never lost by walking away.
+* **Loaded** automatically: `--world <name>` picks a world (default
+  `world`; created if missing). The player comes back where they were,
+  looking the same way, with the same block in hand and the same time of
+  day. `--nosave` turns saving off (tests).
+* Our own **LZ compression** in asm (`src/core/lz.asm`), with a round-trip
+  self test; an edited column takes ~25 KB.
+* **Versioned formats** (`format_version`, region and record versions),
+  documented in DATA_FORMAT.md.
+
+### Verified
+* Self test: 192 KB of mixed data compresses to 33.6 KB and expands
+  identically; a corrupt stream is refused.
+* Dig a hole and put a stone into it, quit: the world saves (1 column,
+  25 KB, 3 ms); start again with the same world: the hole and the stone are
+  there, the player stands where they stood, looking the same way, and
+  the clock continues.
+* With a small render distance and `--flytest`: blocks broken at the start
+  are saved when their column leaves the view ("a changed column left the
+  view"); starting the world again and going there loads it ("loaded 1").
+* Debug and release headless tests pass (they now also save on exit).
+
+### Performance
+* Saving a column: 1–3 ms on the main thread (only edited columns);
+  loading one: a few ms extra in the generation job. Unedited columns cost
+  nothing.
+
+### Known issues
+* Space of records that grew is not reused (region files can grow a
+  little with repeated saves).
+* Liquid updates still pending when the game closes are not saved.
 
 ---
 

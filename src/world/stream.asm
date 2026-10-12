@@ -47,7 +47,7 @@ extern timer_elapsed_us, g_render_distance, g_frame_us
 extern mesh_section, tint_upload, light_init, light_build, g_light_buffer
 extern g_light_sources
 extern gpu_alloc_init, gpu_alloc, gpu_free, gpu_alloc_units_needed
-extern g_quad_buffer, g_cam_pos
+extern g_quad_buffer, g_cam_pos, save_column
 
 IMPORT VirtualAlloc, VirtualFree
 
@@ -559,6 +559,13 @@ ENDPROC
 ; -----------------------------------------------------------------------------
 PROC unload_column, 0, rbx
     mov rbx, rcx
+    ; changed blocks are kept: into the region file first (milestone 17)
+    cmp dword [rbx + COLUMN.modified], 0
+    je .unchanged
+    mov rcx, rbx
+    call save_column
+    LOG_INFO "save: a changed column left the view; saved to its region file"
+.unchanged:
     mov rcx, rbx
     call free_column_gpu
     mov rcx, [rbx + COLUMN.mesh_buf]
