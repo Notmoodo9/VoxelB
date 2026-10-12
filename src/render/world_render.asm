@@ -18,6 +18,11 @@
 ; test, then Hi-Z occlusion against the previous frame's depth pyramid) and
 ; writes its indirect command; each pass is one glMultiDrawArraysIndirect.
 ; shaders/hiz.comp then builds the pyramid from this frame's depth.
+; Distant terrain (milestone 12, D80): the ready LOD tiles (lod.asm) add
+; records too: their land after the walk's opaque records, their water
+; before the sorted translucent ones. A record's quad count carries the
+; tile's level in its top byte (0 = a section); the shaders decode LOD
+; quads and keep each level to its ring around the camera.
 ;
 ; Public API:
 ;   world_render_init() -> eax 1/0      world_render_shutdown()
@@ -32,6 +37,7 @@
 %include "memory.inc"
 %include "shader.inc"
 %include "world_api.inc"
+%include "lod.inc"
 
 global world_render_init, world_render_draw, world_render_shutdown, tint_upload
 global g_world_visible, g_world_drawn_quads, g_world_gpu_bytes, g_quad_buffer
@@ -43,6 +49,8 @@ extern block_textures_init, block_textures_bind, block_textures_shutdown
 extern timer_elapsed_us, world_column, vis_pair_bit
 extern g_scene_depth, g_viewport_w, g_viewport_h
 extern g_gpu_culling, g_occlusion_culling
+
+global g_lod_tint_tex, g_lod_records
 
 %define QUAD_BUFFER_BYTES   (1 << 27)   ; 128 MB = gpu_alloc's 2^18 x 512 B
 %define MAX_PASS_ENTRIES    65536       ; per pass and frame (frame arena)
@@ -74,6 +82,12 @@ endstruc
 %define U_ORIGIN_WORLD      3
 %define U_TIME              4
 %define U_PASS              5
+%define U_LOD_LEVELS        6           ; LOD: levels in use (0 = off)
+%define U_LOD_R             7           ;   ring radii [6] (locations 7..12)
+%define U_FOG               13          ; fog density
+%define LOD_TINT_SIZE       1024        ; LOD tint map texels per side (16 blocks each)
+%define FOG_DEFAULT         0.0013      ; without LOD
+%define FOG_LOD             2.3         ; / the LOD radius: the far edge ~90% fog
 %define TINT_SIZE           1024        ; tint map texels per side (4 blocks each)
 
 ; GPU-driven drawing (milestone 11)
@@ -109,6 +123,11 @@ c_half:         dd 16.0                 ; section half size
 c_radius:       dd 27.7128129           ; 16 * sqrt(3)
 c_million:      dd 1000000.0
 c_tint_default: dd 0xFF404040           ; factor 1.0
+c_fog_default:  dd FOG_DEFAULT
+c_fog_lod:      dd FOG_LOD
+c_fade_in:      dd 0.92                 ; 1 - FADE (shaders/chunk.frag)
+align 16
+c_abs_mask:     times 4 dd 0x7FFFFFFF
 align 8
 c_wrap_us:      dq 3600000000           ; animation clock wraps hourly
 
@@ -118,6 +137,7 @@ g_world_prog:       resd 1
 g_world_vao:        resd 1
 g_quad_buffer:      resd 1
 g_tint_tex:         resd 1              ; biome tint map (2D array, 3 layers)
+g_lod_tint_tex:     resd 1              ; the LOD tiles' tint map (same layers)
 alignb 8
 g_world_visible:    resq 1
 g_world_drawn_quads: resq 1
@@ -155,6 +175,7 @@ g_n_opaque:         resq 1
 g_n_cutout:         resq 1
 g_world_gpu_visible: resq 1             ; records drawn after GPU culling (3 frames ago)
 g_world_occluded:   resq 1              ; records culled by Hi-Z (3 frames ago)
+g_lod_records:      resq 1              ; LOD tile records this frame
 g_prev_cam:         resq 3              ; camera of the pyramid's frame
 alignb 16
 g_prev_viewproj:    resd 16
@@ -214,6 +235,19 @@ PROC world_render_init, 0, rbx
     lea rax, [rel c_tint_default]
     mov [rsp + 32], rax
     GL glClearTexImage, [rel g_tint_tex], 0, GL_RGBA, GL_UNSIGNED_BYTE
+    ; the LOD tiles' tint map: one texel per 16 x 16 blocks, repeating
+    ; every 16384 blocks
+    lea r8, [rel g_lod_tint_tex]
+    GL glCreateTextures, GL_TEXTURE_2D_ARRAY, 1, r8
+    mov qword [rsp + 40], 3
+    GL glTextureStorage3D, [rel g_lod_tint_tex], 1, GL_RGBA8, LOD_TINT_SIZE, LOD_TINT_SIZE
+    GL glTextureParameteri, [rel g_lod_tint_tex], GL_TEXTURE_MIN_FILTER, GL_LINEAR
+    GL glTextureParameteri, [rel g_lod_tint_tex], GL_TEXTURE_MAG_FILTER, GL_LINEAR
+    GL glTextureParameteri, [rel g_lod_tint_tex], GL_TEXTURE_WRAP_S, GL_REPEAT
+    GL glTextureParameteri, [rel g_lod_tint_tex], GL_TEXTURE_WRAP_T, GL_REPEAT
+    lea rax, [rel c_tint_default]
+    mov [rsp + 32], rax
+    GL glClearTexImage, [rel g_lod_tint_tex], 0, GL_RGBA, GL_UNSIGNED_BYTE
 
     GL glEnable, GL_CULL_FACE
     mov eax, 1
@@ -231,6 +265,8 @@ PROC world_render_shutdown, 0
     call gpu_draw_shutdown
     call block_textures_shutdown
     lea rdx, [rel g_tint_tex]
+    GL glDeleteTextures, 1, rdx
+    lea rdx, [rel g_lod_tint_tex]
     GL glDeleteTextures, 1, rdx
     lea rdx, [rel g_quad_buffer]
     GL glDeleteBuffers, 1, rdx
@@ -440,10 +476,13 @@ PROC gpu_draw_init, 16, rdi
     GL glVertexArrayAttribFormat, [rel g_world_vao], 0, 3, GL_FLOAT, GL_FALSE, 0
     GL glVertexArrayAttribFormat, [rel g_world_vao], 1, 3, GL_FLOAT, GL_FALSE, 16
     GL glVertexArrayAttribBinding, [rel g_world_vao], 0, 0
+    GL glVertexArrayAttribIFormat, [rel g_world_vao], 2, 1, GL_UNSIGNED_INT, 28
     GL glVertexArrayAttribBinding, [rel g_world_vao], 1, 0
+    GL glVertexArrayAttribBinding, [rel g_world_vao], 2, 0
     GL glVertexArrayBindingDivisor, [rel g_world_vao], 0, 1
     GL glEnableVertexArrayAttrib, [rel g_world_vao], 0
     GL glEnableVertexArrayAttrib, [rel g_world_vao], 1
+    GL glEnableVertexArrayAttrib, [rel g_world_vao], 2
     mov dword [rel g_hiz_valid], 0
     LOG_INFO "world: GPU-driven drawing ready (record ring 3 MB, compute culling, Hi-Z)"
     mov eax, 1
@@ -594,6 +633,7 @@ PROC gpu_cull, 32, rbx, rsi, rdi
     xor r9d, r9d                        ; quads
 .cpu:
     mov eax, [rcx + 28]
+    and eax, 0xFFFFFF                   ; (LOD records: the level above)
     add r9, rax
     imul eax, eax, 6
     mov [rdi + rdx * 8], eax            ; count
@@ -835,10 +875,25 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     divss xmm2, [rel c_million]
     GL glProgramUniform1f, rbx, U_TIME
     GL glProgramUniform1i, rbx, U_PASS, 0
+    ; LOD rings and the fog that hides their far edge
+    GL glProgramUniform1i, rbx, U_LOD_LEVELS, [rel g_lod_levels]
+    lea r9, [rel g_lod_r]
+    GL glProgramUniform1fv, rbx, U_LOD_R, LOD_MAX_LEVEL + 1, r9
+    movss xmm2, [rel c_fog_default]
+    mov eax, [rel g_lod_levels]
+    test eax, eax
+    jz .fog
+    lea rcx, [rel g_lod_r]
+    movss xmm2, [rel c_fog_lod]
+    divss xmm2, [rcx + rax * 4]
+.fog:
+    GL glProgramUniform1f, rbx, U_FOG
     GL glBindVertexArray, [rel g_world_vao]
     GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 0, [rel g_quad_buffer]
     call block_textures_bind
     GL glBindTextureUnit, 3, [rel g_tint_tex]
+    GL glBindTextureUnit, 4, [rel g_lod_tint_tex]
+    mov qword [rel g_lod_records], 0
 
     ; ---- pass 1: visibility walk from the camera's section (cave culling) -------
     ; Breadth-first over sections (DECISIONS D51): leave a section through
@@ -1128,6 +1183,8 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
 
     ; ---- cutout records (alpha-tested) -------------------------------------------------
 .pass2:
+    mov ecx, 0                          ; LOD land
+    call lod_records
     mov rax, [rel g_rec_count]
     mov [rel g_n_opaque], rax
     xor r12d, r12d
@@ -1148,6 +1205,8 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     mov rax, [rel g_rec_count]
     sub rax, [rel g_n_opaque]
     mov [rel g_n_cutout], rax
+    mov ecx, 1                          ; LOD water (coplanar: no sorting)
+    call lod_records
 
     ; ---- translucent records, sorted back to front ----------------------------------------
     mov r15, [rel g_trans_count]
@@ -1290,4 +1349,133 @@ entry_dist:
     addss xmm1, [rel c_half]
     mulss xmm1, xmm1
     addss xmm0, xmm1
+    ret
+
+; -----------------------------------------------------------------------------
+; lod_records — draw records of the ready LOD tiles (in slot order).
+;   in:  ecx = 0 land (opaque quads), 1 water (translucent)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC lod_records, 0, rbx, rsi, rdi
+    mov edi, ecx
+    cmp dword [rel g_lod_levels], 0
+    je .done
+    mov rsi, [rel g_lod_tiles]
+    xor ebx, ebx
+.t:
+    cmp rbx, [rel g_lod_used]
+    jae .done
+    cmp dword [rsi + LODTILE.state], LT_READY
+    jne .next
+    mov r8d, [rsi + LODTILE.n_opaque]
+    mov edx, [rsi + LODTILE.first]
+    test edi, edi
+    jz .have
+    add edx, r8d
+    mov r8d, [rsi + LODTILE.n_water]
+.have:
+    test r8d, r8d
+    jz .next
+    ; origins: the tile corner at its lowest quad
+    mov ecx, [rsi + LODTILE.level]
+    mov eax, LOD_CELLS
+    shl eax, cl
+    mov r9d, eax
+    imul eax, [rsi + LODTILE.tx]
+    cvtsi2sd xmm0, eax
+    subsd xmm0, [rel g_cam_pos]
+    cvtsd2ss xmm0, xmm0
+    movss [rel g_vec_tmp], xmm0
+    and eax, 0xFFFF
+    cvtsi2ss xmm0, eax
+    movss [rel g_vec_tmp2], xmm0
+    cvtsi2sd xmm0, dword [rsi + LODTILE.min_y]
+    subsd xmm0, [rel g_cam_pos + 8]
+    cvtsd2ss xmm0, xmm0
+    movss [rel g_vec_tmp + 4], xmm0
+    cvtsi2ss xmm0, dword [rsi + LODTILE.span]
+    movss [rel g_vec_tmp2 + 4], xmm0
+    mov eax, r9d
+    imul eax, [rsi + LODTILE.tz]
+    cvtsi2sd xmm0, eax
+    subsd xmm0, [rel g_cam_pos + 16]
+    cvtsd2ss xmm0, xmm0
+    movss [rel g_vec_tmp + 8], xmm0
+    and eax, 0xFFFF
+    cvtsi2ss xmm0, eax
+    movss [rel g_vec_tmp2 + 8], xmm0
+    ; skip tiles wholly inside the level's ring (under the finer levels)
+    ; or beyond it: the shader would discard every pixel
+    call tile_ring_test
+    test eax, eax
+    jz .next
+    mov ecx, [rsi + LODTILE.level]
+    shl ecx, 24
+    or r8d, ecx                         ; count | level << 24
+    lea rcx, [rel g_vec_tmp]
+    call add_record
+    inc qword [rel g_lod_records]
+.next:
+    add rsi, LODTILE_size
+    inc rbx
+    jmp .t
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; tile_ring_test — does a LOD tile reach into its level's ring (with the
+; cross-fade band, FADE in shaders/chunk.frag)? Uses the tile's camera-
+; relative corner in g_vec_tmp.
+;   in:  rsi = LODTILE*, r9d = tile size (blocks)
+;   out: eax = 1 draw / 0 skip      clobbers: rax, rcx, xmm0-xmm5
+; -----------------------------------------------------------------------------
+tile_ring_test:
+    cvtsi2ss xmm4, r9d
+    ; x: near = max(x0, -x1, 0), far = max(|x0|, |x1|) (camera at 0)
+    movss xmm0, [rel g_vec_tmp]
+    movss xmm1, xmm0
+    addss xmm1, xmm4
+    xorps xmm2, xmm2
+    subss xmm2, xmm1
+    maxss xmm2, xmm0
+    xorps xmm3, xmm3
+    maxss xmm2, xmm3                    ; near x
+    andps xmm0, [rel c_abs_mask]
+    andps xmm1, [rel c_abs_mask]
+    maxss xmm0, xmm1                    ; far x
+    mulss xmm2, xmm2
+    mulss xmm0, xmm0
+    movss xmm5, [rel g_vec_tmp + 8]
+    movss xmm1, xmm5
+    addss xmm1, xmm4
+    xorps xmm3, xmm3
+    subss xmm3, xmm1
+    maxss xmm3, xmm5
+    xorps xmm4, xmm4
+    maxss xmm3, xmm4                    ; near z
+    mulss xmm3, xmm3
+    addss xmm2, xmm3                    ; near^2
+    andps xmm5, [rel c_abs_mask]
+    andps xmm1, [rel c_abs_mask]
+    maxss xmm5, xmm1
+    mulss xmm5, xmm5
+    addss xmm0, xmm5                    ; far^2
+    mov ecx, [rsi + LODTILE.level]
+    lea rax, [rel g_lod_r]
+    ; near beyond the ring's outer edge: skip
+    movss xmm1, [rax + rcx * 4]
+    mulss xmm1, xmm1
+    comiss xmm2, xmm1
+    jae .skip
+    ; far inside the inner edge minus the fade band: skip
+    movss xmm1, [rax + rcx * 4 - 4]
+    mulss xmm1, [rel c_fade_in]
+    mulss xmm1, xmm1
+    comiss xmm0, xmm1
+    jbe .skip
+    mov eax, 1
+    ret
+.skip:
+    xor eax, eax
     ret

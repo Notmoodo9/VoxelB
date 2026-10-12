@@ -11,6 +11,8 @@
 ;   g_opaque_leaves (u32)        1 = draw leaves as solid cubes (low-end)
 ;   g_gpu_culling (u32)          1 = cull the draws in a compute shader
 ;   g_occlusion_culling (u32)    1 = Hi-Z occlusion culling (needs gpu_culling)
+;   g_lod_distance (u32)         LOD terrain out to this many chunks, 0..256
+;                                (0 or <= render_distance: no LOD)
 ; =============================================================================
 %include "macros.inc"
 %include "log.inc"
@@ -19,12 +21,13 @@
 %include "cfg.inc"
 
 global settings_load, g_render_distance, g_opaque_leaves
-global g_gpu_culling, g_occlusion_culling
+global g_gpu_culling, g_occlusion_culling, g_lod_distance
 
 extern str_ieq, str_parse_u64
 
 %define MIN_DISTANCE        2
 %define MAX_DISTANCE        48
+%define MAX_LOD_DISTANCE    256
 
 section .rdata
 str_cfg_path:   db "data/config/graphics.cfg", 0
@@ -33,6 +36,7 @@ k_distance:     db "render_distance", 0
 k_leaves:       db "opaque_leaves", 0
 k_gpu_cull:     db "gpu_culling", 0
 k_occlusion:    db "occlusion_culling", 0
+k_lod:          db "lod_distance", 0
 str_unknown:    db "unknown setting: ", 0
 str_bad:        db "bad value for: ", 0
 
@@ -42,6 +46,7 @@ g_render_distance:  dd 16
 g_opaque_leaves:    dd 0
 g_gpu_culling:      dd 1
 g_occlusion_culling: dd 1
+g_lod_distance:     dd 64
 
 section .bss
 alignb 8
@@ -76,6 +81,10 @@ PROC graphics_pair, 0, rbx, rsi, rdi
     lea rdi, [rel g_occlusion_culling]
     test eax, eax
     jnz .flag
+    lea rdx, [rel k_lod]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jnz .lod
     lea rcx, [rel str_cfg_label]
     lea rdx, [rel str_unknown]
     INVOKE cfg_warn, rcx, rdx, rbx
@@ -90,6 +99,15 @@ PROC graphics_pair, 0, rbx, rsi, rdi
     cmp eax, MAX_DISTANCE
     ja .bad
     mov [rel g_render_distance], eax
+    RETURN
+.lod:
+    mov rcx, rsi
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    cmp eax, MAX_LOD_DISTANCE
+    ja .bad
+    mov [rel g_lod_distance], eax
     RETURN
 .leaves:
     mov rcx, rsi
@@ -145,5 +163,7 @@ PROC settings_load, 0
     LOG_VAL LOG_LEVEL_INFO, "settings: render distance (chunks)", rax
     mov eax, [rel g_opaque_leaves]
     LOG_VAL LOG_LEVEL_INFO, "settings: opaque leaves", rax
+    mov eax, [rel g_lod_distance]
+    LOG_VAL LOG_LEVEL_INFO, "settings: LOD distance (chunks)", rax
     RETURN
 ENDPROC

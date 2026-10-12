@@ -36,6 +36,8 @@ extern g_stream_gen_inflight, g_stream_mesh_inflight, g_stream_upload_frame
 extern g_stream_update_us, g_stream_quads, g_stream_cpu_mesh_bytes
 extern g_stream_mesh_count, g_stream_mesh_total_us, g_stream_mesh_max_us
 extern g_gpu_units_used
+extern g_lod_levels, g_lod_ready, g_lod_inflight, g_lod_quads, g_lod_records
+extern g_lod_gen_count, g_lod_gen_total_us, g_lod_gen_max_us, g_lod_distance
 extern g_block_names
 
 %define TEXT_CAP        6144
@@ -107,6 +109,14 @@ s_us_max:       db " us  max ", 0
 s_us_nl:        db " us", 10, 0
 s_mesh:         db "mesh    ", 0
 s_chunk:        db "chunk   ", 0
+s_lod:          db "lod     levels ", 0
+s_l_dist:       db " to ", 0
+s_l_ready:      db " ch  tiles ", 0
+s_l_flight:     db " +", 0
+s_l_quads:      db "  quads ", 0
+s_l_rec:        db "  drawn ", 0
+s_l_gen:        db "  gen ", 0
+s_l_slash:      db "/", 0
 s_sp:           db " ", 0
 s_ground:       db "   ground below: ", 0
 s_at_y:         db " at y ", 0
@@ -404,6 +414,33 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
     PUTNUM rax, 0
     PUT s_us_max
     PUTNUM [rel g_stream_mesh_max_us], 0
+    PUT s_us_nl
+    ; distant terrain tiles (milestone 12)
+    PUT s_lod
+    mov eax, [rel g_lod_levels]
+    PUTNUM rax, 0
+    PUT s_l_dist
+    mov eax, [rel g_lod_distance]
+    PUTNUM rax, 0
+    PUT s_l_ready
+    PUTNUM [rel g_lod_ready], 0
+    PUT s_l_flight
+    PUTNUM [rel g_lod_inflight], 0
+    PUT s_l_quads
+    PUTNUM [rel g_lod_quads], 0
+    PUT s_l_rec
+    PUTNUM [rel g_lod_records], 0
+    PUT s_l_gen
+    mov rax, [rel g_lod_gen_total_us]
+    xor edx, edx
+    mov rcx, [rel g_lod_gen_count]
+    test rcx, rcx
+    jz .lod_div0
+    div rcx
+.lod_div0:
+    PUTNUM rax, 0
+    PUT s_l_slash
+    PUTNUM [rel g_lod_gen_max_us], 0
     PUT s_us_nl
     ; chunk + ground block below the camera
     movsd xmm0, [rel g_cam_pos]

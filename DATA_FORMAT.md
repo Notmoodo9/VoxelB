@@ -62,6 +62,7 @@ Settings: `mouse_sensitivity` (degrees per mouse count), `invert_mouse_y`
 | Key | Value | Meaning |
 |---|---|---|
 | `render_distance` | `2`–`48` (default 16) | full-detail view distance in chunks. Columns are generated one ring further out (so edge chunks can be meshed against their neighbours) and unloaded three rings beyond it |
+| `lod_distance` | `0`–`256` (default 64) | distant terrain (LOD tiles) out to this many chunks; `0`, or a value not beyond `render_distance`, turns it off. 64 is the default; 128–256 for strong PCs |
 | `opaque_leaves` | `0`/`1` (default 0) | `1` draws cut-out blocks (leaves) as solid cubes: faster on weak GPUs |
 | `gpu_culling` | `0`/`1` (default 1) | `1` culls the draws in a compute shader (exact frustum test) and lets the GPU write the indirect commands; `0` draws everything the CPU's visibility walk found |
 | `occlusion_culling` | `0`/`1` (default 1) | `1` also skips sections hidden behind the previous frame's depth (Hi-Z); needs `gpu_culling` |

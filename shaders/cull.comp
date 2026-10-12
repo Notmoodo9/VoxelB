@@ -1,7 +1,7 @@
 #version 450 core
 // GPU culling of the frame's draw records (src/render/world_render.asm,
 // milestone 11). One thread per record (a section's opaque, cutout or
-// translucent quad range): an exact AABB-vs-frustum test, then a Hi-Z
+// translucent quad range, or a LOD tile's land or water): an exact AABB-vs-frustum test, then a Hi-Z
 // occlusion test against the previous frame's depth pyramid (reprojected
 // with the previous frame's view-projection). It writes the record's
 // indirect draw command (instanceCount 1 visible, 0 culled), keeping the
@@ -12,8 +12,9 @@ layout(local_size_x = 64) in;
 struct Record {
     vec3 rel;     // section origin - camera (this frame)
     uint first;   // first quad
-    vec3 world;   // section origin (mod 65536), for the vertex shader
-    uint count;   // quads
+    vec3 world;   // section origin (mod 65536), for the vertex shader;
+                  // LOD tiles (milestone 12): y = the box's height
+    uint count;   // quads | LOD level << 24 (0 = a section)
 };
 struct Command { uint count; uint instances; uint first; uint base_instance; };
 
@@ -82,20 +83,25 @@ void main() {
     uint i = gl_GlobalInvocationID.x;
     if (i >= u_count) return;
     Record r = records[u_base + i];
+    uint level = r.count >> 24, quads = r.count & 0xFFFFFFu;
     vec3 lo = r.rel, hi = r.rel + vec3(SECTION);
+    if (level > 0u) {       // a LOD tile: 32 << level wide, world.y high
+        float size = float(32u << level);
+        hi = r.rel + vec3(size, max(r.world.y, 1.0), size);
+    }
     bool visible = in_frustum(lo, hi);
     if (visible && occluded(lo, hi)) {
         visible = false;
         atomicAdd(stats[u_stats + 2u], 1u);
     }
     Command c;
-    c.count = r.count * 6u;
+    c.count = quads * 6u;
     c.instances = visible ? 1u : 0u;
     c.first = r.first * 6u;
     c.base_instance = u_base + i;
     commands[i] = c;
     if (visible) {
         atomicAdd(stats[u_stats + 0u], 1u);
-        atomicAdd(stats[u_stats + 1u], r.count);
+        atomicAdd(stats[u_stats + 1u], quads);
     }
 }

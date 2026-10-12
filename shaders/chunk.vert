@@ -6,6 +6,10 @@
 // buffer (stride 32, divisor 1), so the command's base instance picks the
 // draw's origins as attributes; gl_VertexID counts from the command's first
 // vertex (first quad * 6).
+// Milestone 12: distant terrain tiles (src/world/lod.asm) share the buffer;
+// a record's count attribute carries the tile's level in its top byte
+// (0 = a section). LOD quads are whole cells of 2^level blocks (format in
+// src/include/lod.inc); the origin's world y holds the tile's box height.
 // Textures: block face -> texture (binding 1), texture -> array layers and
 // animation (binding 2); see src/render/block_textures.asm.
 
@@ -16,6 +20,7 @@ layout(std430, binding = 2) readonly buffer Textures { uvec4 tex_info[]; };
 layout(location = 0) uniform mat4 u_viewproj;     // rotation + projection
 layout(location = 0) in vec3 a_origin_rel;        // section origin - camera
 layout(location = 1) in vec3 a_origin_world;      // section origin (mod 65536)
+layout(location = 2) in uint a_count;             // quads | LOD level << 24
 layout(location = 4) uniform float u_time;        // seconds
 
 out vec3 v_rel;          // camera-relative position (fog)
@@ -26,6 +31,7 @@ flat out uint v_face;
 flat out uvec2 v_layers; // current and next animation frame
 flat out float v_mix;    // blend between them (interpolated animations)
 flat out uint v_glow;    // glow layer + 1 (0 = none)
+flat out uint v_level;   // LOD level (0 = full detail)
 
 // corner order per face; faces 1, 3, 4 (+X, +Y, -Z) are mirrored so every
 // face winds counter-clockwise seen from outside (back-face culling)
@@ -37,7 +43,8 @@ void main() {
     vec3 u_origin_world = a_origin_world;
     uvec2 q = quads[uint(gl_VertexID) / 6u];
     uint lo = q.x;
-    uint face = (lo >> 28) & 7u;
+    uint level = a_count >> 24;
+    uint face = level > 0u ? (lo >> 21) & 7u : (lo >> 28) & 7u;
     bool flip = (face == 1u || face == 3u || face == 4u);
     uint c = CORNERS[(flip ? 6u : 0u) + uint(gl_VertexID) % 6u];
     vec3 p;      // block-space position of the face's first corner
@@ -45,7 +52,16 @@ void main() {
     float side;  // offset of the face plane along its axis
     float bend = 0.0;   // plants: how far this vertex sways (0 at the ground)
     bool plant = false;
-    if (face >= 6u) {
+    if (level > 0u) {
+        // LOD quad: x, z in cells, y in blocks above the tile's lowest quad;
+        // widths in cells, heights in cells (top faces) or blocks (sides)
+        float S = float(1u << level);
+        uint axis = face >> 1;
+        p = vec3(float(lo & 31u) * S, float((lo >> 10) & 2047u), float((lo >> 5) & 31u) * S);
+        w = float(((lo >> 24) & 31u) + 1u) * S;
+        h = float(((q.y >> 16) & 2047u) + 1u) * (axis == 1u ? S : 1.0);
+        side = (face & 1u) != 0u ? (axis == 1u ? 1.0 : S) : 0.0;
+    } else if (face >= 6u) {
         // plant: one of two diagonal planes through the box (both sides drawn)
         plant = true;
         vec3 blk = vec3(float(lo & 31u), float((lo >> 5) & 31u), float((lo >> 10) & 31u));
@@ -109,12 +125,15 @@ void main() {
         v_glow = (info.w & 0xFFFFu) + frame % gframes;
     }
     v_face = face;
+    v_level = level;
     vec3 wp = u_origin_world + p;
     v_tint = (bf >> 19) & 3u;
-    v_tuv = wp.xz / 4096.0;   // one tint texel per 4 x 4 blocks, texel centres at 4i + 2
+    // one tint texel per 4 x 4 blocks (texel centres at 4i + 2); LOD tiles:
+    // their own map, one texel per 16 x 16 blocks
+    v_tuv = wp.xz / (level > 0u ? 16384.0 : 4096.0);
 
     vec3 rel = u_origin_rel + p;
-    if (((bf >> 16) & 1u) != 0u) {
+    if (((bf >> 16) & 1u) != 0u && level == 0u) {
         // sway: a slow wind wave over world position (vertices on shared
         // corners move together, so no cracks). Plants bend from the ground.
         float phase = u_time * 1.7 + wp.x * 0.35 + wp.z * 0.27 + wp.y * 0.2;

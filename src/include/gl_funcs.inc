@@ -80,6 +80,8 @@ GLFN glBlitNamedFramebuffer,        1
 GLFN glDeleteFramebuffers,          1
 GLFN glBindImageTexture,            1
 GLFN glVertexArrayAttribFormat,     1
+GLFN glVertexArrayAttribIFormat,    1
+GLFN glProgramUniform1fv,           1
 GLFN glVertexArrayAttribBinding,    1
 GLFN glVertexArrayBindingDivisor,   1
 GLFN glVertexArrayVertexBuffer,     1

@@ -1,14 +1,95 @@
 # Progress
 
 ## Current state
-**Milestone 11: GPU-driven pipeline: DONE** (Windows CI green: run #62)
+**Milestone 12: LOD system: DONE** (Windows CI: see below)
 
 Milestone 10 (biomes) is complete. The owner plans a larger rework of
 terrain generation and biomes, with many more biomes, later (in
 `design/BACKLOG.md`).
 
-Next: **Milestone 12: LOD system** to 64+ chunks (scalable to 256). It is
-a technical milestone, so no design interview.
+Next: **Milestone 13: Lighting**: skylight + RGB block light
+propagation, smooth light, AO, held lights. It is a technical milestone,
+so no design interview.
+
+---
+
+## Milestone 12 — done (2026-10-12)
+
+### What was built (D80)
+* **LOD tiles** (`src/world/lod.asm`, `src/include/lod.inc`): beyond the
+  full-detail columns the terrain is drawn as tiles of 32 × 32 cells of
+  2, 4, 8, 16 or 32 blocks (levels 1–5).
+  * Heights are the real terrain function with the biomes' hill, dune,
+    plateau, mesa and flatten settings blended in.
+  * Top blocks follow the surface rules: sea floor + water, snow, steep
+    rock, beach, glacier ice/snow, a leaf canopy over forests, else the
+    biome's ground.
+  * Side faces go down to lower neighbours: the top block, then filler,
+    then rock.
+  * Meshing is greedy for tops and water.
+* **Rings**: level L covers r[L−1]..r[L] around the camera, where
+  r0 = (render_distance − 2) chunks and each ring is double the previous,
+  up to `lod_distance`.
+  * Default (16 + 64 chunks): 3 levels, about 1200 tiles, 1.4 M quads
+    (11 MB of the quad buffer).
+  * `lod_distance = 256` uses all 5 levels.
+* **Streaming** (`lod_update`, main thread, never waits):
+  * worker jobs, up to 8 per worker in flight, submitted only while the
+    job queue is short, so full-detail columns always come first;
+  * at most 1 MB of uploads per frame;
+  * a hash map of tiles; tiles no ring needs are freed.
+* **Rendering**: tiles add records to the M11 GPU-driven pipeline (land
+  with the opaque pass, water with the translucent pass).
+  * `cull.comp` handles tile boxes.
+  * The vertex shader decodes LOD quads. The level comes from a third
+    instanced attribute.
+  * A second tint map holds the tiles' biome colours.
+* **Seams and smooth transitions**: every level, including the full
+  detail, is clipped to its ring in the fragment shader. Neighbouring
+  levels cross-fade over a band of 8% of the radius with a complementary
+  screen-door dither, so there are no cracks and no hard edge.
+* **Fog** scales with the LOD radius: the far edge fades into the sky.
+* **Setting** `lod_distance` (graphics.cfg, 0–256 chunks, default 64;
+  0 = off).
+* **Debug overlay** line `lod`: levels, distance, ready tiles + jobs in
+  flight, quads, drawn records, generation average/max µs. The log shows
+  the same every 2 s, plus `lod: all rings complete after ms`.
+
+### Verified
+* Debug and release headless tests pass. Debug runs with GL debug output
+  on: no GL errors or asserts.
+* Screenshots from spawn at y 180 and y 300 (seed 20261009) show
+  distant mountains, lakes, snowfields and forests to the 2048-block
+  horizon. They fade into the sky, with no visible seams at the ring
+  boundaries.
+* `--flytest` for 60 s (debug): tiles are freed and replaced as the
+  camera moves; clean exit.
+* `lod_distance = 256`: 5 levels, 1259+ tiles, 1.6 M quads within
+  100 s; clean exit.
+
+### Performance (llvmpipe software GL under Wine, 1280×720, render distance 16)
+| | LOD off | LOD 64 chunks |
+|---|---|---|
+| Spawn frame time (all loaded) | ~420 ms (2.3 FPS) | ~520 ms (1.9 FPS) |
+| Tiles / quads | — | 1204 / 1.42 M |
+| Tile generation (worker) | — | avg 3.8 ms, max ~11 ms |
+| All rings complete | — | 53 s at ~2 FPS* |
+
+\* The job cap is per frame, so at 60 FPS a 3-worker machine finishes the
+rings in about 2 s (1204 tiles × 3.8 ms / 3 workers). On llvmpipe the
+frame rate is the limit. Full-detail streaming is unchanged: view
+complete in ~12–14 s, the same as before, because LOD jobs wait for a
+short queue.
+
+### Deferred
+* LOD tiles ignore player edits (none exist yet; M16 adds breaking and
+  placing, then edited columns will rebuild their tiles).
+* Frozen seas and river variants are drawn as plain water in LOD tiles;
+  trees are a flat canopy.
+* The LOD tint map repeats every 16384 blocks. At `lod_distance = 256`
+  (radius 8192) the two farthest edges share texels.
+* Tile generation is scalar; SIMD noise is a later performance pass
+  (M33).
 
 ---
 

@@ -47,6 +47,7 @@ extern world_init, world_render_init, world_render_shutdown
 extern terrain_survey
 extern world_spawn, g_seed_override, g_seed_override_set, g_force_flat
 extern stream_init, stream_update, stream_shutdown, settings_load
+extern lod_init, lod_update, lod_shutdown
 extern block_textures_poll
 extern g_cam_autofly, g_fly_speed, g_cam_pos, g_cam_yaw, g_cam_pitch
 extern timer_init, timer_frame, timer_reset, timer_elapsed_us
@@ -306,6 +307,9 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     jz .world_fail
     call stream_init
     test eax, eax
+    jz .world_fail
+    call lod_init
+    test eax, eax
     jnz .world_ok
 .world_fail:
     lea rcx, [rel str_world_fail]
@@ -449,6 +453,7 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     mov edx, [rel g_client_h]
     call camera_update
     call stream_update
+    call lod_update
     mov ecx, [rel g_client_w]
     mov edx, [rel g_client_h]
     call renderer_frame
@@ -519,6 +524,7 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     xor ecx, ecx
     call input_set_capture
     call text_shutdown
+    call lod_shutdown
     call stream_shutdown
     call world_render_shutdown
     call renderer_shutdown

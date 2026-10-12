@@ -58,6 +58,7 @@ global g_shaft_dmin, g_shaft_dmax, g_aq_size, g_lake_chance, g_lake_min, g_lake_
 global g_lava_top, g_lava_min, g_lava_max, g_drip_chance, g_patch_thr, g_pillar_w
 global g_cave_bottom, g_ore_wall, g_b_lava, g_b_drip, g_b_mud, g_b_water, g_b_stone
 global g_b_deep, g_b_gravel, g_b_clay
+global g_steep, g_b_snow, g_b_beach, g_detail_height  ; (lod.asm)
 
 extern str_ieq, str_parse_float, str_parse_u64
 

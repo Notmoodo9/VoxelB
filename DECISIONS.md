@@ -1091,3 +1091,78 @@ block for their upper half (mossy cobblestone boulders).
   * the quad uploads still use `glNamedBufferSubData` from the streamer;
   * Hi-Z is single-phase (the previous frame's depth), so a section that
     becomes visible from behind an occluder can appear one frame late.
+
+## D80 — Distant terrain: LOD tiles (M12)
+* **Tiles.** A tile of level L (1–5) is 32 × 32 cells of 2^L × 2^L
+  blocks, so it is 2^L chunks wide. Each cell is one column of whole
+  blocks: a height, a top block and side faces. Tiles are world-aligned,
+  so neighbours of the same level share their border heights exactly and
+  need no skirts.
+* **Rings.** r0 = (render_distance − 2) × 32 blocks (inside the columns
+  the streamer always has). r[L] = min(r0 × 2^L, lod_distance × 32), up
+  to 5 levels. lod_distance 64 at render distance 16 gives 3 levels
+  (448 / 896 / 1792 / 2048 blocks); 256 gives all 5.
+* **Heights.** The terrain's own `terrain_sample` at the cell centre,
+  without its detail part, scaled around the base by the biome's hill
+  factor. Dunes, plateaus, mesas and flatten come from the biome
+  settings, blended bilinearly from an 11 × 11 lattice (every 4 cells,
+  biome by `biome_point`, as the columns pick it). Then the detail part
+  is added back.
+* **Surface rules** (a simplified `terrain_gen_column`):
+  * under the sea level: the biome's seabed (else beach sand) plus a water
+    quad at the sea level;
+  * snow above the snow line (rock if steeper than twice the steep
+    limit);
+  * rock on steep cells (the step to a neighbour ≥ steep × cell size);
+  * the beach band;
+  * glacier snow or ice;
+  * forests (tree density ≥ 0.006 with a leaf block): a leaf canopy
+    5 blocks above the ground;
+  * else the biome's top block.
+  * Side faces: a band of the top block (the canopy's height for leaves),
+    3 blocks of the biome's filler, then rock. Snow, sand, rock and sea
+    floor sides keep one material.
+  * Striped badlands rock becomes plain stone far away.
+* **Mesh.** Greedy rectangles of equal (height, block) for the tops;
+  one quad per cell side, from the cell's height down to a lower
+  neighbour's; greedy water rectangles at the sea level. 8-byte quads:
+  x, z (cells), y (blocks above the tile's lowest quad), face, width in
+  cells; block, height (cells on tops, blocks on sides). Up to 16384
+  per tile.
+* **Jobs.** One job per tile on the worker threads (about 4 ms each).
+  `lod_update` on the main thread:
+  * walks every ring's tile range;
+  * keeps tiles touching the ring ± one tile and requests those touching
+    it;
+  * caps the jobs in flight at 8 per worker, and only submits while the
+    job queue is shorter than the number of workers, so full-detail
+    columns always come first;
+  * uploads at most 1 MB of quads per frame into the shared quad buffer
+    (the buddy allocator);
+  * frees tiles no ring needs.
+  * Tiles are found through an open-addressed hash with backward-shift
+    deletion (no tombstones).
+* **Drawing.** Ready tiles add draw records to the M11 pipeline:
+  * land after the walk's opaque records;
+  * water before the sorted translucent records (coplanar water quads
+    never overlap on screen, so no sorting is needed).
+  * The record's count carries the level in its top byte and the world
+    origin's y holds the tile's box height. `cull.comp` sizes the box
+    from them. The vertex shader reads the level from a third instanced
+    attribute and decodes LOD quads.
+  * Tiles wholly inside their ring's inner edge, or beyond its outer
+    edge, are skipped on the CPU.
+* **Seams and transitions.** Every level, including the full-detail
+  sections as level 0, is clipped to its ring in the fragment shader by
+  horizontal distance. Across each boundary the two levels cross-fade
+  over a band of 8% of the radius with a screen-door dither: interleaved
+  gradient noise, with complementary thresholds, so each pixel shows
+  exactly one of them. The overlap fills the cracks a height mismatch
+  between levels would open, and the change of detail has no hard edge.
+* **Colours.** A second tint map, 1024² × 3 layers (grass, foliage, water
+  factors), one texel per 16 × 16 blocks, repeating every 16384 blocks.
+  Each tile writes its biomes' factors into it when uploaded.
+* **Fog** density is 2.3 / LOD radius (the far edge is about 90% sky).
+  Without LOD it stays at 0.0013.
+* **Settings:** `lod_distance` (0–256 chunks, default 64) in graphics.cfg.
+
