@@ -1,8 +1,9 @@
 ; =============================================================================
 ; hud.asm — the in-game HUD (milestone 16; the menus' look since milestone
 ; 17): a crosshair in the middle and the hotbar at the bottom (milestone 18):
-; nine slots on a glass strip, the slot in hand outlined in teal, stack
-; counts, and the name of the item in hand shown for a moment when it
+; nine parchment pockets on a stitched leather strip (the journal look,
+; milestone 18 part 5), the slot in hand framed in brass, stack counts, and
+; the name of the item in hand on a parchment slip for a moment when it
 ; changes. Health and hunger come with survival (milestone 20).
 ;
 ; Public API:
@@ -15,13 +16,13 @@
 global hud_draw
 
 extern ui_draw_begin, ui_draw_flush, ui_rect, ui_glass, ui_glow, ui_text
-extern ui_text_width, ui_icon, timer_elapsed_us, ui_wear_bar
+extern ui_text_width, ui_icon, timer_elapsed_us, ui_wear_bar, ui_skin
 extern g_ui_vw, g_ui_vh, g_cinv, g_csel, g_item_titles
 
 %define CROSS_ARM       10              ; half length (units)
 %define SLOT            50              ; hotbar slot (units)
 %define GAP             4
-%define PAD             8
+%define PAD             12
 %define BAR_W           (INV_HOTBAR * SLOT + (INV_HOTBAR - 1) * GAP + 2 * PAD)
 %define BAR_H           (SLOT + 2 * PAD)
 %define BAR_BOTTOM      14              ; gap under the bar
@@ -77,10 +78,17 @@ PROC hud_draw, 32, rbx, rsi, rdi, r12, r13, r14
     mov eax, [rel g_ui_vh]
     sub eax, BAR_H + BAR_BOTTOM
     mov [LOCAL(H_Y0)], eax
-    mov qword [rsp + 32], 14
-    mov dword [rsp + 40], COL_GLASS
-    mov dword [rsp + 48], COL_GLASS_EDGE
-    INVOKE ui_glass, [LOCAL(H_X0)], [LOCAL(H_Y0)], BAR_W, BAR_H
+    ; a stitched leather strip with parchment pockets (the journal look,
+    ; design/ui/journal_ui.md)
+    mov dword [rsp + 48], 0x60000000
+    mov qword [rsp + 40], 12
+    mov qword [rsp + 32], 6
+    mov edx, [LOCAL(H_Y0)]
+    add edx, 4
+    INVOKE ui_glow, [LOCAL(H_X0)], rdx, BAR_W, BAR_H
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov qword [rsp + 32], SKIN_STRIP
+    INVOKE ui_skin, [LOCAL(H_X0)], [LOCAL(H_Y0)], BAR_W, BAR_H
     xor ebx, ebx
 .slot:
     cmp ebx, INV_HOTBAR
@@ -90,25 +98,25 @@ PROC hud_draw, 32, rbx, rsi, rdi, r12, r13, r14
     add r14d, PAD                       ; slot left
     mov r13d, [LOCAL(H_Y0)]
     add r13d, PAD                       ; slot top
-    ; the slot: dark, or teal-outlined and glowing when in hand
+    ; a parchment pocket; the one in hand framed in brass with a warm glow
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov qword [rsp + 32], SKIN_STRIP_SLOT
+    INVOKE ui_skin, r14, r13, SLOT, SLOT
     cmp ebx, [rel g_csel]
-    jne .plain
-    mov dword [rsp + 48], COL_ACCENT & 0x00FFFFFF | 0x90000000
-    mov qword [rsp + 40], 14
-    mov qword [rsp + 32], 10
-    INVOKE ui_glow, r14, r13, SLOT, SLOT
-    mov dword [rsp + 32], COL_ACCENT2 & 0x00FFFFFF | 0x60000000
-    mov dword [rsp + 40], COL_ACCENT
-    mov qword [rsp + 48], 10
-    mov qword [rsp + 56], 3
-    INVOKE ui_rect, r14, r13, SLOT, SLOT
-    jmp .icon
-.plain:
-    mov dword [rsp + 32], 0x50000000
-    mov dword [rsp + 40], 0x28FFFFFF
-    mov qword [rsp + 48], 10
-    mov qword [rsp + 56], 1
-    INVOKE ui_rect, r14, r13, SLOT, SLOT
+    jne .icon
+    mov dword [rsp + 48], COL_BRASS & 0x00FFFFFF | 0xA0000000
+    mov qword [rsp + 40], 10
+    mov qword [rsp + 32], 4
+    lea ecx, [r14d - 3]
+    lea edx, [r13d - 3]
+    INVOKE ui_glow, rcx, rdx, SLOT + 6, SLOT + 6
+    mov dword [rsp + 32], 0
+    mov dword [rsp + 40], COL_BRASS
+    mov qword [rsp + 48], 4
+    mov qword [rsp + 56], 4
+    lea ecx, [r14d - 3]
+    lea edx, [r13d - 3]
+    INVOKE ui_rect, rcx, rdx, SLOT + 6, SLOT + 6
 .icon:
     lea rax, [rel g_cinv]
     movzx ecx, word [rax + rbx * 8]
@@ -138,8 +146,8 @@ PROC hud_draw, 32, rbx, rsi, rdi, r12, r13, r14
     call str_append_dec
     lea edx, [r14d + SLOT - 4]
     lea r8d, [r13d + SLOT - 22]
-    mov dword [rsp + 32], COL_TEXT
-    mov dword [rsp + 40], COL_TEXT
+    mov dword [rsp + 32], COL_LIGHT
+    mov dword [rsp + 40], COL_LIGHT
     mov qword [rsp + 48], UI_RIGHT | UI_SHADOW | UI_BOLD
     lea rcx, [rel g_count_text]
     mov r9d, 17
@@ -196,24 +204,16 @@ PROC hud_draw, 32, rbx, rsi, rdi, r12, r13, r14
     mov edx, [LOCAL(H_Y0)]
     sub edx, 44
     mov eax, r14d
-    imul eax, 0x8C
-    shr eax, 8
-    shl eax, 24
-    or eax, COL_GLASS & 0x00FFFFFF
-    mov [rsp + 40], rax
-    mov eax, r14d
-    imul eax, 0x50
-    shr eax, 8
     shl eax, 24
     or eax, 0x00FFFFFF
-    mov [rsp + 48], rax
-    mov qword [rsp + 32], 17
-    INVOKE ui_glass, rcx, rdx, r8, 34
+    mov [rsp + 40], rax
+    mov qword [rsp + 32], SKIN_TIP
+    INVOKE ui_skin, rcx, rdx, r8, 34
     mov r8d, [LOCAL(H_Y0)]
     sub r8d, 44 - 5
     mov eax, r14d
     shl eax, 24
-    or eax, COL_TEXT & 0x00FFFFFF
+    or eax, COL_INK & 0x00FFFFFF
     mov [rsp + 32], rax
     mov [rsp + 40], rax
     mov qword [rsp + 48], UI_CENTER

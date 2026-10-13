@@ -27,7 +27,9 @@
 %define ACT_PICK_BLOCK          15      ; hold the targeted block
 %define ACT_INVENTORY           16      ; milestone 18: open / close the inventory
 %define ACT_HOTBAR_1            17      ; ..ACT_HOTBAR_1 + 8: hotbar slots 1-9
-%define ACT_COUNT               26
+%define ACT_RECIPE_BOOK         26      ; milestone 18 part 5: the recipe book page
+%define ACT_SWAP_HANDS          27      ; the main and the off hand trade items
+%define ACT_COUNT               28
 %define BINDS_PER_ACTION        2
 
 %define VK_LBUTTON              0x01

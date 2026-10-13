@@ -22,6 +22,11 @@
 ;   ui_glow(x, y, w, h, radius, size, color)
 ;   ui_image(x, y, w, h, u0, v0, u1, v1 (floats as dword bits), color)
 ;   ui_icon_quad(...)                   the same from the item icon atlas
+;   ui_skin(x, y, w, h, piece, color)   a piece of the journal skin
+;       (assets/textures/ui/journal.png + journal.cfg, tools/texgen/uigen.py;
+;       SKIN_* in ui.inc): its border stretched like a 9-slice, its middle
+;       tiled at the piece's scale; color multiplies it (milestone 18 part 5)
+;   ui_skin_scale(piece) -> eax units per atlas pixel
 ;   ui_text(str, x, y, size, color, color2, flags) -> eax width (units)
 ;       y = top of the line; size = em in units; flags UI_CENTER / UI_RIGHT
 ;       (x is the centre / right edge), UI_SHADOW, UI_BOLD
@@ -39,7 +44,7 @@
 %include "ui.inc"
 
 global ui_draw_init, ui_draw_begin, ui_rect, ui_glass, ui_glow, ui_image
-global ui_icon_quad
+global ui_icon_quad, ui_skin, ui_skin_scale
 global ui_text, ui_text_width, ui_draw_flush, ui_draw_shutdown
 global g_ui_scale, g_ui_vw, g_ui_vh, g_ui_alpha, g_ui_oy, g_ui_images_tex
 
@@ -72,6 +77,35 @@ section .rdata
 str_atlas:      db "assets/fonts/ui_sdf.png", 0
 str_metrics:    db "assets/fonts/ui_sdf.cfg", 0
 str_metrics_lbl: db "ui_sdf.cfg", 0
+str_skin:       db "assets/textures/ui/journal.png", 0
+str_skin_cfg:   db "assets/textures/ui/journal.cfg", 0
+str_skin_lbl:   db "journal.cfg", 0
+; the skin's pieces, in SKIN_* order (ui.inc)
+sk_0:  db "leather", 0
+sk_1:  db "page", 0
+sk_2:  db "slot", 0
+sk_3:  db "slot_hi", 0
+sk_4:  db "seal", 0
+sk_5:  db "corner_tl", 0
+sk_6:  db "corner_tr", 0
+sk_7:  db "corner_bl", 0
+sk_8:  db "corner_br", 0
+sk_9:  db "ribbon", 0
+sk_10: db "button", 0
+sk_11: db "button_hi", 0
+sk_12: db "field", 0
+sk_13: db "book", 0
+sk_14: db "check_off", 0
+sk_15: db "check_on", 0
+sk_16: db "knob", 0
+sk_17: db "strip", 0
+sk_18: db "strip_slot", 0
+sk_19: db "tip", 0
+sk_20: db "page_tile", 0
+align 8
+skin_names:     dq sk_0, sk_1, sk_2, sk_3, sk_4, sk_5, sk_6, sk_7, sk_8, sk_9
+                dq sk_10, sk_11, sk_12, sk_13, sk_14, sk_15, sk_16, sk_17, sk_18
+                dq sk_19, sk_20
 str_vs:         db "shaders/ui.vert", 0
 str_fs:         db "shaders/ui.frag", 0
 k_cell:         db "cell", 0
@@ -111,6 +145,10 @@ g_ui_vao:       resd 1
 g_ui_prog:      resd 1
 g_font_tex:     resd 1
 g_ui_images_tex: resd 1                 ; (milestone 17 part 2: thumbnails)
+g_skin_tex:     resd 1                  ; the journal skin (milestone 18 part 5)
+g_skin_rect:    resd SKIN_COUNT * 4     ; f32 x0, y0, x1, y1 (atlas pixels)
+g_skin_border:  resd SKIN_COUNT         ; f32 atlas pixels
+g_skin_scale:   resd SKIN_COUNT         ; f32 units per atlas pixel
 g_back_fbo:     resd 2                  ; 1/4 and 1/16 of the window
 g_back_tex:     resd 2
 g_back_w:       resd 1                  ; window size they were made for
@@ -133,6 +171,7 @@ g_q:            resb QUAD_SIZE          ; the quad being built
 g_png_info:     resd 4
 g_path:         resb PATH_CAP
 g_mark:         resq 1
+g_skin_nums:    resd 6
 g_uni:          resd 4
 
 section .text
@@ -287,6 +326,7 @@ PROC ui_draw_init, 32, rbx, rsi
     GL glTextureParameteri, [rel g_font_tex], GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE
     lea rcx, [rel g_arena_scratch]
     INVOKE arena_reset_to, rcx, [rel g_mark]
+    call skin_load
     ; buffer, VAO, program
     lea rdx, [rel g_ui_buf]
     GL glCreateBuffers, 1, rdx
@@ -308,6 +348,128 @@ PROC ui_draw_init, 32, rbx, rsi
     LOG_ERROR "ui: could not read assets/fonts/ui_sdf.png / ui_sdf.cfg"
 .fail:
     xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; skin_load — the journal skin: journal.cfg's pieces and journal.png.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC skin_load, 32, rbx, rsi
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [rel g_mark], rax
+    lea rcx, [rel g_path]
+    lea rdx, [rel str_skin_cfg]
+    call path_make
+    lea rcx, [rel g_path]
+    lea rdx, [rel g_arena_scratch]
+    call file_load
+    test rax, rax
+    jz .missing
+    lea rdx, [rel skin_pair]
+    lea r9, [rel str_skin_lbl]
+    INVOKE cfg_parse, rax, rdx, 0, r9
+    lea rcx, [rel g_path]
+    lea rdx, [rel str_skin]
+    call path_make
+    lea rcx, [rel g_path]
+    lea rdx, [rel g_arena_scratch]
+    call file_load
+    test rax, rax
+    jz .missing
+    lea r8, [rel g_png_info]
+    lea r9, [rel g_arena_scratch]
+    INVOKE png_decode, rax, rdx, r8, r9
+    test rax, rax
+    jz .missing
+    mov rsi, rax
+    lea r8, [rel g_skin_tex]
+    GL glCreateTextures, GL_TEXTURE_2D, 1, r8
+    mov eax, [rel g_png_info]
+    mov [LOCAL(0)], rax
+    mov eax, [rel g_png_info + 4]
+    mov [LOCAL(8)], rax
+    GL glTextureStorage2D, [rel g_skin_tex], 1, GL_RGBA8, [LOCAL(0)], [LOCAL(8)]
+    mov r11, [LOCAL(0)]
+    mov [rsp + 32], r11
+    mov r11, [LOCAL(8)]
+    mov [rsp + 40], r11
+    mov qword [rsp + 48], GL_RGBA
+    mov qword [rsp + 56], GL_UNSIGNED_BYTE
+    mov [rsp + 64], rsi
+    mov ecx, [rel g_skin_tex]
+    xor edx, edx
+    xor r8d, r8d
+    xor r9d, r9d
+    call [rel glTextureSubImage2D]
+    GL glTextureParameteri, [rel g_skin_tex], GL_TEXTURE_MIN_FILTER, GL_NEAREST
+    GL glTextureParameteri, [rel g_skin_tex], GL_TEXTURE_MAG_FILTER, GL_NEAREST
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [rel g_mark]
+    LOG_INFO "ui: journal skin loaded"
+    RETURN
+.missing:
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [rel g_mark]
+    LOG_WARN "ui: assets/textures/ui/journal.png / journal.cfg missing; plain panels"
+    RETURN
+ENDPROC
+
+; skin_pair — journal.cfg: "<piece> = x, y, w, h, border, scale"
+PROC skin_pair, 16, rbx, rsi, rdi
+    mov rsi, rdx
+    mov rdi, rcx
+    xor ebx, ebx
+.find:
+    cmp ebx, SKIN_COUNT
+    jae .done
+    lea rax, [rel skin_names]
+    INVOKE str_ieq, [rax + rbx * 8], rdi
+    test eax, eax
+    jnz .found
+    inc ebx
+    jmp .find
+.found:
+    ; six numbers
+    xor edi, edi
+.num:
+    cmp edi, 6
+    jae .store
+    test rsi, rsi
+    jz .done
+    mov rcx, rsi
+    call cfg_next_token
+    mov rsi, rdx
+    mov rcx, rax
+    call str_parse_u64
+    lea rcx, [rel g_skin_nums]
+    mov [rcx + rdi * 4], eax
+    inc edi
+    jmp .num
+.store:
+    lea rcx, [rel g_skin_rect]
+    shl ebx, 4
+    cvtsi2ss xmm0, dword [rel g_skin_nums]
+    movss [rcx + rbx], xmm0
+    cvtsi2ss xmm0, dword [rel g_skin_nums + 4]
+    movss [rcx + rbx + 4], xmm0
+    mov eax, [rel g_skin_nums]
+    add eax, [rel g_skin_nums + 8]
+    cvtsi2ss xmm0, eax
+    movss [rcx + rbx + 8], xmm0
+    mov eax, [rel g_skin_nums + 4]
+    add eax, [rel g_skin_nums + 12]
+    cvtsi2ss xmm0, eax
+    movss [rcx + rbx + 12], xmm0
+    shr ebx, 2
+    lea rcx, [rel g_skin_border]
+    cvtsi2ss xmm0, dword [rel g_skin_nums + 16]
+    movss [rcx + rbx], xmm0
+    lea rcx, [rel g_skin_scale]
+    cvtsi2ss xmm0, dword [rel g_skin_nums + 20]
+    movss [rcx + rbx], xmm0
+.done:
     RETURN
 ENDPROC
 
@@ -537,6 +699,60 @@ PROC ui_image, 0
     RETURN
 ENDPROC
 
+; -----------------------------------------------------------------------------
+; ui_skin — see the header.
+;   in:  ecx = x, edx = y, r8d = w, r9d = h, ARG5 = SKIN_*, ARG6 = colour
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC ui_skin, 0
+    call set_rect
+    mov eax, [ARG(5)]
+    cmp eax, SKIN_COUNT
+    jae .done
+    lea rcx, [rel g_skin_rect]
+    shl eax, 4
+    add rcx, rax
+    mov edx, [rcx]
+    mov [rel g_q + QUAD.u0], edx
+    mov edx, [rcx + 4]
+    mov [rel g_q + QUAD.v0], edx
+    mov edx, [rcx + 8]
+    mov [rel g_q + QUAD.u1], edx
+    mov edx, [rcx + 12]
+    mov [rel g_q + QUAD.v1], edx
+    shr eax, 2
+    lea rcx, [rel g_skin_border]
+    mov edx, [rcx + rax]
+    mov [rel g_q + QUAD.p3], edx        ; (atlas pixels: not scaled)
+    lea rcx, [rel g_skin_scale]
+    mov edx, [rcx + rax]
+    mov [rel g_q + QUAD.p1], edx        ; units per atlas pixel
+    mov eax, [ARG(6)]
+    mov [rel g_q + QUAD.color], eax
+    mov [rel g_q + QUAD.color2], eax
+    mov dword [rel g_q + QUAD.kind], UIK_SKIN
+    cmp dword [rel g_skin_tex], 0
+    jne .push
+    ; (no skin file: a plain rectangle in the tint)
+    mov dword [rel g_q + QUAD.kind], UIK_RECT
+    mov dword [rel g_q + QUAD.p1], 0
+    mov dword [rel g_q + QUAD.p3], 0
+.push:
+    call push_quad
+.done:
+    RETURN
+ENDPROC
+
+; ui_skin_scale — eax = units per atlas pixel of piece ecx (int)
+ui_skin_scale:
+    lea rax, [rel g_skin_scale]
+    cvttss2si eax, [rax + rcx * 4]
+    test eax, eax
+    jnz .ok
+    mov eax, 2
+.ok:
+    ret
+
 ; ui_icon_quad — like ui_image, from the item icon atlas (item_icons.asm)
 PROC ui_icon_quad, 0
     call set_rect
@@ -653,6 +869,20 @@ PROC ui_text, 32, rbx, rsi, rdi, r12, r13
     shr eax, 24
     shr eax, 1                          ; half the text's alpha
     shl eax, 24
+    ; dark ink on a page: a pale highlight under it (pressed into the
+    ; paper); light text: a dark shadow
+    mov ecx, [ARG(5)]
+    movzx edx, cl
+    shr ecx, 8
+    movzx r8d, cl
+    add edx, r8d
+    shr ecx, 8
+    movzx r8d, cl
+    add edx, r8d
+    cmp edx, 3 * 110
+    jae .dark_shadow
+    or eax, 0x00D8F0FF                  ; warm cream
+.dark_shadow:
     mov [rel g_q + QUAD.color], eax
     mov [rel g_q + QUAD.color2], eax
     mov eax, [rel c_shadow_soft]
@@ -896,6 +1126,12 @@ PROC ui_draw_flush, 16, rbx, rsi, rdi
     mov eax, [rel g_font_tex]
 .icons:
     GL glBindTextureUnit, 3, rax
+    mov eax, [rel g_skin_tex]
+    test eax, eax
+    jnz .skin
+    mov eax, [rel g_font_tex]
+.skin:
+    GL glBindTextureUnit, 4, rax
     GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 0, [rel g_ui_buf]
     mov r8d, [rel g_quad_count]
     imul r8d, r8d, 6

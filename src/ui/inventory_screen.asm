@@ -31,6 +31,7 @@
 ; (PKT_C_RECIPE), shift-click as many as possible.
 ; =============================================================================
 %include "macros.inc"
+%include "log.inc"
 %include "input.inc"
 %include "packet.inc"
 %include "ui.inc"
@@ -43,6 +44,7 @@ global ui_wear_bar
 extern ui_frame, ui_end, ui_button, ui_panel, ui_label, ui_rect, ui_glass
 extern ui_text, ui_text_width, ui_hover, ui_textfield, ui_focus, ui_focused
 extern ui_icon, str_append_dec, pkt_send, g_to_sim, world_block_at
+extern ui_skin, ui_book, ui_page, ui_checkbox, ui_glow, g_recipe_book, settings_save_game
 extern g_ui_vw, g_ui_vh, g_ui_mx, g_ui_my, g_ui_click, g_ui_rclick
 extern g_cinv, g_world_mode, g_cwin, g_cinv_ver, g_cfurnace
 extern recipe_cell_ok, g_recipe_count, g_rec_result, g_rec_amount
@@ -51,15 +53,23 @@ extern g_rec_station, g_rec_w, g_rec_h, g_rec_n, g_rec_ok, g_rec_cells
 %define SLOT_PX         48              ; a slot (units)
 %define STEP            52              ; slot + gap
 %define ICON            38
-%define CAT_COLS        12
-%define CAT_ROWS        5
+%define CAT_COLS        8               ; the catalog on the left page
+%define RIBBON_W        40              ; Creative tabs: ribbon bookmarks
+%define RIBBON_H        64
+%define RIBBON_STEP     48
 %define PAD             28
 %define SEARCH_CAP      24
 %define SEARCH_ID       60              ; text field id
 %define TAB_ID0         120             ; tab button ids
-%define BOOK_COLS       4               ; the recipe book
+%define BOOK_COLS       8               ; the recipe book (the left page)
 %define BOOK_W          (BOOK_COLS * STEP - 4)
-%define BOOK_GAP        28
+%define PAGE_W          (INV_HOTBAR * STEP - 4 + 2 * PAD) ; a page of the journal
+%define BOOK_COVER      20              ; leather around the pages
+%define LEFT_NONE       0               ; what the left page holds
+%define LEFT_RECIPES    1
+%define LEFT_CATALOG    2
+%define LEFT_CHEST      3
+%define LEFT_FURNACE    4
 %define MAX_BOOK        512
 
 section .rdata
@@ -72,8 +82,14 @@ s_chest:        db "Chest", 0
 s_large_chest:  db "Large chest", 0
 s_furnace:      db "Furnace", 0
 s_recipes:      db "Recipes", 0
+s_show_all:     db "Show all", 0
+s_book_tip:     db "Recipe book", 0
 s_no_recipes:   db "Nothing to make", 0
 s_no_recipes2:  db "with what you have", 0
+
+section .data
+align 4
+g_slot_tint:    dd 0xFFFFFFFF           ; draw_slot: the next icon's colour
 
 section .bss
 alignb 4
@@ -92,6 +108,7 @@ g_count:        resb 16
 alignb 2
 g_list:         resw MAX_ITEMS          ; the catalog as shown (tab / search)
 g_book:         resw MAX_BOOK           ; the recipe book's recipes
+g_book_ok:      resb MAX_BOOK           ; 1 = can be made now
 g_avail_item:   resw INV_SLOTS + 9      ; what the player has (slots, grid)
 g_avail_n:      resw INV_SLOTS + 9
 alignb 4
@@ -99,6 +116,9 @@ g_book_n:       resd 1
 g_book_ver:     resd 1                  ; g_cinv_ver it was built for
 g_book_scroll:  resd 1
 g_book_win:     resd 1                  ; the window kind it was built for
+g_show_all:     resd 1                  ; the book lists every recipe
+g_cat_rows:     resd 1                  ; the catalog's rows on the page
+g_ribbon_y:     resd 1                  ; the Creative tabs' ribbon tops
 
 section .text
 
@@ -295,29 +315,23 @@ PROC draw_slot, 16, rbx, rsi, rdi, r12, r13
     mov r9d, SLOT_PX
     call ui_hover
     mov r13d, eax
-    mov eax, 0x50000000                 ; fill
-    mov ecx, 0x28FFFFFF                 ; border
+    ; an inked box on the page; bolder when hovered or in hand
+    mov eax, SKIN_SLOT
     test r13d, r13d
-    jz .look
-    mov eax, 0x40FFFFFF
-.look:
+    jnz .bold
     cmp dword [ARG(5)], 0
-    je .colours
-    mov ecx, COL_ACCENT
-.colours:
+    je .piece
+.bold:
+    mov eax, SKIN_SLOT_HI
+.piece:
     mov [rsp + 32], rax
-    mov [rsp + 40], rcx
-    mov qword [rsp + 48], 8
-    mov eax, 1
-    cmp dword [ARG(5)], 0
-    je .border
-    mov eax, 2
-.border:
-    mov [rsp + 56], rax
-    INVOKE ui_rect, rbx, rsi, SLOT_PX, SLOT_PX
+    mov dword [rsp + 40], 0xFFFFFFFF
+    INVOKE ui_skin, rbx, rsi, SLOT_PX, SLOT_PX
     test edi, edi
     jz .done
-    mov dword [rsp + 32], 0xFFFFFFFF
+    mov eax, [rel g_slot_tint]          ; (faded: a recipe not makeable yet)
+    mov dword [rel g_slot_tint], 0xFFFFFFFF
+    mov [rsp + 32], rax
     lea edx, [ebx + (SLOT_PX - ICON) / 2]
     lea r8d, [esi + (SLOT_PX - ICON) / 2]
     mov ecx, edi
@@ -340,13 +354,14 @@ PROC draw_slot, 16, rbx, rsi, rdi, r12, r13
     call str_append_dec
     lea edx, [ebx + SLOT_PX - 3]
     lea r8d, [esi + SLOT_PX - 20]
-    mov dword [rsp + 32], COL_TEXT
-    mov dword [rsp + 40], COL_TEXT
+    mov dword [rsp + 32], COL_LIGHT
+    mov dword [rsp + 40], COL_LIGHT
     mov qword [rsp + 48], UI_RIGHT | UI_SHADOW | UI_BOLD
     lea rcx, [rel g_count]
     mov r9d, 16
     call ui_text
 .done:
+    mov dword [rel g_slot_tint], 0xFFFFFFFF
     test r13d, r13d
     jz .out
     test edi, edi
@@ -450,87 +465,86 @@ first_free:
     ret
 
 ; -----------------------------------------------------------------------------
-; catalog — Creative: tabs, search, the item grid.
-;   in:  ecx = left, edx = top (of the tab row)
+; catalog — Creative, on the left page: the tabs as ribbon bookmarks over
+; the book's top edge (g_ribbon_y), the tab's name and an inked search line,
+; the item grid (CAT_COLS wide, g_cat_rows high).
+;   in:  ecx = left, edx = top (of the heading row)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 %define C_X     0
 %define C_Y     4
 %define C_GY    8                       ; grid top
+%define C_TOP   12                      ; a ribbon's top
 PROC catalog, 16, rbx, rsi, rdi, r12, r13
     mov [LOCAL(C_X)], ecx
     mov [LOCAL(C_Y)], edx
-    ; tabs: icon buttons
     xor ebx, ebx
 .tab:
     cmp ebx, [rel g_tab_count]
     jae .tabs_done
-    xor r10d, r10d
+    ; the chosen tab's ribbon hangs out further
+    mov eax, [rel g_ribbon_y]
     cmp byte [rel g_search], 0
-    jne .tab_flags                      ; (searching: no tab is chosen)
+    jne .tab_top                        ; (searching: no tab is chosen)
     cmp ebx, [rel g_tab]
-    jne .tab_flags
-    mov r10d, UIW_SELECTED
-.tab_flags:
-    mov [rsp + 48], r10
-    lea rax, [rel s_empty]
-    mov [rsp + 40], rax
-    mov qword [rsp + 32], 44
-    imul edx, ebx, 58
-    add edx, [LOCAL(C_X)]
-    lea ecx, [ebx + TAB_ID0]
-    INVOKE ui_button, rcx, rdx, [LOCAL(C_Y)], 52
+    jne .tab_top
+    sub eax, 12
+.tab_top:
+    mov [LOCAL(C_TOP)], eax
+    imul esi, ebx, RIBBON_STEP
+    add esi, [LOCAL(C_X)]               ; x
+    mov edi, [rel g_ribbon_y]
+    add edi, RIBBON_H
+    sub edi, eax                        ; height
+    ; hover / click
+    INVOKE ui_hover, rsi, [LOCAL(C_TOP)], RIBBON_W, rdi
+    mov r12d, eax
     test eax, eax
-    jz .tab_icon
-    mov [rel g_tab], ebx
-    mov dword [rel g_scroll], 0
-    mov byte [rel g_search], 0
-.tab_icon:
-    lea rax, [rel g_tab_icon]
-    movzx ecx, word [rax + rbx * 2]
-    imul edx, ebx, 58
-    add edx, [LOCAL(C_X)]
-    add edx, (52 - 32) / 2
-    mov r8d, [LOCAL(C_Y)]
-    add r8d, (44 - 32) / 2
-    mov dword [rsp + 32], 0xFFFFFFFF
-    mov r9d, 32
-    call ui_icon
-    ; the tab's name as its tooltip
-    imul ecx, ebx, 58
-    add ecx, [LOCAL(C_X)]
-    mov edx, [LOCAL(C_Y)]
-    mov r8d, 52
-    mov r9d, 44
-    call ui_hover
-    test eax, eax
-    jz .tab_next
+    jz .ribbon
     lea rax, [rel g_tab_titles]
     mov rax, [rax + rbx * 8]
     mov [rel g_tip_text], rax
-.tab_next:
+    cmp dword [rel g_ui_click], 0
+    je .ribbon
+    mov [rel g_tab], ebx
+    mov dword [rel g_scroll], 0
+    mov byte [rel g_search], 0
+.ribbon:
+    mov eax, 0xFFC0C8D8                 ; (the others a little darker)
+    cmp byte [rel g_search], 0
+    jne .tint
+    cmp ebx, [rel g_tab]
+    jne .tint
+    mov eax, 0xFFFFFFFF
+.tint:
+    test r12d, r12d
+    jz .tint_set
+    mov eax, 0xFFFFFFFF
+.tint_set:
+    mov [rsp + 40], rax
+    mov qword [rsp + 32], SKIN_RIBBON
+    INVOKE ui_skin, rsi, [LOCAL(C_TOP)], RIBBON_W, rdi
+    lea rax, [rel g_tab_icon]
+    movzx ecx, word [rax + rbx * 2]
+    lea edx, [esi + (RIBBON_W - 28) / 2]
+    mov r8d, [LOCAL(C_TOP)]
+    add r8d, 8
+    mov dword [rsp + 32], 0xFFFFFFFF
+    mov r9d, 28
+    call ui_icon
     inc ebx
     jmp .tab
 .tabs_done:
-    ; search field, right-aligned
-    mov qword [rsp + 32], 44
+    ; the search: an inked writing line at the right of the heading row
+    mov qword [rsp + 32], 40
     lea rax, [rel g_search]
     mov [rsp + 40], rax
     mov qword [rsp + 48], SEARCH_CAP
     lea rax, [rel s_search]
     mov [rsp + 56], rax
-    ; (as wide as 214, but never over the tabs)
-    imul r9d, [rel g_tab_count], 58
-    neg r9d
-    add r9d, CAT_COLS * STEP - 4 - 6
-    cmp r9d, 214
-    jle .field_w
-    mov r9d, 214
-.field_w:
     mov edx, [LOCAL(C_X)]
-    add edx, CAT_COLS * STEP - 4
-    sub edx, r9d
-    INVOKE ui_textfield, SEARCH_ID, rdx, [LOCAL(C_Y)], r9
+    add edx, CAT_COLS * STEP - 4 - 190
+    INVOKE ui_textfield, SEARCH_ID, rdx, [LOCAL(C_Y)], 190
     test eax, eax
     jz .heading
     mov dword [rel g_scroll], 0
@@ -545,10 +559,10 @@ PROC catalog, 16, rbx, rsi, rdi, r12, r13
     mov rax, [rcx + rax * 8]
 .head:
     mov r8d, [LOCAL(C_Y)]
-    add r8d, 54
-    mov dword [rsp + 32], COL_TEXT_DIM
-    mov qword [rsp + 40], 0
-    INVOKE ui_label, rax, [LOCAL(C_X)], r8, 18
+    add r8d, 6
+    mov dword [rsp + 32], COL_TEXT
+    mov qword [rsp + 40], UI_BOLD
+    INVOKE ui_label, rax, [LOCAL(C_X)], r8, 24
     ; scroll
     mov eax, [rel g_mouse_wheel]
     test eax, eax
@@ -566,7 +580,7 @@ PROC catalog, 16, rbx, rsi, rdi, r12, r13
     xor edx, edx
     mov r8d, CAT_COLS
     div r8d
-    sub eax, CAT_ROWS                   ; last first-row
+    sub eax, [rel g_cat_rows]           ; last first-row
     cmp ecx, eax
     jle .c1
     mov ecx, eax
@@ -578,7 +592,7 @@ PROC catalog, 16, rbx, rsi, rdi, r12, r13
     mov [rel g_scroll], ecx
 .scrolled:
     mov eax, [LOCAL(C_Y)]
-    add eax, 80
+    add eax, 52
     mov [LOCAL(C_GY)], eax
     cmp dword [rel g_list_n], 0
     jne .grid
@@ -595,7 +609,8 @@ PROC catalog, 16, rbx, rsi, rdi, r12, r13
     imul ebx, [rel g_scroll], CAT_COLS  ; list index
     xor r12d, r12d                      ; cell
 .cell:
-    cmp r12d, CAT_COLS * CAT_ROWS
+    imul eax, [rel g_cat_rows], CAT_COLS
+    cmp r12d, eax
     jae .done
     cmp ebx, [rel g_list_n]
     jae .done
@@ -722,7 +737,7 @@ PROC craft_area, 16, rbx, rsi, rdi
     add esi, [LOCAL(A_Y)]               ; middle
     mov edi, [LOCAL(A_X)]
     add edi, 4 * STEP + 6
-    mov dword [rsp + 32], 0xB0FFFFFF
+    mov dword [rsp + 32], COL_INK
     mov qword [rsp + 40], 0
     mov qword [rsp + 48], 3
     mov qword [rsp + 56], 0
@@ -730,7 +745,7 @@ PROC craft_area, 16, rbx, rsi, rdi
     INVOKE ui_rect, rdi, rdx, 50, 8
     lea edx, [edi + 40]
     lea r8d, [esi - 22]
-    mov dword [rsp + 32], 0xB0FFFFFF
+    mov dword [rsp + 32], COL_INK
     mov qword [rsp + 40], UI_BOLD
     lea rcx, [rel s_arrow]
     mov r9d, 36
@@ -785,7 +800,7 @@ PROC furnace_area, 0, rbx, rsi, rdi
     call slot_at
     ; the flame: a dark well, filled from the bottom by the fuel left
     lea edi, [esi + STEP + 6]
-    mov dword [rsp + 32], 0x60000000
+    mov dword [rsp + 32], 0x24000000
     mov qword [rsp + 40], 0
     mov qword [rsp + 48], 6
     mov qword [rsp + 56], 0
@@ -808,7 +823,7 @@ PROC furnace_area, 0, rbx, rsi, rdi
     ; the arrow: a bar that fills left to right
     lea ecx, [ebx + STEP + 14]
     lea edx, [esi + STEP + 18]
-    mov dword [rsp + 32], 0x60000000
+    mov dword [rsp + 32], 0x24000000
     mov qword [rsp + 40], 0
     mov qword [rsp + 48], 4
     mov qword [rsp + 56], 0
@@ -820,7 +835,7 @@ PROC furnace_area, 0, rbx, rsi, rdi
     jle .out
     lea ecx, [ebx + STEP + 14]
     lea edx, [esi + STEP + 18]
-    mov dword [rsp + 32], 0xF0F0F0F0
+    mov dword [rsp + 32], COL_INK
     mov qword [rsp + 40], 0
     mov qword [rsp + 48], 4
     mov qword [rsp + 56], 0
@@ -850,6 +865,48 @@ furnace_title:
 .done:
     add rsp, 40
     ret
+
+; -----------------------------------------------------------------------------
+; book_toggle — the recipe book icon at ecx, edx (40 x 40): a click or the
+; recipe_book key opens / closes the book's left page; the choice is kept
+; in game.cfg.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC book_toggle, 0, rbx, rsi, rdi
+    mov ebx, ecx
+    mov esi, edx
+    INVOKE ui_hover, rbx, rsi, 40, 40
+    mov edi, eax
+    test eax, eax
+    jz .icon
+    mov dword [rsp + 40], 0x60FFFFFF
+    mov qword [rsp + 32], SKIN_BUTTON_HI
+    INVOKE ui_skin, rbx, rsi, 40, 40
+    lea rax, [rel s_book_tip]
+    mov [rel g_tip_text], rax
+.icon:
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov qword [rsp + 32], SKIN_BOOK
+    INVOKE ui_skin, rbx, rsi, 40, 40
+    test edi, edi
+    jz .key
+    cmp dword [rel g_ui_click], 0
+    jne .toggle
+.key:
+    call inv_screen_typing
+    test eax, eax
+    jnz .done
+    mov ecx, ACT_RECIPE_BOOK
+    call input_pressed
+    test eax, eax
+    jz .done
+.toggle:
+    xor dword [rel g_recipe_book], 1
+    mov dword [rel g_book_ver], -1
+    call settings_save_game
+.done:
+    RETURN
+ENDPROC
 
 ; -----------------------------------------------------------------------------
 ; can_make — eax = 1 if recipe ebx can be made from g_avail_* (each cell
@@ -906,19 +963,22 @@ PROC can_make, 0, rsi, rdi, r12, r13
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; book_build — the recipes this window allows that can be made now.
+; book_build — the recipes this window allows: first those that can be made
+; now, then (with "show all") the others (g_book_ok 0: drawn faded).
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC book_build, 0, rbx, rsi, rdi
+PROC book_build, 16, rbx, rsi, rdi
     mov eax, [rel g_cinv_ver]
     mov [rel g_book_ver], eax
     xor edi, edi                        ; listed
+    mov dword [LOCAL(0)], 0             ; pass: 0 makeable, 1 the rest
+.pass:
     xor ebx, ebx
 .recipe:
     cmp ebx, [rel g_recipe_count]
-    jae .done
+    jae .pass_done
     cmp edi, MAX_BOOK
-    jae .done
+    jae .pass_done
     lea rax, [rel g_rec_ok]
     cmp byte [rax + rbx], 0
     je .next
@@ -967,14 +1027,25 @@ PROC book_build, 0, rbx, rsi, rdi
     cmp esi, INV_SLOTS + 9
     jb .copy
     call can_make
-    test eax, eax
+    xor eax, [LOCAL(0)]                 ; (pass 1 wants the ones it can't)
     jz .next
     lea rax, [rel g_book]
     mov [rax + rdi * 2], bx
+    lea rax, [rel g_book_ok]
+    mov ecx, [LOCAL(0)]
+    xor ecx, 1
+    mov [rax + rdi], cl
     inc edi
 .next:
     inc ebx
     jmp .recipe
+.pass_done:
+    cmp dword [LOCAL(0)], 0
+    jne .done
+    cmp dword [rel g_show_all], 0
+    je .done
+    mov dword [LOCAL(0)], 1
+    jmp .pass
 .done:
     mov [rel g_book_n], edi
     RETURN
@@ -1008,23 +1079,33 @@ PROC recipe_book, 16, rbx, rsi, rdi, r12
     mov [rel g_book_win], eax
     call book_build
 .built:
-    ; a faint backing, the heading
-    mov dword [rsp + 32], 0x30000000
-    mov qword [rsp + 40], 0
-    mov qword [rsp + 48], 10
-    mov qword [rsp + 56], 0
-    mov ecx, [LOCAL(B_X)]
-    sub ecx, 8
-    mov edx, [LOCAL(B_Y)]
-    sub edx, 6
-    imul r9d, [LOCAL(B_ROWS)], STEP
-    add r9d, 34 + 12
-    INVOKE ui_rect, rcx, rdx, BOOK_W + 16, r9
-    mov dword [rsp + 32], COL_TEXT_DIM
+    ; the heading, and "Show all" with its check box at the right
+    mov dword [rsp + 32], COL_TEXT
     mov qword [rsp + 40], UI_BOLD
     lea rcx, [rel s_recipes]
-    INVOKE ui_label, rcx, [LOCAL(B_X)], [LOCAL(B_Y)], 20
-    add dword [LOCAL(B_Y)], 34
+    INVOKE ui_label, rcx, [LOCAL(B_X)], [LOCAL(B_Y)], 24
+    mov edx, [LOCAL(B_X)]
+    add edx, BOOK_W - 36
+    mov r8d, [LOCAL(B_Y)]
+    add r8d, 4
+    mov dword [rsp + 32], COL_TEXT_DIM
+    mov qword [rsp + 40], UI_RIGHT
+    lea rcx, [rel s_show_all]
+    INVOKE ui_label, rcx, rdx, r8, 18
+    mov ecx, [LOCAL(B_X)]
+    add ecx, BOOK_W - 28
+    mov edx, [LOCAL(B_Y)]
+    add edx, 2
+    mov r8d, 26
+    mov r9d, [rel g_show_all]
+    call ui_checkbox
+    test eax, eax
+    jz .heading_done
+    xor dword [rel g_show_all], 1
+    mov dword [rel g_book_ver], -1
+    call book_build
+.heading_done:
+    add dword [LOCAL(B_Y)], 40
     cmp dword [rel g_book_n], 0
     jne .scroll
     mov edx, [LOCAL(B_X)]
@@ -1106,10 +1187,18 @@ PROC recipe_book, 16, rbx, rsi, rdi, r12
     movzx r8d, word [rax + rsi * 2]
     lea rax, [rel g_rec_amount]
     movzx r9d, byte [rax + rsi]
+    lea rax, [rel g_book_ok]
+    cmp byte [rax + rbx], 0
+    jne .bright
+    mov dword [rel g_slot_tint], 0x58FFFFFF ; (not makeable yet: faded)
+.bright:
     mov qword [rsp + 32], 0
     call draw_slot
     test eax, eax
     jz .cell_next
+    lea rax, [rel g_book_ok]
+    cmp byte [rax + rbx], 0
+    je .cell_next                       ; (nothing to lay out)
     call click_buttons
     cmp eax, -1
     je .cell_next
@@ -1135,7 +1224,12 @@ ENDPROC
 %define F_IY    12
 %define F_GRID  16
 %define F_ROWS  20                      ; a container's rows (0: none)
-PROC inv_screen_frame, 24, rbx, rsi, rdi, r12
+%define F_LEFT  24                      ; LEFT_*: what the left page holds
+%define F_AREA  28                      ; the crafting area's height
+%define F_LX    32                      ; the left / right page's x, their top
+%define F_RX    36
+%define F_PY    40
+PROC inv_screen_frame, 48, rbx, rsi, rdi, r12
     mov [LOCAL(F_W)], ecx
     mov [LOCAL(F_H)], edx
     call ui_frame
@@ -1155,118 +1249,221 @@ PROC inv_screen_frame, 24, rbx, rsi, rdi, r12
     mov r9d, [rel g_ui_vh]
     add r9d, 16
     INVOKE ui_rect, -8, -8, r8, r9
-    ; what the panel holds: the Creative catalog (E in Creative), or a
-    ; crafting grid (2 x 2 by hand, a station's) with the recipe book
-    mov eax, [rel g_cwin + WIN_PKT.grid]
+    ; what the book holds (design/ui/journal_ui.md): the right page is the
+    ; player's (title, a crafting grid, the slots); the left page, when
+    ; there is one, the recipe book, the Creative catalog, a chest or a
+    ; furnace
+    xor eax, eax
     cmp dword [rel g_cwin + WIN_PKT.kind], WIN_CRAFTING
-    je .grid
+    jne .grid_inv
+    mov eax, [rel g_cwin + WIN_PKT.grid]
+    jmp .grid
+.grid_inv:
+    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_INVENTORY
+    jne .grid
     cmp dword [rel g_creative], 0
-    je .grid
-    xor eax, eax                        ; (the catalog instead)
+    jne .grid
+    mov eax, 2                          ; by hand
 .grid:
     mov [LOCAL(F_GRID)], eax
+    ; the left page
+    mov dword [LOCAL(F_LEFT)], LEFT_NONE
     mov dword [LOCAL(F_ROWS)], 0
-    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_CHEST
-    jb .not_chest
-    ; a chest: its rows of 9 above the player's slots (a furnace: 3 rows'
-    ; room for its slots)
+    mov eax, [rel g_cwin + WIN_PKT.kind]
+    cmp eax, WIN_CHEST
+    jne .not_chest
     mov eax, [rel g_cwin + WIN_PKT.slots]
     add eax, INV_HOTBAR - 1
     xor edx, edx
     mov ecx, INV_HOTBAR
     div ecx
-    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_FURNACE
-    jne .rows
-    mov eax, 3
-.rows:
     mov [LOCAL(F_ROWS)], eax
-    mov dword [LOCAL(F_GRID)], 0
-    mov dword [rel g_creative], 0
-    mov eax, INV_HOTBAR * STEP - 4 + 2 * PAD
-    imul ecx, [LOCAL(F_ROWS)], STEP
-    add ecx, 18 + 34 + 16 + 3 * STEP + 10 + STEP - 4 + PAD
-    jmp .size
+    mov dword [LOCAL(F_LEFT)], LEFT_CHEST
+    jmp .left_known
 .not_chest:
-    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_INVENTORY
+    cmp eax, WIN_FURNACE
+    jne .not_furnace
+    mov dword [LOCAL(F_ROWS)], 3
+    mov dword [LOCAL(F_LEFT)], LEFT_FURNACE
+    jmp .left_known
+.not_furnace:
+    cmp eax, WIN_INVENTORY
     jne .not_catalog
     cmp dword [rel g_creative], 0
-    jne .size_catalog
+    je .not_catalog
+    mov dword [LOCAL(F_LEFT)], LEFT_CATALOG
+    jmp .left_known
 .not_catalog:
     mov dword [rel g_creative], 0       ; (from here: "the catalog is shown")
-    mov eax, INV_HOTBAR * STEP - 4 + 2 * PAD + BOOK_W + BOOK_GAP
-    imul ecx, [LOCAL(F_GRID)], STEP
-    add ecx, 18 + 34 + 16 + 3 * STEP + 10 + STEP - 4 + PAD
-    jmp .size
-.size_catalog:
-    mov eax, CAT_COLS * STEP - 4 + 2 * PAD
-    mov ecx, 18 + 80 + CAT_ROWS * STEP + 16 + 3 * STEP + 10 + STEP - 4 + PAD
-.size:
+    cmp dword [LOCAL(F_GRID)], 0
+    je .left_known
+    cmp dword [rel g_recipe_book], 0
+    je .left_known
+    mov dword [LOCAL(F_LEFT)], LEFT_RECIPES
+.left_known:
+    ; the right page: title, the crafting area (at least a row: the off
+    ; hand's), the slots
+    mov eax, [LOCAL(F_GRID)]
+    cmp eax, 1
+    jge .area
+    mov eax, 1
+.area:
+    imul eax, eax, STEP
+    mov [LOCAL(F_AREA)], eax
+    add eax, 52 + 16 + 3 * STEP + 10 + STEP - 4 + PAD
+    mov [rel g_ph], eax
+    ; a chest's or a furnace's page may need more
+    mov eax, [LOCAL(F_ROWS)]
+    test eax, eax
+    jz .height
+    imul eax, eax, STEP
+    add eax, 52 - 4 + PAD
+    cmp eax, [rel g_ph]
+    jle .height
+    mov [rel g_ph], eax
+.height:
+    ; the book: one page, or two
+    mov eax, PAGE_W + 2 * BOOK_COVER
+    cmp dword [LOCAL(F_LEFT)], LEFT_NONE
+    je .width
+    mov eax, 2 * PAGE_W + 2 * BOOK_COVER
+.width:
     mov [rel g_pw], eax
-    mov [rel g_ph], ecx
     mov edx, [rel g_ui_vw]
     sub edx, eax
     sar edx, 1
     mov [rel g_px], edx
     mov edx, [rel g_ui_vh]
-    sub edx, ecx
+    sub edx, [rel g_ph]
+    sub edx, 2 * BOOK_COVER
     sar edx, 1
+    cmp dword [LOCAL(F_LEFT)], LEFT_CATALOG
+    jne .top
+    add edx, 24                         ; (room for the ribbons above)
+.top:
     mov [rel g_py], edx
-    INVOKE ui_panel, [rel g_px], [rel g_py], [rel g_pw], [rel g_ph]
-    ; the player's slots at the bottom: centred (catalog), or right of the
-    ; recipe book
-    mov eax, [rel g_pw]
-    sub eax, INV_HOTBAR * STEP - 4
-    sar eax, 1
-    add eax, [rel g_px]
-    cmp dword [rel g_creative], 0
-    jne .ix
-    cmp dword [LOCAL(F_ROWS)], 0
-    jne .ix
+    ; pages: left at LX, right at RX, both from PY
     mov eax, [rel g_px]
-    add eax, PAD + BOOK_W + BOOK_GAP
-.ix:
-    mov [LOCAL(F_IX)], eax
+    add eax, BOOK_COVER
+    mov [LOCAL(F_LX)], eax
+    cmp dword [LOCAL(F_LEFT)], LEFT_NONE
+    je .rx
+    add eax, PAGE_W
+.rx:
+    mov [LOCAL(F_RX)], eax
     mov eax, [rel g_py]
+    add eax, BOOK_COVER
+    mov [LOCAL(F_PY)], eax
+    ; a soft shadow on the world, the book
+    mov dword [rsp + 48], COL_SHADOW
+    mov qword [rsp + 40], 28
+    mov qword [rsp + 32], 12
+    mov edx, [rel g_py]
+    add edx, 10
+    mov r9d, [rel g_ph]
+    add r9d, 2 * BOOK_COVER
+    INVOKE ui_glow, [rel g_px], rdx, [rel g_pw], r9
+    xor eax, eax
+    cmp dword [LOCAL(F_LEFT)], LEFT_NONE
+    je .split
+    mov eax, BOOK_COVER + PAGE_W
+.split:
+    mov [rsp + 32], rax
+    mov r9d, [rel g_ph]
+    add r9d, 2 * BOOK_COVER
+    INVOKE ui_book, [rel g_px], [rel g_py], [rel g_pw], r9
+    ; where the slots go on the right page
+    mov eax, [LOCAL(F_RX)]
+    add eax, PAD
+    mov [LOCAL(F_IX)], eax
+    mov eax, [LOCAL(F_PY)]
     add eax, [rel g_ph]
     sub eax, PAD + STEP - 4 + 10 + 3 * STEP
     mov [LOCAL(F_IY)], eax
-    cmp dword [rel g_creative], 0
-    jne .creative
-    ; the title, the grid and its result, the recipe book
+    ; ---- the right page: title, recipe book toggle, crafting ----
     lea rcx, [rel s_inventory]
     cmp dword [rel g_cwin + WIN_PKT.kind], WIN_CRAFTING
-    jne .title_chest
+    jne .title
     lea rcx, [rel s_crafting]
-.title_chest:
-    cmp dword [LOCAL(F_ROWS)], 0
-    je .title
-    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_FURNACE
-    jne .chest_title
-    ; a furnace: the name of its block
-    call furnace_title
-    mov rcx, rax
-    jmp .title
-.chest_title:
-    lea rcx, [rel s_chest]
-    cmp dword [LOCAL(F_ROWS)], 3
-    jbe .title
-    lea rcx, [rel s_large_chest]
 .title:
-    mov r8d, [rel g_py]
+    mov r8d, [LOCAL(F_PY)]
     add r8d, 18
     mov dword [rsp + 32], COL_TEXT
     mov qword [rsp + 40], UI_BOLD
-    INVOKE ui_label, rcx, [LOCAL(F_IX)], r8, 24
-    cmp dword [LOCAL(F_ROWS)], 0
-    je .crafting
-    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_FURNACE
+    INVOKE ui_label, rcx, [LOCAL(F_IX)], r8, 26
+    cmp dword [LOCAL(F_GRID)], 0
+    je .no_grid
+    mov ecx, [LOCAL(F_RX)]
+    add ecx, PAGE_W - PAD - 40
+    mov edx, [LOCAL(F_PY)]
+    add edx, 12
+    call book_toggle
+    mov edx, [LOCAL(F_PY)]
+    add edx, 52
+    INVOKE craft_area, [LOCAL(F_IX)], rdx, [LOCAL(F_GRID)]
+.no_grid:
+    ; ---- the left page ----
+    mov eax, [LOCAL(F_LEFT)]
+    cmp eax, LEFT_RECIPES
+    jne .left_catalog
+    mov ecx, [LOCAL(F_LX)]
+    add ecx, PAD
+    mov edx, [LOCAL(F_PY)]
+    add edx, 18
+    mov r8d, [rel g_ph]
+    sub r8d, 18 + PAD
+    call recipe_book
+    jmp .slots
+.left_catalog:
+    cmp eax, LEFT_CATALOG
+    jne .left_chest
+    ; the catalog's rows: what fits under the heading
+    mov eax, [rel g_ph]
+    sub eax, 18 + 52 + PAD - 4
+    xor edx, edx
+    mov ecx, STEP
+    div ecx
+    mov [rel g_cat_rows], eax
+    mov eax, [rel g_py]
+    sub eax, RIBBON_H - BOOK_COVER - 6
+    mov [rel g_ribbon_y], eax
+    mov ecx, [LOCAL(F_LX)]
+    add ecx, PAD
+    mov edx, [LOCAL(F_PY)]
+    add edx, 18
+    call catalog
+    jmp .slots
+.left_chest:
+    cmp eax, LEFT_CHEST
+    jb .slots
+    ; a chest's or furnace's title
+    cmp eax, LEFT_FURNACE
+    jne .chest_title
+    call furnace_title
+    mov rcx, rax
+    jmp .left_title
+.chest_title:
+    lea rcx, [rel s_chest]
+    cmp dword [LOCAL(F_ROWS)], 3
+    jbe .left_title
+    lea rcx, [rel s_large_chest]
+.left_title:
+    mov r8d, [LOCAL(F_PY)]
+    add r8d, 18
+    mov edx, [LOCAL(F_LX)]
+    add edx, PAD
+    mov dword [rsp + 32], COL_TEXT
+    mov qword [rsp + 40], UI_BOLD
+    INVOKE ui_label, rcx, rdx, r8, 26
+    cmp dword [LOCAL(F_LEFT)], LEFT_FURNACE
     jne .chest_slots
-    mov edx, [rel g_py]
-    add edx, 18 + 34
-    INVOKE furnace_area, [LOCAL(F_IX)], rdx
+    mov ecx, [LOCAL(F_LX)]
+    add ecx, PAD
+    mov edx, [LOCAL(F_PY)]
+    add edx, 52
+    INVOKE furnace_area, rcx, rdx
     jmp .slots
 .chest_slots:
-    ; the container's slots
     xor ebx, ebx
 .cslot:
     cmp ebx, [rel g_cwin + WIN_PKT.slots]
@@ -1278,32 +1475,15 @@ PROC inv_screen_frame, 24, rbx, rsi, rdi, r12
     mov ecx, INV_HOTBAR
     div ecx                             ; eax = row, edx = column
     imul ecx, edx, STEP
-    add ecx, [LOCAL(F_IX)]
+    add ecx, [LOCAL(F_LX)]
+    add ecx, PAD
     imul edx, eax, STEP
-    add edx, [rel g_py]
-    add edx, 18 + 34
+    add edx, [LOCAL(F_PY)]
+    add edx, 52
     lea r8d, [ebx + INV_CONTAINER]
     call slot_at
     inc ebx
     jmp .cslot
-.crafting:
-    mov edx, [rel g_py]
-    add edx, 18 + 34
-    INVOKE craft_area, [LOCAL(F_IX)], rdx, [LOCAL(F_GRID)]
-    mov ecx, [rel g_px]
-    add ecx, PAD
-    mov edx, [rel g_py]
-    add edx, 18
-    mov r8d, [rel g_ph]
-    sub r8d, 18 + PAD
-    call recipe_book
-    jmp .slots
-.creative:
-    mov ecx, [rel g_px]
-    add ecx, PAD
-    mov edx, [rel g_py]
-    add edx, 18
-    call catalog
 .slots:
     INVOKE player_slots, [LOCAL(F_IX)], [LOCAL(F_IY)]
     ; Creative: a click outside the panel throws away what is in hand
@@ -1340,8 +1520,8 @@ PROC inv_screen_frame, 24, rbx, rsi, rdi, r12
     add edx, 22
     mov r8d, [rel g_ui_my]
     add r8d, 2
-    mov dword [rsp + 32], COL_TEXT
-    mov dword [rsp + 40], COL_TEXT
+    mov dword [rsp + 32], COL_LIGHT
+    mov dword [rsp + 40], COL_LIGHT
     mov qword [rsp + 48], UI_RIGHT | UI_SHADOW | UI_BOLD
     lea rcx, [rel g_count]
     mov r9d, 17
@@ -1366,10 +1546,14 @@ PROC inv_screen_frame, 24, rbx, rsi, rdi, r12
     add edi, 16
     mov r12d, [rel g_ui_my]
     sub r12d, 34
-    mov qword [rsp + 32], 8
-    mov dword [rsp + 40], 0xE0141010
-    mov dword [rsp + 48], COL_ACCENT & 0x00FFFFFF | 0x80000000
-    INVOKE ui_glass, rdi, r12, rsi, 30
+    mov dword [rsp + 48], 0x60000000
+    mov qword [rsp + 40], 10
+    mov qword [rsp + 32], 4
+    lea edx, [r12d + 3]
+    INVOKE ui_glow, rdi, rdx, rsi, 30
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov qword [rsp + 32], SKIN_TIP
+    INVOKE ui_skin, rdi, r12, rsi, 30
     lea edx, [edi + 10]
     lea r8d, [r12d + 4]
     mov dword [rsp + 32], COL_TEXT

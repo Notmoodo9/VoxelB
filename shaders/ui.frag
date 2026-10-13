@@ -6,6 +6,7 @@ layout(binding = 0) uniform sampler2D u_font;       // SDF atlas (R8, 0.5 = edge
 layout(binding = 1) uniform sampler2D u_backdrop;   // the frame, 1/16 size
 layout(binding = 2) uniform sampler2D u_images;     // thumbnails etc.
 layout(binding = 3) uniform sampler2D u_icons;      // item icons (milestone 18)
+layout(binding = 4) uniform sampler2D u_skin;       // the journal skin (milestone 18 part 5)
 layout(location = 0) uniform vec2 u_screen;
 
 in vec2 v_local;
@@ -15,6 +16,7 @@ flat in vec4 v_color;
 flat in vec4 v_color2;
 flat in vec4 v_p;
 flat in uint v_kind;
+flat in vec4 v_box;
 
 out vec4 o_color;
 
@@ -57,6 +59,27 @@ void main() {
     }
     if (v_kind == 4u) {
         o_color = texture(u_images, v_uv) * v_color;
+        return;
+    }
+    if (v_kind == 6u) {
+        // 9-slice: the border (v_p.w atlas pixels) keeps its size, the
+        // middle repeats; v_p.y = screen pixels per atlas pixel
+        float s = max(v_p.y, 0.01);
+        float B = v_p.w;
+        vec2 src = v_box.zw - v_box.xy;
+        vec2 dst = v_size / s;
+        vec2 pos = v_local / s;
+        vec2 t;
+        for (int i = 0; i < 2; ++i) {
+            float mid = max(src[i] - 2.0 * B, 1.0);
+            if (B <= 0.0) t[i] = clamp(pos[i] * src[i] / dst[i], 0.0, src[i] - 0.001);
+            else if (pos[i] < B) t[i] = pos[i];
+            else if (pos[i] > dst[i] - B) t[i] = src[i] - (dst[i] - pos[i]);
+            else t[i] = B + mod(pos[i] - B, mid);
+        }
+        vec2 px = floor(v_box.xy + clamp(t, vec2(0.0), src - 0.001));
+        o_color = texelFetch(u_skin, ivec2(px), 0) * v_color;
+        if (o_color.a <= 0.003) discard;
         return;
     }
     if (v_kind == 5u) {

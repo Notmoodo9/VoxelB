@@ -13,6 +13,8 @@
 ;                                values back into the files (cfg_rewrite)
 ;   g_fov (u32)                  vertical field of view, degrees, 50..110
 ;   g_show_hud (u32)             1 = draw the HUD
+;   g_recipe_book (u32)          1 = the recipe book page is open (it stays
+;                                the way the player last left it)
 ;   (game.cfg's autosave_minutes: g_autosave_minutes in save.asm)
 ;   g_render_distance (u32)      full-detail view distance in chunks, 2..48
 ;   g_opaque_leaves (u32)        1 = draw leaves as solid cubes (low-end)
@@ -43,6 +45,7 @@ global g_gpu_culling, g_occlusion_culling, g_lod_distance
 global g_smooth_lighting, g_ambient_occlusion, g_held_light, g_bloom, g_height_fog
 global g_shadows, g_shadow_res, g_shadow_distance, g_clouds, g_water_quality
 global g_fov, g_show_hud, settings_save_graphics, settings_save_game
+global g_recipe_book
 
 extern str_ieq, str_parse_u64, cfg_next_token, g_autosave_minutes
 
@@ -73,6 +76,7 @@ str_game_label: db "game.cfg", 0
 k_fov:          db "fov", 0
 k_autosave:     db "autosave_minutes", 0
 k_hud:          db "show_hud", 0
+k_recipe_book:  db "recipe_book", 0
 str_missing:    db " missing; using defaults", 0
 str_unknown:    db "unknown setting: ", 0
 str_bad:        db "bad value for: ", 0
@@ -96,6 +100,7 @@ g_shadow_res:       dd 2048
 g_shadow_distance:  dd 160
 g_fov:              dd 70
 g_show_hud:         dd 1
+g_recipe_book:      dd 1                ; the recipe book page is open (milestone 18 part 5)
 
 section .bss
 alignb 8
@@ -380,10 +385,19 @@ PROC game_pair, 0, rbx, rsi
     lea rdx, [rel k_hud]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
-    jz .unknown
+    jz .not_hud
     cmp rsi, 1
     ja .bad
     mov [rel g_show_hud], esi
+    RETURN
+.not_hud:
+    lea rdx, [rel k_recipe_book]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .unknown
+    cmp rsi, 1
+    ja .bad
+    mov [rel g_recipe_book], esi
     RETURN
 .unknown:
     lea rcx, [rel str_game_label]
@@ -442,5 +456,6 @@ game_entries:
     dq k_fov, cfgw_int, g_fov
     dq k_autosave, cfgw_int, g_autosave_minutes
     dq k_hud, cfgw_int, g_show_hud
+    dq k_recipe_book, cfgw_int, g_recipe_book
 GAME_ENTRIES equ ($ - game_entries) / 24
 section .text

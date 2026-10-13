@@ -2,7 +2,7 @@
 
 Interviewed 2026-10-13 after the owner's feedback on v0.18.4: the UI looked
 clean but "like a hacked client" — glassy dark panels and teal accents that
-don't belong to the world. **Status: waiting for approval.**
+don't belong to the world. **Status: approved 2026-10-13.**
 
 ## Summary
 

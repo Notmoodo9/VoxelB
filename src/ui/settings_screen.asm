@@ -28,7 +28,7 @@
 global settings_screen_open, settings_screen_frame, settings_screen_back
 global settings_screen_close
 
-extern ui_button, ui_panel, ui_label, ui_text
+extern ui_checkbox, ui_button, ui_panel, ui_label, ui_text
 extern g_ui_vh, g_ui_click, g_mouse_wheel
 extern str_copy, str_append_dec
 extern settings_save_graphics, settings_save_game, shadow_apply
@@ -178,13 +178,15 @@ a_22:           db "Hotbar 6", 0
 a_23:           db "Hotbar 7", 0
 a_24:           db "Hotbar 8", 0
 a_25:           db "Hotbar 9", 0
+a_26:           db "Recipe book", 0
+a_27:           db "Swap hands", 0
 
 align 8
 tab_names:      dq s_tab0, s_tab1, s_tab2
 preset_names:   dq s_p0, s_p1, s_p2, s_p3
 action_names:   dq a_0, a_1, a_2, a_3, a_4, a_5, a_6, a_7, a_8, a_9, a_10
                 dq a_11, a_12, a_13, a_14, a_15, a_16, a_17, a_18, a_19, a_20
-                dq a_21, a_22, a_23, a_24, a_25
+                dq a_21, a_22, a_23, a_24, a_25, a_26, a_27
 %if ($ - action_names) / 8 != ACT_COUNT
     %error "action_names does not match ACT_COUNT"
 %endif
@@ -520,18 +522,12 @@ PROC draw_row, 16, rbx, rsi, rdi, r12, r13
 
     ; ---- toggle ----
 .toggle:
-    lea rax, [rel s_off]
-    xor r10d, r10d
-    cmp dword [LOCAL(D_VALUE)], 0
-    je .t_flags
-    lea rax, [rel s_on]
-    mov r10d, UIW_SELECTED
-.t_flags:
-    mov [rsp + 40], rax
-    mov [rsp + 48], r10
-    mov qword [rsp + 32], 36
-    lea edx, [esi + r12d - 120]
-    INVOKE ui_button, r13, rdx, rdi, 120
+    ; an inked check box at the right of the row
+    lea ecx, [esi + r12d - 32]
+    lea edx, [edi + 3]
+    mov r8d, 30
+    mov r9d, [LOCAL(D_VALUE)]
+    call ui_checkbox
     test eax, eax
     jz .done
     mov edx, [LOCAL(D_VALUE)]

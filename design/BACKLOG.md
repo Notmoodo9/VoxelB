@@ -59,4 +59,4 @@ yet; each item gets its own doc in `design/` when we interview it.
 | todo | Rework terrain generation and biomes, and add many more biomes | after M10 (owner, 2026-10-11) | the owner plans a bigger pass on terrain and biomes later |
 | todo | Progressive LOD: more detail near the player, fading gradually to no detail at the horizon | M34 (owner, 2026-10-12) | after M12; "for way later" |
 | todo | Character preview in the inventory (the player figure on the journal page) | M19+ | from the journal UI interview; needs the player model |
-| todo-approve | Journal UI, off hand, recipe book toggle, Shift+drag | M18 part 5 | `design/ui/journal_ui.md` |
+| doing | Journal UI, off hand, recipe book toggle, Shift+drag | M18 part 5 | `design/ui/journal_ui.md` |

@@ -9,7 +9,11 @@
 ;   ui_end(ecx = w, edx = h)            draw it
 ;   ui_button(id, x, y, w, h, label, flags) -> eax 1 if clicked
 ;       flags: UIW_DISABLED, UIW_SELECTED, UIW_PRIMARY
-;   ui_panel(x, y, w, h)                a glass panel with a soft shadow
+;   ui_panel(x, y, w, h)                a journal page (leather + parchment)
+;   ui_book(x, y, w, h, split)          leather with one page, or two split
+;                                       at x + split (milestone 18 part 5)
+;   ui_page(x, y, w, h)                 a parchment page
+;   ui_checkbox(x, y, size, checked) -> eax 1 if clicked   an inked box
 ;   ui_label(str, x, y, size, color, flags) -> eax width (text with shadow)
 ;   ui_hover(x, y, w, h) -> eax 1 if the mouse is over it
 ;   ui_textfield(id, x, y, w, h, buf, cap, placeholder) -> eax 1 if the text
@@ -23,11 +27,12 @@
 %include "input.inc"
 %include "ui.inc"
 
-global ui_frame, ui_end, ui_button, ui_panel, ui_label, ui_hover
+global ui_frame, ui_end, ui_button, ui_panel, ui_label, ui_hover, ui_book, ui_page
+global ui_checkbox
 global ui_textfield, ui_focus
 global g_ui_mx, g_ui_my, g_ui_click, g_ui_dt, g_ui_time, g_ui_rclick, ui_focused
 
-extern ui_draw_begin, ui_draw_flush, ui_rect, ui_glass, ui_glow, ui_text
+extern ui_draw_begin, ui_draw_flush, ui_rect, ui_glass, ui_glow, ui_text, ui_skin
 extern ui_text_width, str_len
 extern g_ui_scale, g_frame_us, g_mouse_captured, g_chars, g_char_count
 
@@ -188,68 +193,66 @@ PROC ui_button, 32, rbx, rsi, rdi, r12, r13, r14
     addss xmm0, xmm1
     movss [rcx + rbx * 4], xmm0
     movss [LOCAL(B_ANIM)], xmm0
-    ; glow under it
+    ; the inked frame (pale when disabled, red ink for danger)
+    mov eax, 0xFFFFFFFF
     test r14d, UIW_DISABLED
-    jnz .no_glow
-    mov ecx, COL_ACCENT & 0x00FFFFFF | 0x70000000
-    movss xmm0, [LOCAL(B_ANIM)]
-    call with_alpha
-    mov [rsp + 48], rax
-    mov qword [rsp + 40], 16
-    mov qword [rsp + 32], 12
-    INVOKE ui_glow, rsi, rdi, r12, r13
-.no_glow:
-    ; fill: dark glass, or teal when primary / selected
-    mov eax, COL_DANGER
+    jz .tint
+    mov eax, 0x60FFFFFF
+.tint:
     test r14d, UIW_DANGER
-    jnz .fill
-    mov eax, COL_BUTTON
-    test r14d, UIW_PRIMARY | UIW_SELECTED
-    jz .fill
-    mov eax, COL_ACCENT2 & 0x00FFFFFF | 0xC0000000
-    test r14d, UIW_DISABLED
-    jz .fill
-    mov eax, COL_ACCENT2 & 0x00FFFFFF | 0x50000000  ; (chosen, but fixed)
-.fill:
-    mov [LOCAL(B_FILL)], eax
-    ; border: teal, brighter on hover; grey when disabled
-    mov ecx, COL_ACCENT & 0x00FFFFFF | 0xFF000000
+    jz .frame
+    mov eax, 0xFF6080FF                 ; (a red wash over the ink)
+.frame:
+    mov [rsp + 40], rax
+    mov qword [rsp + 32], SKIN_BUTTON
+    INVOKE ui_skin, rsi, rdi, r12, r13
+    ; hover / chosen: the inked wash fades in
     movss xmm0, [LOCAL(B_ANIM)]
-    mulss xmm0, [rel c_border_k]
-    addss xmm0, [rel c_border_base]
+    test r14d, UIW_SELECTED
+    jz .wash
+    movss xmm0, [rel c_one]
+.wash:
+    xorps xmm1, xmm1
+    comiss xmm0, [rel c_wash_min]
+    jb .seal
+    mov ecx, 0xFFFFFFFF
     call with_alpha
+    mov [rsp + 40], rax
+    mov qword [rsp + 32], SKIN_BUTTON_HI
+    INVOKE ui_skin, rsi, rdi, r12, r13
+.seal:
+    ; important buttons: a red wax seal on the left end
+    test r14d, UIW_PRIMARY
+    jz .label_start
     test r14d, UIW_DISABLED
-    jz .border_ok
-    mov eax, 0x30FFFFFF
-.border_ok:
-    mov [rsp + 56], rax                 ; border colour (color2)
-    mov qword [rsp + 64], 10            ; radius
-    mov qword [rsp + 72], 2             ; border width
-    mov eax, [LOCAL(B_FILL)]
-    mov [rsp + 48], rax
-    ; (ui_rect's args 5..8 sit at [rsp+32..56]: shift into place)
-    mov rax, [rsp + 48]
-    mov [rsp + 32], rax                 ; color
-    mov rax, [rsp + 56]
-    mov [rsp + 40], rax                 ; color2 (border)
-    mov rax, [rsp + 64]
-    mov [rsp + 48], rax                 ; radius
-    mov rax, [rsp + 72]
-    mov [rsp + 56], rax                 ; border
+    jnz .label_start
+    lea eax, [r13d - 4]                 ; the seal's size
+    mov [LOCAL(B_FILL)], eax
     mov ecx, esi
-    mov edx, edi
-    mov r8d, r12d
-    mov r9d, r13d
-    call ui_rect
-    ; label: centred, a little lighter with the hover
-    mov eax, COL_TEXT
+    sub ecx, 6
+    lea edx, [edi + 2]
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov qword [rsp + 32], SKIN_SEAL
+    INVOKE ui_skin, rcx, rdx, [LOCAL(B_FILL)], [LOCAL(B_FILL)]
+.label_start:
+    ; label: centred ink (bold when chosen)
+    mov eax, COL_INK
+    test r14d, UIW_DANGER
+    jz .not_danger
+    mov eax, COL_DANGER
+.not_danger:
     test r14d, UIW_DISABLED
     jz .label_col
     mov eax, COL_TEXT_OFF
 .label_col:
     mov [rsp + 32], rax
     mov [rsp + 40], rax
-    mov qword [rsp + 48], UI_CENTER | UI_SHADOW
+    mov eax, UI_CENTER | UI_SHADOW
+    test r14d, UIW_SELECTED | UIW_PRIMARY
+    jz .label_flags
+    or eax, UI_BOLD
+.label_flags:
+    mov [rsp + 48], rax
     mov eax, r12d
     shr eax, 1
     lea edx, [esi + eax]                ; centre x
@@ -269,9 +272,11 @@ PROC ui_button, 32, rbx, rsi, rdi, r12, r13, r14
     RETURN
 ENDPROC
 
+%define COVER       20                   ; leather showing around the pages
 ; -----------------------------------------------------------------------------
-; ui_panel — a glass panel with a soft shadow around it.
-;   in:  ecx = x, edx = y, r8d = w, r9d = h
+; ui_panel — a journal page: cream parchment in a stitched leather cover with
+; brass corners, a soft shadow on the world (design/ui/journal_ui.md).
+;   in:  ecx = x, edx = y, r8d = w, r9d = h (the page's outer edge)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC ui_panel, 0, rbx, rsi, rdi, r12
@@ -280,14 +285,141 @@ PROC ui_panel, 0, rbx, rsi, rdi, r12
     mov edi, r8d
     mov r12d, r9d
     mov dword [rsp + 48], COL_SHADOW
-    mov qword [rsp + 40], 28
-    mov qword [rsp + 32], 18
-    lea edx, [esi + 6]
-    INVOKE ui_glow, rbx, rdx, rdi, r12
-    mov dword [rsp + 48], COL_GLASS_EDGE
-    mov dword [rsp + 40], COL_GLASS
-    mov qword [rsp + 32], 18
-    INVOKE ui_glass, rbx, rsi, rdi, r12
+    mov qword [rsp + 40], 24
+    mov qword [rsp + 32], 12
+    lea ecx, [ebx - COVER]
+    lea edx, [esi + 8 - COVER]
+    lea r8d, [edi + 2 * COVER]
+    lea r9d, [r12d + 2 * COVER]
+    call ui_glow
+    ; (the cover grows outward: the page is the panel's rectangle)
+    mov qword [rsp + 32], 0
+    lea ecx, [ebx - COVER]
+    lea edx, [esi - COVER]
+    lea r8d, [edi + 2 * COVER]
+    lea r9d, [r12d + 2 * COVER]
+    call ui_book
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; ui_book — the leather cover with parchment inside: one page, or two pages
+; split at x + split (a gutter shadow down the middle).
+;   in:  ecx = x, edx = y, r8d = w, r9d = h, ARG5 = split (0: one page)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC ui_book, 16, rbx, rsi, rdi, r12, r13
+    mov ebx, ecx
+    mov esi, edx
+    mov edi, r8d
+    mov r12d, r9d
+    mov r13d, [ARG(5)]
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov qword [rsp + 32], SKIN_LEATHER
+    INVOKE ui_skin, rbx, rsi, rdi, r12
+    ; the pages
+    test r13d, r13d
+    jnz .two
+    lea ecx, [ebx + COVER]
+    lea edx, [esi + COVER]
+    lea r8d, [edi - 2 * COVER]
+    lea r9d, [r12d - 2 * COVER]
+    call ui_page
+    jmp .corners
+.two:
+    lea ecx, [ebx + COVER]
+    lea edx, [esi + COVER]
+    lea r8d, [r13d - COVER]
+    lea r9d, [r12d - 2 * COVER]
+    call ui_page
+    lea ecx, [ebx + r13d]
+    lea edx, [esi + COVER]
+    mov r8d, edi
+    sub r8d, r13d
+    sub r8d, COVER
+    lea r9d, [r12d - 2 * COVER]
+    call ui_page
+    ; the gutter: shadows falling into the fold from both sides
+    mov dword [rsp + 48], COL_SHADOW
+    mov qword [rsp + 40], 16
+    mov qword [rsp + 32], 0
+    lea ecx, [ebx + r13d - 1]
+    lea edx, [esi + COVER]
+    lea r9d, [r12d - 2 * COVER]
+    INVOKE ui_glow, rcx, rdx, 2, r9
+    mov dword [rsp + 32], 0xFF1E2E6B
+    mov dword [rsp + 40], 0xFF101830
+    mov qword [rsp + 48], 0
+    mov qword [rsp + 56], 0
+    lea ecx, [ebx + r13d - 2]
+    lea edx, [esi + COVER]
+    lea r9d, [r12d - 2 * COVER]
+    INVOKE ui_rect, rcx, rdx, 4, r9
+.corners:
+    ; brass corners on the cover
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov qword [rsp + 32], SKIN_CORNER_TL
+    INVOKE ui_skin, rbx, rsi, 28, 28
+    lea ecx, [ebx + edi - 28]
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov qword [rsp + 32], SKIN_CORNER_TR
+    INVOKE ui_skin, rcx, rsi, 28, 28
+    lea edx, [esi + r12d - 28]
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov qword [rsp + 32], SKIN_CORNER_BL
+    INVOKE ui_skin, rbx, rdx, 28, 28
+    lea ecx, [ebx + edi - 28]
+    lea edx, [esi + r12d - 28]
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov qword [rsp + 32], SKIN_CORNER_BR
+    INVOKE ui_skin, rcx, rdx, 28, 28
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; ui_checkbox — an inked check box (ticked when r9d = 1); hovering it shows
+; an ink wash.
+;   in:  ecx = x, edx = y, r8d = size, r9d = checked
+;   out: eax = 1 if clicked this frame
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC ui_checkbox, 16, rbx, rsi, rdi, r12
+    mov ebx, ecx
+    mov esi, edx
+    mov edi, r8d
+    mov r12d, r9d
+    mov r9d, edi
+    call ui_hover
+    mov [LOCAL(0)], eax
+    test eax, eax
+    jz .box
+    mov dword [rsp + 32], 0x30000000
+    mov dword [rsp + 40], 0x30000000
+    mov qword [rsp + 48], 4
+    mov qword [rsp + 56], 0
+    INVOKE ui_rect, rbx, rsi, rdi, rdi
+.box:
+    mov eax, SKIN_CHECK_OFF
+    test r12d, r12d
+    jz .piece
+    mov eax, SKIN_CHECK_ON
+.piece:
+    mov [rsp + 32], rax
+    mov dword [rsp + 40], 0xFFFFFFFF
+    INVOKE ui_skin, rbx, rsi, rdi, rdi
+    xor eax, eax
+    cmp dword [LOCAL(0)], 0
+    je .done
+    mov eax, [rel g_ui_click]
+.done:
+    RETURN
+ENDPROC
+
+; ui_page — a parchment page   in: ecx = x, edx = y, r8d = w, r9d = h
+PROC ui_page, 0
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov qword [rsp + 32], SKIN_PAGE
+    call ui_skin
     RETURN
 ENDPROC
 
@@ -404,17 +536,23 @@ PROC ui_textfield, 16, rbx, rsi, rdi, r12, r13, r14
     inc ecx
     jmp .char
 .draw:
-    ; the box: dark, a teal border while it has the focus
-    mov eax, 0x40FFFFFF
+    ; an inked writing line, darker while it has the focus
+    mov eax, 0xA0FFFFFF
     cmp dword [LOCAL(T_FOCUSED)], 0
-    je .border
-    mov eax, COL_ACCENT
-.border:
+    je .line
+    mov eax, 0xFFFFFFFF
+.line:
     mov [rsp + 40], rax
-    mov dword [rsp + 32], COL_FIELD
-    mov qword [rsp + 48], 10
-    mov qword [rsp + 56], 2
+    mov qword [rsp + 32], SKIN_FIELD
+    INVOKE ui_skin, rsi, rdi, r12, r13
+    cmp dword [LOCAL(T_FOCUSED)], 0
+    je .line_done
+    mov dword [rsp + 32], 0x18000000
+    mov dword [rsp + 40], 0x18000000
+    mov qword [rsp + 48], 4
+    mov qword [rsp + 56], 0
     INVOKE ui_rect, rsi, rdi, r12, r13
+.line_done:
     ; the text (or the placeholder)
     mov eax, r13d
     sub eax, 24
@@ -454,8 +592,8 @@ PROC ui_textfield, 16, rbx, rsi, rdi, r12, r13, r14
     sub eax, 28
     sar eax, 1
     lea edx, [edi + eax]
-    mov dword [rsp + 32], COL_ACCENT
-    mov dword [rsp + 40], COL_ACCENT
+    mov dword [rsp + 32], COL_INK
+    mov dword [rsp + 40], COL_INK
     mov qword [rsp + 48], 1
     mov qword [rsp + 56], 0
     INVOKE ui_rect, rcx, rdx, 2, 28
@@ -467,4 +605,5 @@ ENDPROC
 section .rdata
 align 4
 c_border_base:  dd 0.35
+c_wash_min:     dd 0.02
 c_border_k:     dd 0.65

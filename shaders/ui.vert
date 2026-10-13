@@ -3,7 +3,7 @@
 // buffer, six vertices each (vertex pulling). Kinds: 0 rounded rectangle
 // (vertical gradient), 1 SDF glyph, 2 glass panel (blurred backdrop), 3 soft
 // glow / shadow around a rounded rectangle, 4 image (uv into u_images), 5 item icon
-// (uv into u_icons).
+// (uv into u_icons), 6 journal skin piece (9-slice from u_skin, milestone 18 part 5).
 
 struct Quad {
     vec4 rect;       // x, y, w, h (pixels, top-left origin)
@@ -25,6 +25,7 @@ flat out vec4 v_color;
 flat out vec4 v_color2;
 flat out vec4 v_p;
 flat out uint v_kind;
+flat out vec4 v_box;       // skin: the piece's atlas rectangle (pixels)
 
 const vec2 C[6] = vec2[](vec2(0, 0), vec2(1, 0), vec2(1, 1), vec2(0, 0), vec2(1, 1), vec2(0, 1));
 
@@ -41,5 +42,6 @@ void main() {
     v_color2 = unpackUnorm4x8(Q.color2);
     v_p = Q.p;
     v_kind = Q.kind;
+    v_box = Q.uv;
     gl_Position = vec4(pos.x / u_screen.x * 2.0 - 1.0, 1.0 - pos.y / u_screen.y * 2.0, 0.0, 1.0);
 }
