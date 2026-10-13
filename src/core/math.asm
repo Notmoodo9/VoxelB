@@ -3,7 +3,7 @@
 ; =============================================================================
 %include "macros.inc"
 
-global sincosf
+global sincosf, atan2f
 
 section .bss
 alignb 4
@@ -24,6 +24,23 @@ sincosf:
     fsincos                             ; st0 = cos, st1 = sin
     fstp dword [rel g_sc_tmp]
     movss xmm1, [rel g_sc_tmp]
+    fstp dword [rel g_sc_tmp]
+    movss xmm0, [rel g_sc_tmp]
+    ret
+
+; -----------------------------------------------------------------------------
+; atan2f — the angle of the point (x, y) (x87 fpatan; milestone 19).
+;   in:  xmm0 = y, xmm1 = x (floats)
+;   out: xmm0 = atan2(y, x) in radians, -pi .. pi
+;   clobbers: xmm0, x87 st0-st1 (left empty)
+;   note: uses a static scratch slot; call from the main thread only.
+; -----------------------------------------------------------------------------
+atan2f:
+    movss [rel g_sc_tmp], xmm0
+    fld dword [rel g_sc_tmp]            ; y
+    movss [rel g_sc_tmp], xmm1
+    fld dword [rel g_sc_tmp]            ; x (st0), y (st1)
+    fpatan                              ; st0 = atan(st1 / st0), quadrant-correct
     fstp dword [rel g_sc_tmp]
     movss xmm0, [rel g_sc_tmp]
     ret

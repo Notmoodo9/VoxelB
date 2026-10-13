@@ -394,6 +394,68 @@ def star_essence():
     return outline(img, (0.12, 0.1, 0.18))
 
 
+def meat(raw):
+    """A cut of meat with its bone: red and marbled raw, browned when cooked."""
+    r = rng("beef_raw" if raw else "beef_cooked")
+    m = shape_mask([
+        "................",
+        "................",
+        "......4455......",
+        "....34455554....",
+        "...3445555554...",
+        "..234455555543..",
+        "..2334455555432.",
+        "..12334455543321",
+        "...1223344433211",
+        "....112233322199",
+        "......11122219.9",
+        "...........99...",
+        "................",
+        "................",
+        "................",
+        "................",
+    ])
+    base = "c8303a" if raw else "8a4a24"
+    pal = list(ramp(base, n=6, spread=0.22))
+    pal = pal + [pal[0]] * 3 + [np.array((0.94, 0.9, 0.82))]
+    img = paint(m, np.array(pal), r, jitter=1)
+    # fat marbling (raw) or a seared crust (cooked)
+    for y in range(16):
+        for x in range(16):
+            if img[y, x, 3] > 0 and m[y, x] < 9 and r.random() < 0.07:
+                img[y, x, :3] = (0.98, 0.86, 0.84) if raw else pal[1] * 0.8
+    img = np.roll(img, 2, axis=0)
+    return outline(img, (0.16, 0.05, 0.05) if raw else (0.12, 0.06, 0.03))
+
+
+def leather():
+    r = rng("leather")
+    m = shape_mask([
+        "................",
+        "................",
+        "...33.....33....",
+        "..3445...5443...",
+        "..34455555543...",
+        "...445555554....",
+        "...344555543....",
+        "...344555443....",
+        "..2344455443....",
+        "..23344554432...",
+        "..22333443322...",
+        "...22.2332.22...",
+        "................",
+        "................",
+        "................",
+        "................",
+    ])
+    pal = ramp("a0602e", n=6, spread=0.2)
+    img = paint(m, pal, r, jitter=1)
+    for y, x in ((5, 7), (7, 6), (8, 9)):       # stitching marks
+        img[y + 0, x, :3] = pal[1]
+    img = np.roll(img, 1, axis=0)
+    return outline(img, (0.14, 0.07, 0.03))
+
+
 ITEMS = {
     "coal": coal,
     "diamond": lambda: gem("diamond", "37d6e0"),
@@ -412,6 +474,9 @@ ITEMS = {
     "fibre_binding": fibre_binding,
     "flux": flux,
     "star_essence": star_essence,
+    "beef": lambda: meat(True),
+    "cooked_beef": lambda: meat(False),
+    "leather": leather,
 }
 for _tier in TIER_COLOURS:
     for _kind in ("pickaxe", "axe", "shovel", "hoe"):

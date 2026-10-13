@@ -51,9 +51,10 @@
 %include "lod.inc"
 
 extern icons_init, held_init, drops_view_draw, g_dig_pos, g_dig_progress
+extern mobs_render_init, mobs_prepare, mobs_draw, mobs_shadow
 global world_render_init, world_render_draw, world_render_shutdown, tint_upload, shadow_apply
 global g_world_visible, g_world_drawn_quads, g_world_gpu_bytes, g_quad_buffer
-global hand_light
+global hand_light, scene_uniforms, g_cam_mod
 global g_light_buffer, g_held_on, g_daylight, g_shadow_records, g_cam_in_water
 global g_world_draws, g_vis_visited, g_world_gpu_visible, g_world_occluded
 
@@ -328,6 +329,7 @@ PROC world_render_init, 0, rbx
     jz .fail
     call icons_init                     ; (milestone 18: no icons is not fatal)
     call held_init                      ; the item in hand (not fatal either)
+    call mobs_render_init               ; the animals (milestone 19; not fatal)
 
     ; biome tint map: 1024 x 1024 texels per layer, one per 4 x 4 blocks,
     ; repeating every 4096 blocks (the loaded world is always smaller);
@@ -961,6 +963,7 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     mov [rel g_trans_count], rax
     call build_planes
     call gpu_frame_begin
+    call mobs_prepare                   ; the animals' boxes this frame (milestone 19)
     lea rcx, [rel g_arena_frame]
     INVOKE arena_alloc, rcx, MAX_PASS_ENTRIES * ENTRY_SIZE, 16
     mov [rel g_cut_list], rax
@@ -993,64 +996,11 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     GL glProgramUniform4fv, rbx, U_LOD_RA, 1, r9
     lea r9, [rel g_lod_r + 16]
     GL glProgramUniform4fv, rbx, U_LOD_RB, 1, r9
-    movss xmm2, [rel c_fog_default]
-    mov eax, [rel g_lod_levels]
-    test eax, eax
-    jz .fog
-    lea rcx, [rel g_lod_r]
-    movss xmm2, [rel c_fog_lod]
-    divss xmm2, [rcx + rax * 4]
-.fog:
-    GL glProgramUniform1f, rbx, U_FOG
-    ; lighting
-    mov eax, [rel g_smooth_lighting]
-    mov ecx, [rel g_ambient_occlusion]
-    add ecx, ecx
-    or eax, ecx
-    mov ecx, [rel g_height_fog]
-    shl ecx, 2
-    or eax, ecx
-    GL glProgramUniform1i, rbx, U_LIGHT_FLAGS, rax
-    ; sky and fog (milestone 14)
-    lea r9, [rel g_sun_dir]
-    GL glProgramUniform3fv, rbx, U_SUN_DIR, 1, r9
-    movsd xmm0, [rel g_cam_pos + 8]
-    cvtsd2ss xmm2, xmm0
-    GL glProgramUniform1f, rbx, U_CAM_Y
-    cvtsi2ss xmm2, dword [rel g_sea_level]
-    addss xmm2, [rel c_fog_lift]
-    GL glProgramUniform1f, rbx, U_FOG_BASE
-    GL glProgramUniform1i, rbx, U_SHADOWS, [rel g_shadow_on]
+    mov ecx, ebx
+    call scene_uniforms                 ; fog, sky, shadows, held light (shared with animals)
     GL glProgramUniform1i, rbx, U_CASCADE, 0
     GL glProgramUniform1i, rbx, U_WATER, [rel g_water_quality]
     call water_camera
-    movss xmm2, [rel g_daylight]
-    GL glProgramUniform1f, rbx, U_DAYLIGHT
-    ; the held light: a light block in either hand (milestone 18 part 5),
-    ; or the debug light (toggle_held_light)
-    call hand_light
-    test eax, eax
-    jnz .hand_lit
-    mov eax, [rel g_held_light]
-    mov ecx, [rel g_held_on]
-    jmp .held_rgb
-.hand_lit:
-    mov ecx, 1
-.held_rgb:
-    cvtsi2ss xmm0, ecx
-    movss [LOCAL(12)], xmm0
-    movzx ecx, al
-    cvtsi2ss xmm0, ecx
-    movss [LOCAL(0)], xmm0
-    movzx ecx, ah
-    cvtsi2ss xmm0, ecx
-    movss [LOCAL(4)], xmm0
-    shr eax, 16
-    movzx ecx, al
-    cvtsi2ss xmm0, ecx
-    movss [LOCAL(8)], xmm0
-    lea r9, [LOCAL(0)]
-    GL glProgramUniform4fv, rbx, U_HELD, 1, r9
     GL glBindVertexArray, [rel g_world_vao]
     GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 0, [rel g_quad_buffer]
     GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 6, [rel g_light_buffer]
@@ -1468,6 +1418,12 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     GL glEnable, GL_CULL_FACE
     inc qword [rel g_world_draws]
 .p2_done:
+    ; the animals (milestone 19), opaque: before the water copies the scene
+    call mobs_draw
+    GL glUseProgram, rbx
+    GL glBindVertexArray, [rel g_world_vao]
+    GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 3, [rel g_ring]
+    GL glBindBuffer, GL_DRAW_INDIRECT_BUFFER, [rel g_cmd_buf]
     ; pass 3: translucent (blended, no depth writes)
     mov rax, [rel g_rec_count]
     sub rax, [rel g_n_opaque]
@@ -1512,6 +1468,72 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     lea rdx, [rel g_fence]
     mov [rdx + rcx * 8], rax
 .done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; scene_uniforms — the lighting and fog uniforms shared by the world and the
+; animals (shaders/chunk.frag, shaders/mob.frag: the same locations).
+;   in:  ecx = program
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC scene_uniforms, 16, rbx
+    mov ebx, ecx
+    movss xmm2, [rel c_fog_default]
+    mov eax, [rel g_lod_levels]
+    test eax, eax
+    jz .fog
+    lea rcx, [rel g_lod_r]
+    movss xmm2, [rel c_fog_lod]
+    divss xmm2, [rcx + rax * 4]
+.fog:
+    GL glProgramUniform1f, rbx, U_FOG
+    ; lighting
+    mov eax, [rel g_smooth_lighting]
+    mov ecx, [rel g_ambient_occlusion]
+    add ecx, ecx
+    or eax, ecx
+    mov ecx, [rel g_height_fog]
+    shl ecx, 2
+    or eax, ecx
+    GL glProgramUniform1i, rbx, U_LIGHT_FLAGS, rax
+    ; sky and fog (milestone 14)
+    lea r9, [rel g_sun_dir]
+    GL glProgramUniform3fv, rbx, U_SUN_DIR, 1, r9
+    movsd xmm0, [rel g_cam_pos + 8]
+    cvtsd2ss xmm2, xmm0
+    GL glProgramUniform1f, rbx, U_CAM_Y
+    cvtsi2ss xmm2, dword [rel g_sea_level]
+    addss xmm2, [rel c_fog_lift]
+    GL glProgramUniform1f, rbx, U_FOG_BASE
+    GL glProgramUniform1i, rbx, U_SHADOWS, [rel g_shadow_on]
+    movss xmm2, [rel g_daylight]
+    GL glProgramUniform1f, rbx, U_DAYLIGHT
+    ; the held light: a light block in either hand (milestone 18 part 5),
+    ; or the debug light (toggle_held_light)
+    call hand_light
+    test eax, eax
+    jnz .hand_lit
+    mov eax, [rel g_held_light]
+    mov ecx, [rel g_held_on]
+    jmp .held_rgb
+.hand_lit:
+    mov ecx, 1
+.held_rgb:
+    cvtsi2ss xmm0, ecx
+    movss [LOCAL(12)], xmm0
+    movzx ecx, al
+    cvtsi2ss xmm0, ecx
+    movss [LOCAL(0)], xmm0
+    movzx ecx, ah
+    cvtsi2ss xmm0, ecx
+    movss [LOCAL(4)], xmm0
+    shr eax, 16
+    movzx ecx, al
+    cvtsi2ss xmm0, ecx
+    movss [LOCAL(8)], xmm0
+    lea r9, [LOCAL(0)]
+    GL glProgramUniform4fv, rbx, U_HELD, 1, r9
     RETURN
 ENDPROC
 
@@ -1976,6 +1998,10 @@ PROC shadow_pass, 48, rbx, rsi, rdi, r12, r13
     GL glBindBuffer, GL_DRAW_INDIRECT_BUFFER, rax
     GL glMultiDrawArraysIndirect, GL_TRIANGLES, 0, [rel g_shadow_records], 0
     inc qword [rel g_world_draws]
+    mov ecx, [LOCAL(SP_C)]
+    inc ecx
+    call mobs_shadow                    ; the animals cast shadows too (milestone 19)
+    GL glBindVertexArray, [rel g_world_vao]
 .cascade_next:
     inc dword [LOCAL(SP_C)]
     cmp dword [LOCAL(SP_C)], SHADOW_CASCADES

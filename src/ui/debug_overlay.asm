@@ -45,6 +45,8 @@ extern g_block_names
 extern g_cl_player, g_sim_tick, g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us
 extern g_pkt_sent_sim, g_pkt_sent_client, g_pkt_dropped
 extern g_drop_count
+extern g_ent_count, g_ent_awake, g_ent_sent, g_ent_tick_us, g_ents_shown
+extern g_mobs_drawn, g_mob_boxes, g_store_pop_us, g_store_pop_count, g_mob_prep_us
 extern g_target_valid, g_target, g_target_id, g_held_block, g_edit_applied, g_edit_rejected
 extern g_stream_remeshes, g_fluid_updates, g_fluid_changes, g_fluid_pending
 
@@ -161,6 +163,16 @@ s_t_none:       db "none", 0
 s_t_at:         db " at ", 0
 s_t_held:       db "   held ", 0
 s_drops:        db "   dropped items ", 0
+s_animals:      db "Animals ", 0
+s_a_awake:      db "   awake ", 0
+s_a_sent:       db "   seen ", 0
+s_a_drawn:      db "   drawn ", 0
+s_a_boxes:      db " (boxes ", 0
+s_a_prep:       db ", prep ", 0
+s_a_tick:       db " us)   tick ", 0
+s_a_herds:      db " us   columns checked ", 0
+s_a_pop:        db " (last ", 0
+s_a_us:         db " us)", 0
 s_t_edits:      db "   edits ", 0
 s_t_rej:        db "  rejected ", 0
 s_t_remesh:     db "  remeshed columns ", 0
@@ -616,6 +628,32 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
     PUT s_drops
     mov eax, [rel g_drop_count]
     PUTNUM rax, 0
+    PUT s_nl
+    ; animals (milestone 19)
+    PUT s_animals
+    mov eax, [rel g_ent_count]
+    PUTNUM rax, 0
+    PUT s_a_awake
+    mov eax, [rel g_ent_awake]
+    PUTNUM rax, 0
+    PUT s_a_sent
+    mov eax, [rel g_ents_shown]
+    PUTNUM rax, 0
+    PUT s_a_drawn
+    mov eax, [rel g_mobs_drawn]
+    PUTNUM rax, 0
+    PUT s_a_boxes
+    mov eax, [rel g_mob_boxes]
+    PUTNUM rax, 0
+    PUT s_a_prep
+    PUTNUM [rel g_mob_prep_us], 0
+    PUT s_a_tick
+    PUTNUM [rel g_ent_tick_us], 0
+    PUT s_a_herds
+    PUTNUM [rel g_store_pop_count], 0
+    PUT s_a_pop
+    PUTNUM [rel g_store_pop_us], 0
+    PUT s_a_us
     PUT s_nl
     ; distant terrain tiles (milestone 12)
     PUT s_lod

@@ -1795,3 +1795,46 @@ block for their upper half (mossy cobblestone boulders).
   PKT_C_INV_DRAG on release; the simulation skips slots that can't take
   the item (full, other item, result, furnace output) and splits what is
   carried among the rest. A drag over a single slot is a plain click.
+
+## D98 — Animals: entities, regions on disk, box models (M19)
+* **One entity table in the simulation** (8192 slots, 128 bytes each; the
+  slot is the id the client knows). An animal belongs to the **entity
+  region** it stands in (32 × 32 columns, like the block region files),
+  kept in memory while needed and saved as its own small file
+  (`e.<rx>.<rz>.vxe`): block regions only store edited columns, but
+  animals must always persist (owner: "always saved, nothing despawns"),
+  and a per-region file keeps saving proportional to where the player has
+  been. Regions load on demand (an animal walks in; the land near the
+  player is checked for herds) and are saved and dropped 768 blocks away.
+* **Herds are placed once per column**, when it is first generated near
+  the player (6 columns), seeded by the world seed and the column, so the
+  same world gets the same herds; a bit per column in the region file
+  remembers it. Biome: the blend map's biome at the column's centre. A
+  slow trickle (every 30 s, a column 3–6 away with no animals around)
+  rolls again so hunted land refills. Herds stand on the first opaque
+  ground from the top (not on leaves, not in water).
+* **Awake within 128 blocks** of the player on generated ground: think,
+  move, sent to the client when they change; the rest are frozen and the
+  client forgets them (ids are reused only after a "gone" packet).
+* **Bodies use the player's block collision** (physics.asm boxes): a box
+  of the mob's size, gravity, a jump into 1-block steps, floating in
+  water. Part 1 thinking is local (idle / wander a few blocks / flee),
+  with a look-ahead that refuses drops of more than 3 blocks and lava;
+  paths (A*) come in part 2.
+* **Models are boxes from data files**, drawn by **vertex pulling**: each
+  box is a 96-byte record (position, yaws, pivot, corner, size, skin
+  place, light) in a ring of three storage buffers; mob.vert builds the
+  36 vertices (one draw for every animal, and the same records into the
+  shadow cascades). Skins are one 64 × 64 texture array, a layer per
+  variant, painted by a generator that works in model space so spots run
+  across boxes.
+* **Animal light without a CPU light grid**: the world's light lives in
+  per-quad GPU words, so the client looks at the blocks above an animal
+  every 16 frames (open sky, leaves, roof with open sky beside, closed)
+  for its sky light; sun shadows come from the cascades as for blocks;
+  block light only from the held light (torches near animals: later).
+* **The client glides and animates**: positions and angles glide to the
+  latest tick, the stride follows the walking speed, the legs the
+  distance walked; a dying animal tips over red for a second, then drops
+  its loot. Clicking an animal nearer than the targeted block hits it
+  (PKT_C_ATTACK); the simulation checks the reach.

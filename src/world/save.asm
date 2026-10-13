@@ -64,7 +64,7 @@ global save_update
 global g_save_enabled, g_save_exists, g_save_player_flags, g_save_held
 global g_save_inv, g_save_inv_loaded, g_save_inv_sel
 global g_save_columns, g_save_bytes, g_save_loaded, g_save_last_ms
-global g_world_name, g_autosave_minutes, save_peek
+global g_world_name, g_autosave_minutes, save_peek, g_dir
 global g_world_mode, g_world_difficulty, g_world_hardcore
 
 extern str_copy, str_append_dec, str_append_sdec, str_ieq, str_parse_u64
@@ -74,7 +74,7 @@ extern block_find, timer_elapsed_us, thumb_write
 extern g_seed_override, g_seed_override_set, g_force_flat, g_generator
 extern g_world_seed, g_time_override, g_sim_time
 extern g_cam_pos, g_cam_yaw, g_cam_pitch, g_held_block, g_block_names
-extern g_inv, g_inv_sel, craft_sync, station_find, g_station_names
+extern g_inv, g_inv_sel, craft_sync, station_find, g_station_names, store_save_all
 extern g_pl_pos, g_pl_eye, g_pl_flags, g_loaded, g_loaded_count
 
 IMPORT CreateFileA, ReadFile, WriteFile, CloseHandle, SetFilePointerEx
@@ -1937,6 +1937,7 @@ PROC save_all, 16, rbx, rsi, rdi
     call write_player_dat
     call craft_sync                     ; (an open chest's window)
     call write_containers
+    call store_save_all                 ; the animals (milestone 19)
     mov dword [rel g_save_exists], 1
     lea rcx, [rel g_path]
     lea rdx, [rel g_dir]

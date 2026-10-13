@@ -602,6 +602,34 @@ A recipe bigger than 2 × 2 needs a 3 × 3 grid, so it is made at a
 workbench. Debug builds check a few known grids at start and log
 `recipes: self-check PASS`.
 
+## Mob files (`data/mobs/*.mob`, Milestone 19)
+
+Animals (design/mobs/passive_animals.md). Read in file-name order after the
+items and biomes; models must come before the mobs that use them. Adding an
+animal never needs assembly. Records:
+
+| Record | Key | Meaning |
+|---|---|---|
+| `[model <name>]` | `skin_size` | `64 64` (every skin is 64 × 64; one texture array) |
+| | `part` | `name, motion, pivot x y z, box x y z, size w h d, u v` — one box (up to 32 per model). Pixels: 16 = one block; the model faces north (−Z), y up from the feet centre. `box` is the box's low corner from the pivot (halves allowed), `size` whole pixels, `u v` its place in the skin. `motion`: `none`, `head` (turns and tilts with the look), `leg0` / `leg1` (swing in opposite phases when walking), `tail` (sways) |
+| `[mob <name>]` | `title` | the shown name |
+| | `health` | hit points (a hit takes 1 until combat, milestone 21) |
+| | `size` | `width height` of its body box, in blocks (babies half) |
+| | `speed` | walking speed, blocks per second (running away: 2.2 ×) |
+| | `temper` | `calm` (runs when hurt) or `wild` (also runs from a player within 12 blocks) |
+| | `drop` | `item, min, max` — loot when it dies (up to 4; babies drop nothing) |
+| | `variant` | `name, skin, model` — a look (`assets/textures/mobs/<skin>.png`); herds are of one variant |
+| `[spawn]` | `mob` | the animal |
+| | `variant` | one of its variants (default its first) |
+| | `biomes` | biome names |
+| | `chance` | % of those biomes' chunk columns that get a herd when first generated (the rules of a biome add up; above 100 every column) |
+| | `herd` | `min, max` animals (1–16) |
+
+Skin layout of a box with size w × h × d at (u, v), in pixels: top
+(u+d, v) w × d, bottom (u+d+w, v) w × d, west side (u, v+d) d × h, front
+(−Z) (u+d, v+d) w × h, east side (u+d+w, v+d) d × h, back (u+2d+w, v+d)
+w × h — `tools/texgen/mobgen.py` paints skins from the same parts.
+
 ## Saved worlds (`saves/<name>/`, Milestone 17)
 
 Written by the game; `--world <name>` picks the world (default `world`,
@@ -655,3 +683,17 @@ Binary, little endian, 4096-byte sectors. One file holds 32 × 32 columns
   `y << 10 | z << 5 | x`): kind 0 one block id (u16); kind 1 a palette
   (u16 count, u16 ids) and one byte per block; kind 2 u16 per block.
   Sections that are all air are left out.
+
+### Entity region files (`overworld/entities/e.<rx>.<rz>.vxe`, Milestone 19)
+
+The animals, by region of 32 × 32 chunk columns (blocks `rx * 1024` …
+`rx * 1024 + 1023`). Binary, little endian:
+
+* Header (144 bytes): `VXEN`, u32 version (1), u32 animal count, u32 0, then
+  128 bytes: a bit per column (`(cx & 31) + (cz & 31) * 32`), set once the
+  column had its herd roll (it never gets another from generation).
+* Then 64 bytes per animal: f64 x, y, z (feet centre), f32 yaw, u16 health,
+  u16 flags (1 = baby), u32 age in ticks, 24 bytes `mob:variant`
+  (zero-padded), 4 zero bytes. An unknown `mob:variant` (a removed data
+  file) is dropped with a warning.
+

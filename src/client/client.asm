@@ -38,7 +38,7 @@ extern g_cam_yaw, g_cam_pitch, g_cam_pos, g_sim_alpha
 extern daycycle_set, timer_elapsed_us
 extern interact_init, interact_update, stream_block_changed
 extern g_held_block, g_item_block, g_dig_want, g_target_valid, g_target
-extern drops_view_packet, drops_view_reset
+extern drops_view_packet, drops_view_reset, ents_view_packet, ents_view_reset
 
 %define DOUBLE_TAP_US   300000          ; move_up twice within this: fly
 
@@ -89,6 +89,7 @@ PROC client_init, 0
     mov [rel g_csel], eax
     mov dword [rel g_dig_progress], 0xBF800000   ; -1: not mining
     call drops_view_reset
+    call ents_view_reset                ; animals (milestone 19)
     xor eax, eax
     mov [rel g_cwin + WIN_PKT.kind], eax
     mov [rel g_cwin_event], eax
@@ -395,6 +396,16 @@ PROC client_view, 0, rsi, rdi
     call drops_view_packet
     jmp .packet
 .not_drop:
+    cmp eax, PKT_S_ENTITY
+    je .entity
+    cmp eax, PKT_S_ENTITY_GONE
+    jne .not_entity
+.entity:
+    mov ecx, eax
+    lea rdx, [rel g_cl_pkt + PKT.data]
+    call ents_view_packet               ; animals (milestone 19)
+    jmp .packet
+.not_entity:
     cmp eax, PKT_S_TIME
     jne .packet
     mov eax, [rel g_cl_pkt + PKT.data + TIME_PKT.time]

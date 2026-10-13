@@ -1,0 +1,16 @@
+# What animals give (milestone 19, design/mobs/passive_animals.md). Eating
+# comes with survival (milestone 20); until then food is an ingredient.
+
+[item beef]
+title = Raw beef
+texture = beef
+tab = food
+
+[item cooked_beef]
+title = Cooked beef
+texture = cooked_beef
+tab = food
+
+[item leather]
+texture = leather
+tab = items

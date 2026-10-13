@@ -41,6 +41,7 @@ endstruc
 %define PKT_C_RECIPE        10          ; INV_PKT .slot: recipe to lay out in the grid, .arg INVB_SHIFT: as many as possible
 %define PKT_C_SWAP_HANDS    11          ; the main and the off hand trade items (no payload)
 %define PKT_C_INV_DRAG      12          ; DRAG_PKT: a stack spread over slots (Shift+drag / right-drag)
+%define PKT_C_ATTACK        13          ; ENT_PKT .id: hit an animal (milestone 19)
 
 ; inventory (milestone 18): slots 0-8 are the hotbar, 9-35 the inventory
 struc INV_PKT
@@ -124,6 +125,24 @@ endstruc
 %define PKT_S_DROP_GONE     71          ; DROP_PKT .id: picked up or gone
 %define PKT_S_WINDOW        72          ; WIN_PKT: the window opened / closed (WIN_NONE)
 %define PKT_S_FURNACE       73          ; FURNACE_PKT: the open furnace's progress (every tick)
+%define PKT_S_ENTITY        74          ; ENT_PKT: an animal appeared / moved / changed (milestone 19)
+%define PKT_S_ENTITY_GONE   75          ; ENT_PKT .id: out of sight, dead or unloaded
+
+; animals (milestone 19): the simulation's entity table slot is the id
+struc ENT_PKT
+    .pos        resq 3                  ; f64 feet centre
+    .id         resd 1
+    .yaw        resd 1                  ; f32 body (radians, 0 north, + east)
+    .head_yaw   resd 1                  ; f32 the head, from the body
+    .head_pitch resd 1                  ; f32 + up
+    .variant    resw 1
+    .flags      resw 1                  ; EPF_*
+endstruc
+%define EPF_BABY            1
+%define EPF_HURT            2           ; flashes red
+%define EPF_DYING           4           ; falls over
+%define EPF_WATER           8           ; swimming
+%define MAX_ENTITIES        8192
 
 struc FURNACE_PKT
     .cook       resd 1                  ; f32 0..1: the item being smelted

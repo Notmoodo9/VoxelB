@@ -33,6 +33,7 @@ global g_target_valid, g_target, g_target_face, g_target_id, g_held_block
 
 extern g_cam_pos, g_cam_yaw, g_cam_pitch, g_mouse_captured, g_cl_player
 extern sincosf, timer_elapsed_us, g_block_station, g_off_block
+extern ents_pick, g_ent_target
 
 %define REPEAT_US       250000          ; holding a button: one action per this
 %define MAX_STEPS       64
@@ -69,6 +70,9 @@ g_req:          resb BLOCK_PKT_size
 g_pick:         resb INV_PKT_size
 g_dig_want:     resd 1                  ; Survival: break held on the target
 g_use:          resb WIN_PKT_size
+alignb 8
+g_target_dist:  resq 1                  ; f64 how far the targeted block is
+g_attack:       resb ENT_PKT_size
 
 section .text
 
@@ -101,6 +105,7 @@ PROC raycast, 16, rbx, rsi, rdi
     jbe .done                           ; (no player state yet)
     cvtss2sd xmm0, xmm0
     movsd [LOCAL(0)], xmm0              ; reach
+    movsd [rel g_target_dist], xmm0
     ; direction: (sin yaw cos pitch, sin pitch, -cos yaw cos pitch)
     movss xmm0, [rel g_cam_pitch]
     call sincosf
@@ -209,6 +214,7 @@ PROC raycast, 16, rbx, rsi, rdi
 .axis:
     comisd xmm0, [LOCAL(0)]
     ja .done                            ; beyond reach
+    movsd [rel g_target_dist], xmm0     ; (where the next cell starts)
     lea rcx, [rel g_tdelta]
     addsd xmm0, [rcx + rbx * 8]
     lea rcx, [rel g_tmax]
@@ -293,12 +299,33 @@ PROC action_due, 0, rbx, rsi
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; pick_animal — g_ent_target: the animal aimed at, nearer than the targeted
+; block and within reach (-1 none). Needs raycast's direction (g_dir).
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC pick_animal, 0
+    mov dword [rel g_ent_target], -1
+    movss xmm0, [rel g_cl_player + PLAYER_PKT.reach]
+    xorps xmm1, xmm1
+    comiss xmm0, xmm1
+    jbe .done
+    movsd xmm2, [rel g_target_dist]     ; (the reach, or the block's distance)
+    lea rcx, [rel g_cam_pos]
+    lea rdx, [rel g_dir]
+    call ents_pick
+    mov [rel g_ent_target], eax
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 ; interact_update — target, then break / place / pick.
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC interact_update, 0, rbx
     mov dword [rel g_dig_want], 0
     call raycast
+    call pick_animal                    ; (milestone 19)
     ; only with the mouse captured, and not on the click that captured it
     mov ebx, [rel g_was_captured]
     mov eax, [rel g_mouse_captured]
@@ -307,6 +334,21 @@ PROC interact_update, 0, rbx
     jz .done
     test ebx, ebx
     jz .done
+    ; aiming at an animal: a click hits it (milestone 19)
+    cmp dword [rel g_ent_target], 0
+    jl .blocks
+    mov ecx, ACT_BREAK_BLOCK
+    call input_pressed
+    test eax, eax
+    jz .done
+    mov eax, [rel g_ent_target]
+    mov [rel g_attack + ENT_PKT.id], eax
+    lea rcx, [rel g_to_sim]
+    lea r8, [rel g_attack]
+    INVOKE pkt_send, rcx, PKT_C_ATTACK, r8, ENT_PKT_size
+    call held_swing
+    jmp .done
+.blocks:
     cmp dword [rel g_target_valid], 0
     je .done
     cmp dword [rel g_world_mode], MODE_CREATIVE

@@ -37,6 +37,10 @@ icon = iron_pickaxe
 title = Items
 icon = diamond
 
+[tab food]
+title = Food
+icon = cooked_beef
+
 [tab nature]
 title = Nature
 icon = grass_block

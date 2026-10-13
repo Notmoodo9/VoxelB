@@ -36,7 +36,7 @@ global g_gravity
 global world_spawn, g_generator, g_seed_override, g_seed_override_set, g_force_flat
 global g_world_gen_count, g_world_gen_total_us, g_world_gen_max_us
 
-extern biomes_load, save_load_column, items_load, mining_load, recipes_load
+extern biomes_load, save_load_column, items_load, mining_load, recipes_load, mobs_load
 extern str_ieq, str_parse_float, str_parse_u64
 extern blocks_load, block_find
 extern terrain_load, terrain_gen_column, terrain_find_spawn, g_world_seed
@@ -1596,6 +1596,7 @@ PROC world_init, 0, rbx, rdi
     dec eax
     mov [rel g_gal_y1], eax
 .pools:
+    call mobs_load                      ; animals (milestone 19; after the biomes)
     call sections_init
     test eax, eax
     jz .fail

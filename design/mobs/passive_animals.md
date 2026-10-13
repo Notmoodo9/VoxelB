@@ -78,3 +78,12 @@ Naming: right-click an animal with a name tag; a small journal page asks for the
 * What pigs/boars give besides pork (tusks?) — none for now.
 * Uses for antlers, goat horns, feathers and rabbit's feet (crafting, magic M27).
 * Taming/pets, horses (steppe interview), bees, arctic animals, fish — later animals.
+
+## Built
+* **Part 1 (v0.19.1)**: the animal engine (data files, herds at
+  generation and the trickle, saving, hits, loot, box models with
+  shadows) and the **cow** in its four looks. Raw and cooked beef,
+  leather. Not yet: paths, following food, herds keeping together,
+  grazing, sleep, breeding (part 2); the other animals (part 3).
+* See them: the plains around spawn of the default seed (20261009),
+  e.g. `voxelb.exe --pos 41.5 106 -36 --look 0 -25`.

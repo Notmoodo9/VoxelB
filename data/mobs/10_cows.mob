@@ -1,0 +1,105 @@
+# Cows (milestone 19, design/mobs/passive_animals.md). Format: DATA_FORMAT.md
+# "Mob files". Models are boxes in pixels (16 = one block), facing north
+# (-Z), y up from the feet; skins are drawn by tools/texgen/mobgen.py from
+# these same parts.
+
+# ---- models ------------------------------------------------------------------
+# part = name, motion, pivot x y z, box x y z (from the pivot), size w h d, skin u v
+#   motion: none, head (looks around), leg0 / leg1 (swing in opposite
+#   phases), tail (sways)
+
+[model cow]
+skin_size = 64 64
+part = body,   none, 0 12 0,    -6 0 -9,    12 10 18,   0 14
+part = head,   head, 0 20 -9,   -4 -4 -6,   8 8 6,      0 0
+part = muzzle, head, 0 20 -9,   -3 -4 -7,   6 4 1,      28 0
+part = horn_l, head, 0 20 -9,   -5 2 -4,    1 3 1,      16 42
+part = horn_r, head, 0 20 -9,   4 2 -4,     1 3 1,      16 42
+part = ear_l,  head, 0 20 -9,   -6 0 -3,    2 1 1,      24 42
+part = ear_r,  head, 0 20 -9,   4 0 -3,     2 1 1,      24 42
+part = leg_fl, leg0, -3 12 -6,  -2 -12 -2,  4 12 4,     0 42
+part = leg_fr, leg1, 3 12 -6,   -2 -12 -2,  4 12 4,     0 42
+part = leg_bl, leg1, -3 12 7,   -2 -12 -2,  4 12 4,     0 42
+part = leg_br, leg0, 3 12 7,    -2 -12 -2,  4 12 4,     0 42
+part = tail,   tail, 0 21 9,    -0.5 -9 0,  1 9 1,      20 42
+
+# the shaggy highland cow: a longer coat, wide horns, a fringe over the eyes
+[model cow_highland]
+skin_size = 64 64
+part = body,   none, 0 12 0,    -6.5 -1.5 -9.5, 13 11 19, 0 14
+part = head,   head, 0 20 -9,   -4 -4 -6,   8 8 6,      0 0
+part = muzzle, head, 0 20 -9,   -3 -4 -7,   6 4 1,      28 0
+part = fringe, head, 0 20 -9,   -4.5 0 -6.5, 9 4 1,     44 0
+part = horn_l, head, 0 20 -9,   -9 2 -4,    5 1 1,      16 46
+part = horn_r, head, 0 20 -9,   4 2 -4,     5 1 1,      16 46
+part = tip_l,  head, 0 20 -9,   -9 3 -4,    1 2 1,      30 46
+part = tip_r,  head, 0 20 -9,   8 3 -4,     1 2 1,      30 46
+part = ear_l,  head, 0 20 -9,   -6 0 -3,    2 1 1,      34 46
+part = ear_r,  head, 0 20 -9,   4 0 -3,     2 1 1,      34 46
+part = leg_fl, leg0, -3 12 -6,  -2 -12 -2,  4 12 4,     0 46
+part = leg_fr, leg1, 3 12 -6,   -2 -12 -2,  4 12 4,     0 46
+part = leg_bl, leg1, -3 12 7,   -2 -12 -2,  4 12 4,     0 46
+part = leg_br, leg0, 3 12 7,    -2 -12 -2,  4 12 4,     0 46
+part = tail,   tail, 0 21 9.5,  -0.5 -10 0, 1 10 1,     40 46
+
+# the zebu: a hump over the shoulders, a dewlap, drooping ears
+[model cow_zebu]
+skin_size = 64 64
+part = body,   none, 0 12 0,    -6 0 -9,    12 10 18,   0 14
+part = hump,   none, 0 22 -5,   -3 0 -3,    6 4 6,      32 42
+part = dewlap, head, 0 20 -9,   -1.5 -7 -4, 3 4 4,      44 0
+part = head,   head, 0 20 -9,   -4 -4 -6,   8 8 6,      0 0
+part = muzzle, head, 0 20 -9,   -3 -4 -7,   6 4 1,      28 0
+part = horn_l, head, 0 20 -9,   -4 3 -3,    1 3 1,      16 42
+part = horn_r, head, 0 20 -9,   3 3 -3,     1 3 1,      16 42
+part = ear_l,  head, 0 20 -9,   -5.5 -2 -3, 2 3 1,      24 42
+part = ear_r,  head, 0 20 -9,   3.5 -2 -3,  2 3 1,      24 42
+part = leg_fl, leg0, -3 12 -6,  -2 -12 -2,  4 12 4,     0 42
+part = leg_fr, leg1, 3 12 -6,   -2 -12 -2,  4 12 4,     0 42
+part = leg_bl, leg1, -3 12 7,   -2 -12 -2,  4 12 4,     0 42
+part = leg_br, leg0, 3 12 7,    -2 -12 -2,  4 12 4,     0 42
+part = tail,   tail, 0 21 9,    -0.5 -10 0, 1 10 1,     20 42
+
+# ---- the animal ----------------------------------------------------------------
+[mob cow]
+health = 10
+size = 0.9 1.4
+speed = 1.4
+temper = calm
+drop = beef, 1, 3
+drop = leather, 0, 2
+# variant = name, skin (assets/textures/mobs/<skin>.png), model
+variant = spotted, cow_spotted, cow
+variant = brown, cow_brown, cow
+variant = highland, cow_highland, cow_highland
+variant = zebu, cow_zebu, cow_zebu
+
+# ---- where herds live ------------------------------------------------------------
+# chance: % of the chunk columns of these biomes that get a herd at generation
+[spawn]
+mob = cow
+variant = spotted
+biomes = plains, meadow
+chance = 12
+herd = 2, 5
+
+[spawn]
+mob = cow
+variant = brown
+biomes = forest, birch_grove, dark_forest, old_growth_forest, taiga
+chance = 5
+herd = 2, 4
+
+[spawn]
+mob = cow
+variant = highland
+biomes = snowy_taiga, snowy_tundra, steppe, alpine_meadow
+chance = 6
+herd = 2, 5
+
+[spawn]
+mob = cow
+variant = zebu
+biomes = savanna
+chance = 10
+herd = 2, 6

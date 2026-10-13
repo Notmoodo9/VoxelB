@@ -54,3 +54,9 @@ coal = 80
 *_planks = 15
 *_stem, stripped_*_stem = 15
 stick = 5
+
+# food (milestone 19)
+[smelt cooked_beef]
+input = beef
+result = cooked_beef
+seconds = 8

@@ -1,16 +1,82 @@
 # Progress
 
 ## Current state
-**Milestone 18, part 5: The adventurer's journal (UI rework, off hand, recipe book toggle, Shift+drag): DONE** (v0.18.5, Windows CI green: run #102)
+**Milestone 19, part 1: Animals — the entity framework and cows: DONE** (v0.19.1, Windows CI: see below)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
 
-Next: **Milestone 19 (🎨 DESIGN): entity framework + passive animals +
-pathfinding.** The entity framework is engine work; the animals start
-with a design interview (which animals, per biome, what they drop, how
-they behave). The character preview in the inventory waits for the
-player model (design/BACKLOG.md).
+Next: **Milestone 19, part 2: paths and behaviour** — A* paths over the
+blocks, following a player who holds their food, herds that keep together
+and flee together, grazing (grass to dirt and back), sleeping at night,
+breeding and babies (design/mobs/passive_animals.md, already approved).
+Then part 3: sheep, pig/boar, chicken, deer, rabbit, goat, forage plants,
+shearing, milking, eggs, leads and name tags.
+
+---
+
+## Milestone 19, part 1 — done (2026-10-13): animals and cows (D98)
+
+Interviewed and approved as design/mobs/passive_animals.md (seven animals;
+built one part at a time). This part: the engine and the cow.
+
+### What was built
+* **Data-driven animals** (`data/mobs/*.mob`, DATA_FORMAT.md "Mob
+  files"): box models with moving parts (head, legs, tail), animals with
+  health, size, speed, temper, loot and variants, and spawn rules per
+  biome. Adding an animal needs no assembly.
+* **Cows in four looks**: black-and-white spotted (plains, meadow),
+  chestnut with a white blaze (forests, taiga), the shaggy red highland
+  cow with wide horns and a fringe (snowy taiga, tundra, steppe, alpine
+  meadow), the pale zebu with a grey hump and dewlap (savanna). Skins are
+  painted by `tools/texgen/mobgen.py` from the models themselves.
+* **Herds** of 2–6 are placed when land near the player is first made
+  (the same seed gives the same herds); empty land slowly refills.
+* **Living animals**: they stand and look around, turn their heads to a
+  player nearby, wander a few blocks, never walk off drops of more than 3
+  blocks or into lava, jump up 1-block steps, float and swim in water;
+  legs swing with their pace, tails sway.
+* **Hits**: click a cow (nearer than the block you aim at): it flashes
+  red, is knocked back and runs away; at 0 health it tips over and drops
+  raw beef (1–3) and leather (0–2). Raw beef smelts into cooked beef. New
+  Food tab.
+* **Saved**: every animal is stored with the world
+  (`overworld/entities/e.<rx>.<rz>.vxe`); nothing despawns.
+* **Drawn** with sun shadows, the world's fog and sky light (darker under
+  trees and roofs), the held light.
+* Debug overlay: an `Animals` line (in memory, awake, seen, drawn, boxes,
+  render prep time, simulation time, columns checked for herds).
+
+### Verified (scripted with xdotool)
+* Screenshots of a spotted herd in the plains near spawn (seed
+  20261009), close-ups of all four looks (a test copy of the data put
+  every variant on the plains), cow shadows on the grass, heads turning
+  to the player between frames.
+* A hit knocked a cow back; with health set to 1 in a test copy, one hit
+  tipped it over red and 2 dropped items appeared (overlay "dropped
+  items 2").
+* Save and reload: 18 cows saved in 3 region files; reloaded with their
+  ages continuing (288 → 512 ticks), no herd placed twice.
+* Debug and release headless tests pass; no asserts.
+* Found and fixed: doubles written as integer constants (every animal
+  counted as out of range), an unaligned SSE constant (crash), the
+  instance upload's argument order (nothing drawn).
+
+### Performance (llvmpipe software GL in the test VM, 0.5–5 FPS)
+* Simulation: 18 animals in memory, 7 awake: 21–39 µs per tick.
+* Herd check of a new column: ~1.1 ms (mostly the biome blend map),
+  at most one column per tick.
+* Rendering: 7 cows = 84 boxes, one draw (+ one per updated shadow
+  cascade); CPU preparation 23 µs per frame (from 268 µs before walking a
+  dense list of the shown animals instead of the whole table).
+
+### Deferred
+* Paths, herds, grazing, sleep, breeding and babies (part 2); the other
+  six animals and their items (part 3).
+* Weapon damage: every hit takes 1 health until combat (milestone 21).
+* Torch light on animals (the world's block light is GPU-only; animals
+  get the sky light and the held light).
+* Animals pushing each other apart.
 
 ---
 

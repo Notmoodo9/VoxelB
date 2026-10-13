@@ -37,6 +37,7 @@ extern inv_place_block, inv_used_slot, inv_swap_hands, inv_drag
 extern dig_reset, dig_tick, drops_reset, drops_tick, g_world_mode
 extern craft_reset, craft_window, craft_recipe, craft_tick, furnace_tick
 extern cont_reset, save_load_containers, g_block_flags
+extern ents_reset, ents_tick, ents_attack, store_reset, store_open, store_update
 extern timer_elapsed_us, g_frame_us, g_time_of_day, g_day_length
 
 %define TICK_US             50000       ; 20 TPS
@@ -95,6 +96,9 @@ PROC sim_init, 16, rbx, rsi
     call inv_init
     call dig_reset
     call drops_reset
+    call ents_reset                     ; animals (milestone 19)
+    call store_reset
+    call store_open
     cvtss2sd xmm0, [rel g_time_of_day]
     movsd [rel g_sim_time], xmm0
     mov qword [rel g_sim_acc], 0
@@ -198,6 +202,12 @@ PROC sim_tick, 16, rbx, rsi, rdi
     call inv_drag
     jmp .packet
 .not_drag:
+    cmp eax, PKT_C_ATTACK
+    jne .not_attack
+    lea rcx, [rel g_pkt + PKT.data]
+    call ents_attack                    ; (milestone 19)
+    jmp .packet
+.not_attack:
     cmp eax, PKT_C_TOGGLE_FLY
     jne .packet                         ; (unknown packets are ignored)
     call player_toggle_fly
@@ -233,6 +243,8 @@ PROC sim_tick, 16, rbx, rsi, rdi
     lea rcx, [rel g_input]
     call dig_tick                       ; Survival mining (milestone 18)
     call drops_tick                     ; dropped items
+    call ents_tick                      ; animals (milestone 19)
+    call store_update                   ; their regions, new herds
     call craft_tick                     ; a station's window closes far away
     call furnace_tick                   ; furnaces burn and smelt
     call edit_tick                      ; block changes (they wait for busy columns)
