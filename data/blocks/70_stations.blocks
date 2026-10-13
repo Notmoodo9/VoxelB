@@ -29,3 +29,8 @@ textures = side: blast_furnace_side, top: blast_furnace_top, bottom: blast_furna
 shape    = facing
 textures = side: blast_furnace_side, top: blast_furnace_top, bottom: blast_furnace_top, north: blast_furnace_front_lit
 light    = 14, 9, 4
+
+# the Tinker's table (milestone 18 part 4): a workbench with tool racks and
+# a vise; it crafts like a workbench and repairs tools
+[block tinkers_table]
+textures = side: tinkers_table_side, top: tinkers_table_top, bottom: oak_planks

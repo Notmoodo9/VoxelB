@@ -29,3 +29,11 @@ block = blast_furnace
 lit = blast_furnace_lit
 speed = 2
 blast = 1
+
+# The Tinker's table crafts like a workbench and repairs tools: a worn tool
+# with 1-3 pairs of its repair material and binding (item files: `repair`,
+# `binding`) gives a third of its durability back per pair.
+[station tinkers_table]
+block = tinkers_table
+grid = 3
+repair = 1

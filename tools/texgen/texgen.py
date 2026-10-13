@@ -2440,6 +2440,37 @@ def make_furnaces(out):
                 out[key + "_glow"] = glow_layer(glow, "ff8a2a", 1.0)
 
 
+def make_tinkers_table(out):
+    """The Tinker's table (milestone 18 part 4): an oak top with an iron
+    plate and a vise; tools hanging on the sides."""
+    oak = WOODS["oak"][1]
+    pal = ramp(oak, 6, spread=0.13)
+    iron = ramp("aab3bd", 6, spread=0.2, sat_boost=0.5)
+    top = planks(oak, rng("tinkers_top")).copy()
+    for i in range(N):
+        for j in (0, N - 1):
+            top[i, j, :3] = pal[0]
+            top[j, i, :3] = pal[0]
+    top[2:8, 2:9, :3] = iron[2]                   # the iron plate
+    top[2, 2:9, :3] = iron[4]
+    top[3:7, 3, :3] = iron[4]
+    top[9:14, 9:14, :3] = iron[1]                 # the vise
+    top[10:13, 10:13, :3] = iron[3]
+    top[11, 8:15, :3] = iron[5]
+    out["tinkers_table_top"] = top
+    side = planks(oak, rng("tinkers_side")).copy()
+    side[0, :, :3] = pal[0]
+    side[1, :, :3] = iron[3]                      # an iron edge
+    side[N - 1, :, :3] = pal[0]
+    for x in (3, 8, 12):                          # hooks and hanging tools
+        side[3, x, :3] = iron[1]
+        for y in range(4, 10):
+            side[y, x, :3] = pal[1] if y > 5 else iron[4]
+    side[4, 2:5, :3] = iron[4]                    # a hammer head
+    side[4, 11:14, :3] = iron[3]                  # a file
+    out["tinkers_table_side"] = side
+
+
 def build_all():
     out = {}
     make_terrain(out)
@@ -2470,6 +2501,7 @@ def build_all():
     make_river(out)
     make_stations(out)
     make_furnaces(out)
+    make_tinkers_table(out)
     return out
 
 

@@ -1732,3 +1732,35 @@ block for their upper half (mossy cobblestone boulders).
   culling and LOD still see a plain cube. Placing one turns the front to
   the player (the simulation uses the yaw of the latest input). Stairs,
   doors etc. still place in their first state (known issue since M16).
+
+## D96 — Tools, smelting, repair (M18 part 4)
+* **Tools are item data**: 32 records (4 types × 8 tiers) with speed, tier,
+  durability, repair material and binding; recipes are the familiar shapes.
+  A slot's durability field is the **wear** (uses spent, 0 = new), so a new
+  tool needs no setup and every item without durability ignores it. Wear
+  grows by one per block broken that took time; at the tool's durability it
+  breaks. Wear travels with the item everywhere it moves (cursor, grids,
+  chests, dropped items, player.dat): a worn tool never joins a stack.
+* **Furnaces are containers with a fire** (`[furnace]` records; slots
+  input / fuel / output in the container store, plus burn and cook
+  counters). Every used furnace ticks in the simulation each tick, near or
+  far, so it keeps working while you're away (as designed); the open
+  window shows the live slots (no copy) and gets the progress each tick.
+  Speed multiplies cooking and burning, so the blast furnace is twice as
+  fast for the same fuel per item. A burning furnace swaps to its `lit`
+  block (same facing; light 13/14 warm orange, a glowing mouth texture), so
+  the world shows which furnaces are working; an unloaded one swaps when it
+  is next loaded.
+* **Smelting and fuels are data** (`[smelt]`, `[fuel]`): 10 smelts (six
+  bars, glass, stone, smooth stone, bricks), fuels coal 80 s, wood 15 s,
+  sticks 5 s (the design's numbers). Mythril and adamantite need the blast
+  furnace; gem ores drop the gem.
+* **Repair happens in the Tinker's table's crafting grid** (`repair = 1`):
+  one worn tool plus 1–3 pairs of its material and binding (one item per
+  cell) show the repaired tool as the result — no separate repair screen,
+  and the table still crafts like a workbench (star essence is made only
+  there). A third of the durability per pair, rounded up.
+* **Chance drops** (`[bonus]` in mining.cfg) give the binding materials:
+  plant fibre 20 % from grasses / 35 % from vines and reeds, resin 10 %
+  from logs; crystal sprouts always drop a crystal shard. The dice are the
+  simulation's own (xorshift), not the client's.

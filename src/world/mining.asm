@@ -6,6 +6,9 @@
 ;   [material <name>]  hardness = 1.5   tool = pickaxe   tier = wood
 ;                      blocks = stone, *bricks     shapes = plant, tall_plant
 ;   [drops]            <block pattern> = <item> [count] | none
+;   [bonus]            <block pattern> = <item> <count>, <percent>   a chance
+;                      of something extra besides the usual drop (resin
+;                      from logs, plant fibre from grass)
 ; A block gets the first material whose `shapes` or `blocks` match it (all
 ; its states alike); unmatched blocks are hardness 1, any tool, no tier. A
 ; block drops its own item unless a [drops] line says otherwise.
@@ -20,6 +23,7 @@
 ;   mining_time(ecx = block, edx = item in hand (0 = hand))
 ;       -> xmm0 seconds (< 0: unbreakable), eax 1 if it will drop
 ;   mining_drop(ecx = block) -> eax item (0 = nothing), edx count
+;   mining_bonus(ecx = block) -> eax item (0 = none), edx count, r8d percent
 ;   g_block_hardness (f32), g_block_tool, g_block_tier (u8) per block id
 ; =============================================================================
 %include "macros.inc"
@@ -30,7 +34,7 @@
 %include "block.inc"
 %include "items.inc"
 
-global mining_load, mining_time, mining_drop
+global mining_load, mining_time, mining_drop, mining_bonus
 global g_block_hardness, g_block_tool, g_block_tier
 
 extern str_ieq, str_parse_u64, str_parse_float, item_find
@@ -40,12 +44,14 @@ extern str_ieq, str_parse_u64, str_parse_float, item_find
 %define REC_NONE        0
 %define REC_MATERIAL    1
 %define REC_DROPS       2
+%define REC_BONUS       3
 
 section .rdata
 str_file:       db "data/items/mining.cfg", 0
 str_label:      db "mining.cfg", 0
 k_material:     db "material", 0
 k_drops:        db "drops", 0
+k_bonus:        db "bonus", 0
 k_hardness:     db "hardness", 0
 k_tool:         db "tool", 0
 k_tier:         db "tier", 0
@@ -96,14 +102,20 @@ g_mat_tier:     resb MAX_MATERIALS
 alignb 8
 g_drop_pat:     resq MAX_DROPS
 g_drop_val:     resq MAX_DROPS
+g_bonus_pat:    resq MAX_DROPS
+g_bonus_val:    resq MAX_DROPS
 g_block_hardness: resd 65536
 g_block_drop:   resw 65536              ; item dropped (by base block id)
 g_block_dropn:  resb 65536              ; how many
+g_block_bonus:  resw 65536              ; [bonus]: the extra item
+g_block_bonusn: resb 65536
+g_block_bonusp: resb 65536              ; its chance (percent)
 g_block_tool:   resb 65536
 g_block_tier:   resb 65536
 alignb 4
 g_mat_count:    resd 1
 g_drop_count:   resd 1
+g_bonus_count:  resd 1
 g_kind:         resd 1
 g_cur:          resd 1
 g_mark:         resq 1
@@ -173,6 +185,13 @@ PROC mining_pair, 0, rbx, rsi, rdi
     mov dword [rel g_kind], REC_DROPS
     RETURN
 .not_drops:
+    lea rdx, [rel k_bonus]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_bonus
+    mov dword [rel g_kind], REC_BONUS
+    RETURN
+.not_bonus:
     mov rdi, rbx
 .word:
     mov al, [rdi]
@@ -218,6 +237,18 @@ PROC mining_pair, 0, rbx, rsi, rdi
     RETURN
 
 .setting:
+    cmp dword [rel g_kind], REC_BONUS
+    jne .not_bonus_line
+    mov eax, [rel g_bonus_count]
+    cmp eax, MAX_DROPS
+    jae .full
+    inc dword [rel g_bonus_count]
+    lea rcx, [rel g_bonus_pat]
+    mov [rcx + rax * 8], rbx
+    lea rcx, [rel g_bonus_val]
+    mov [rcx + rax * 8], rsi
+    RETURN
+.not_bonus_line:
     cmp dword [rel g_kind], REC_DROPS
     jne .material
     mov eax, [rel g_drop_count]
@@ -362,6 +393,7 @@ ENDPROC
 PROC mining_load, 16, rbx, rsi, rdi, r12, r13
     mov dword [rel g_mat_count], 0
     mov dword [rel g_drop_count], 0
+    mov dword [rel g_bonus_count], 0
     lea rcx, [rel g_path]
     lea rdx, [rel str_file]
     call path_make
@@ -442,7 +474,7 @@ PROC mining_load, 16, rbx, rsi, rdi, r12, r13
     xor esi, esi
 .drop:
     cmp esi, [rel g_drop_count]
-    jae .next
+    jae .bonus
     lea rax, [rel g_drop_pat]
     mov rcx, [rax + rsi * 8]
     mov rdx, r13
@@ -461,12 +493,54 @@ PROC mining_load, 16, rbx, rsi, rdi, r12, r13
     mov rdx, [rax + rsi * 8]
     lea rcx, [rel str_no_item]
     call warn
-    jmp .next
+    jmp .bonus
 .drop_set:
     lea rcx, [rel g_block_drop]
     mov [rcx + rbx * 2], ax
     lea rcx, [rel g_block_dropn]
     mov [rcx + rbx], dl
+.bonus:
+    ; the first [bonus] line that matches
+    xor esi, esi
+.bonus_line:
+    cmp esi, [rel g_bonus_count]
+    jae .next
+    lea rax, [rel g_bonus_pat]
+    mov rcx, [rax + rsi * 8]
+    mov rdx, r13
+    call items_match_list
+    test eax, eax
+    jnz .bonus_found
+    inc esi
+    jmp .bonus_line
+.bonus_found:
+    lea rax, [rel g_bonus_val]
+    mov rcx, [rax + rsi * 8]
+    call parse_drop
+    cmp eax, 0
+    jle .next                           ; (unknown items: warned by [drops] users)
+    lea rcx, [rel g_block_bonus]
+    mov [rcx + rbx * 2], ax
+    lea rcx, [rel g_block_bonusn]
+    mov [rcx + rbx], dl
+    ; the chance: after the ','
+    lea rax, [rel g_bonus_val]
+    mov rcx, [rax + rsi * 8]
+.comma:
+    mov al, [rcx]
+    test al, al
+    jz .always
+    inc rcx
+    cmp al, ','
+    jne .comma
+    call str_parse_u64
+    cmp rax, 100
+    jbe .chance
+.always:
+    mov eax, 100
+.chance:
+    lea rcx, [rel g_block_bonusp]
+    mov [rcx + rbx], al
 .next:
     inc ebx
     jmp .block
@@ -535,6 +609,17 @@ mining_time:
     ret
 .never:
     xor eax, eax
+    ret
+
+; mining_bonus — eax = block ecx's [bonus] item (0 none), edx = count,
+; r8d = chance in percent
+mining_bonus:
+    lea rax, [rel g_block_bonusp]
+    movzx r8d, byte [rax + rcx]
+    lea rax, [rel g_block_bonusn]
+    movzx edx, byte [rax + rcx]
+    lea rax, [rel g_block_bonus]
+    movzx eax, word [rax + rcx * 2]
     ret
 
 ; mining_drop — eax = item dropped by block ecx (0 nothing), edx = count

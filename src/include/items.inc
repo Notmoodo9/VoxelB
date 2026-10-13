@@ -25,6 +25,7 @@ extern g_item_count, g_item_names, g_item_titles, g_item_block, g_item_stack
 extern g_item_tab, g_item_tex, g_item_flags, g_block_item
 extern g_tab_count, g_tab_titles, g_tab_icon
 extern g_item_tool, g_item_tier, g_item_speed, g_item_dur
+extern g_item_repair, g_item_binding
 extern item_tool_index, item_tier_index, items_match_list
 %endif
 %endif

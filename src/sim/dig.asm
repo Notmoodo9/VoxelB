@@ -17,7 +17,7 @@
 
 global dig_reset, dig_tick
 
-extern phys_block, mining_time, mining_drop, edit_request, drops_spawn
+extern phys_block, mining_time, mining_drop, mining_bonus, edit_request, drops_spawn
 extern pkt_send, g_to_client, g_world_mode, g_inv, g_inv_sel, inv_wear_selected
 
 %define TICK_S          0.05
@@ -40,11 +40,33 @@ g_cool:         resd 1
 g_req:          resb BLOCK_PKT_size
 g_out:          resb DIG_PKT_size
 g_at:           resq 3
+g_rng:          resd 1
 
 section .text
 
+; rand100 — eax = 0..99 (xorshift; the simulation's own dice)
+;   clobbers: rax, rcx, rdx
+rand100:
+    mov eax, [rel g_rng]
+    mov ecx, eax
+    shl ecx, 13
+    xor eax, ecx
+    mov ecx, eax
+    shr ecx, 17
+    xor eax, ecx
+    mov ecx, eax
+    shl ecx, 5
+    xor eax, ecx
+    mov [rel g_rng], eax
+    xor edx, edx
+    mov ecx, 100
+    div ecx
+    mov eax, edx
+    ret
+
 ; dig_reset — nothing being mined
 dig_reset:
+    mov dword [rel g_rng], 0x9E3779B9
     mov dword [rel g_active], 0
     mov dword [rel g_progress], 0
     mov dword [rel g_cool], 0
@@ -175,12 +197,6 @@ PROC dig_tick, 16, rbx, rsi
 .worn:
     cmp dword [LOCAL(D_HARVEST)], 0
     je .done
-    mov ecx, [LOCAL(D_BLOCK)]
-    call mining_drop
-    test eax, eax
-    jz .done
-    mov ebx, eax
-    mov esi, edx
     ; from the block's centre
     xor ecx, ecx
 .centre:
@@ -192,9 +208,28 @@ PROC dig_tick, 16, rbx, rsi
     inc ecx
     cmp ecx, 3
     jb .centre
+    mov ecx, [LOCAL(D_BLOCK)]
+    call mining_drop
+    test eax, eax
+    jz .bonus
+    mov ecx, eax
     lea r8, [rel g_at]
+    call drops_spawn
+.bonus:
+    ; sometimes something extra (resin from logs, fibre from grass)
+    mov ecx, [LOCAL(D_BLOCK)]
+    call mining_bonus
+    test eax, eax
+    jz .done
+    mov ebx, eax
+    mov esi, edx
+    mov [LOCAL(D_INSTANT)], r8d         ; (reused: the chance)
+    call rand100
+    cmp eax, [LOCAL(D_INSTANT)]
+    jae .done
     mov ecx, ebx
     mov edx, esi
+    lea r8, [rel g_at]
     call drops_spawn
     jmp .done
 .stop:

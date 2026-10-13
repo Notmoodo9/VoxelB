@@ -40,13 +40,14 @@ global craft_reset, craft_window, craft_recipe, craft_update, craft_take
 global craft_tick, g_win_kind, g_win_grid, g_win_slots, g_win_station
 global craft_block_broken, craft_sync, g_win_cont
 
-extern g_inv, inv_mark, inv_stack_of, inv_room, inv_add, inv_cursor_back
+extern g_inv, inv_mark, inv_stack_of, inv_room, inv_add, inv_add_dur, inv_cursor_back
 extern recipe_match, recipe_cell_ok, g_recipe_count, g_rec_result
 extern g_rec_amount, g_rec_station, g_rec_w, g_rec_h, g_rec_n, g_rec_ok
 extern g_rec_cells, g_block_station, g_station_grid
-extern phys_block, drops_spawn, pkt_send, g_to_client
+extern phys_block, drops_spawn, drops_spawn_dur, pkt_send, g_to_client
 extern g_pl_pos, g_pl_eye, g_station_slots, g_station_joins
-extern g_block_state, g_block_flags, g_station_kind
+extern g_block_state, g_block_flags, g_station_kind, g_station_repair
+extern items_match_list
 
 %define SLOT_SIZE       8
 %define MAX_REACH_SQ    64.0            ; a station's window closes beyond 8 blocks
@@ -68,6 +69,8 @@ g_recipe:       resd 1                  ; what the grid makes, -1 nothing
 g_win_pos2:     resd 3                  ; a double container's other block
 g_win_cont:     resd 2                  ; its container entries (second -1)
 g_win_half:     resd 1                  ; slots per block
+alignb 8
+g_repaired:     resq 1                  ; try_repair: the tool as it comes out
 g_items:        resw 9                  ; recipe_match's grid
 alignb 8
 g_at:           resq 3
@@ -131,20 +134,22 @@ feet:
     ret
 
 ; -----------------------------------------------------------------------------
-; give — item ecx x edx into the player's slots; what does not fit is
-; dropped at the player.
+; give — item ecx x edx (wear r8d) into the player's slots; what does not
+; fit is dropped at the player.
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC give, 0, rbx
+PROC give, 0, rbx, rsi
     mov ebx, ecx
-    call inv_add
+    mov esi, r8d
+    call inv_add_dur
     test eax, eax
     jz .done
     mov edx, eax
     mov ecx, ebx
     call feet
     lea r8, [rel g_at]
-    call drops_spawn
+    mov r9d, esi
+    call drops_spawn_dur
 .done:
     RETURN
 ENDPROC
@@ -201,6 +206,7 @@ PROC close_window, 0, rbx, rsi
     test ecx, ecx
     jz .grid
     movzx edx, word [rsi + 2]
+    movzx r8d, word [rsi + 4]
     mov qword [rsi], 0
     call give
     mov ecx, INV_CURSOR
@@ -215,6 +221,7 @@ PROC close_window, 0, rbx, rsi
     test ecx, ecx
     jz .next
     movzx edx, word [rsi + 2]
+    movzx r8d, word [rsi + 4]
     mov qword [rsi], 0
     cmp ebx, INV_RESULT
     je .marked                          ; (the result is only a preview)
@@ -609,8 +616,9 @@ PROC craft_block_broken, 16, rbx, rsi, rdi, r12
     test ecx, ecx
     jz .next
     movzx edx, word [rsi + rbx * 8 + 2]
+    movzx r9d, word [rsi + rbx * 8 + 4]
     lea r8, [rel g_at]
-    call drops_spawn
+    call drops_spawn_dur
 .next:
     inc ebx
     jmp .slot
@@ -648,6 +656,27 @@ PROC craft_update, 0, rbx
     mov edx, [rel g_win_station]
     call recipe_match
     mov ebx, eax
+    cmp ebx, -1
+    jne .show
+    ; a repairing station: a worn tool and its material + binding pairs
+    mov eax, [rel g_win_station]
+    test eax, eax
+    jz .show
+    lea rcx, [rel g_station_repair]
+    cmp byte [rcx + rax - 1], 0
+    je .show
+    call try_repair
+    test eax, eax
+    jz .show
+    mov dword [rel g_recipe], -2
+    lea rcx, [rel g_inv + INV_RESULT * SLOT_SIZE]
+    mov rax, [rel g_repaired]
+    cmp [rcx], rax
+    je .done
+    mov [rcx], rax
+    mov ecx, INV_RESULT
+    call inv_mark
+    jmp .done
 .show:
     mov [rel g_recipe], ebx
     lea rcx, [rel g_inv + INV_RESULT * SLOT_SIZE]
@@ -703,6 +732,8 @@ ENDPROC
 PROC craft_take, 0, rbx, rsi, rdi, r12
     mov r12d, ecx
     mov ebx, [rel g_recipe]
+    cmp ebx, -2
+    je .repair
     cmp ebx, -1
     je .done
     lea rax, [rel g_rec_result]
@@ -753,7 +784,150 @@ PROC craft_take, 0, rbx, rsi, rdi, r12
     jne .done                           ; the grid ran out (or makes something else)
     dec r12d
     jnz .again
+    jmp .done
+.repair:
+    ; the repaired tool: into the empty hand, or (shift) an empty slot
+    mov rsi, [rel g_repaired]
+    test r12d, INVB_SHIFT
+    jnz .repair_slot
+    lea rdx, [rel g_inv + INV_CURSOR * SLOT_SIZE]
+    cmp word [rdx], 0
+    jne .done
+    mov [rdx], rsi
+    mov ecx, INV_CURSOR
+    jmp .repaired
+.repair_slot:
+    xor ecx, ecx
+.free:
+    cmp ecx, INV_SLOTS
+    jae .done
+    lea rdx, [rel g_inv]
+    cmp word [rdx + rcx * SLOT_SIZE], 0
+    je .put
+    inc ecx
+    jmp .free
+.put:
+    mov [rdx + rcx * SLOT_SIZE], rsi
+.repaired:
+    call inv_mark
+    call use_grid
+    call craft_update
 .done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; try_repair — the grid holds one worn tool and as many pairs (1-3) of its
+; repair material and binding (one item per cell): g_repaired = the tool
+; with a third of its durability back per pair.
+;   out: eax = 1 if so
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define T_TOOL      0                   ; grid slot of the tool, -1
+%define T_MATS      4
+%define T_BINDS     8
+PROC try_repair, 16, rbx, rsi, rdi, r12
+    mov dword [LOCAL(T_TOOL)], -1
+    mov dword [LOCAL(T_MATS)], 0
+    mov dword [LOCAL(T_BINDS)], 0
+    ; the tool
+    xor ebx, ebx
+.find:
+    cmp ebx, 9
+    jae .found
+    mov ecx, ebx
+    call cell_slot
+    cmp eax, -1
+    je .find_next
+    lea rdx, [rel g_inv]
+    movzx ecx, word [rdx + rax * SLOT_SIZE]
+    test ecx, ecx
+    jz .find_next
+    lea rdx, [rel g_item_repair]
+    cmp qword [rdx + rcx * 8], 0
+    je .find_next
+    cmp dword [LOCAL(T_TOOL)], -1
+    jne .no                             ; two tools
+    mov [LOCAL(T_TOOL)], eax
+.find_next:
+    inc ebx
+    jmp .find
+.found:
+    mov eax, [LOCAL(T_TOOL)]
+    cmp eax, -1
+    je .no
+    lea rdx, [rel g_inv]
+    lea rsi, [rdx + rax * SLOT_SIZE]    ; the tool's slot
+    cmp word [rsi + 4], 0
+    je .no                              ; not worn
+    movzx edi, word [rsi]               ; the tool
+    ; every other item: its material or its binding
+    xor ebx, ebx
+.cell:
+    cmp ebx, 9
+    jae .counted
+    mov ecx, ebx
+    call cell_slot
+    cmp eax, -1
+    je .cell_next
+    cmp eax, [LOCAL(T_TOOL)]
+    je .cell_next
+    lea rdx, [rel g_inv]
+    movzx r12d, word [rdx + rax * SLOT_SIZE]
+    test r12d, r12d
+    jz .cell_next
+    lea rdx, [rel g_item_names]
+    mov r12, [rdx + r12 * 8]            ; its name
+    lea rdx, [rel g_item_repair]
+    mov rcx, [rdx + rdi * 8]
+    mov rdx, r12
+    call items_match_list
+    test eax, eax
+    jz .binding
+    inc dword [LOCAL(T_MATS)]
+    jmp .cell_next
+.binding:
+    lea rdx, [rel g_item_binding]
+    mov rcx, [rdx + rdi * 8]
+    test rcx, rcx
+    jz .no
+    mov rdx, r12
+    call items_match_list
+    test eax, eax
+    jz .no                              ; something else
+    inc dword [LOCAL(T_BINDS)]
+.cell_next:
+    inc ebx
+    jmp .cell
+.counted:
+    mov ecx, [LOCAL(T_MATS)]
+    test ecx, ecx
+    jz .no
+    cmp ecx, 3
+    ja .no
+    cmp ecx, [LOCAL(T_BINDS)]
+    jne .no
+    ; back: pairs x durability / 3 (rounded up)
+    lea rdx, [rel g_item_dur]
+    movzx eax, word [rdx + rdi * 2]
+    imul eax, ecx
+    add eax, 2
+    xor edx, edx
+    mov ecx, 3
+    div ecx
+    movzx ecx, word [rsi + 4]           ; wear
+    sub ecx, eax
+    jns .wear
+    xor ecx, ecx
+.wear:
+    mov rax, [rsi]
+    mov [rel g_repaired], rax
+    mov word [rel g_repaired + 2], 1
+    mov [rel g_repaired + 4], cx
+    mov eax, 1
+    RETURN
+.no:
+    xor eax, eax
     RETURN
 ENDPROC
 
@@ -819,6 +993,7 @@ PROC craft_recipe, 16, rbx, rsi, rdi, r12, r13, r14
     test ecx, ecx
     jz .back_next
     movzx edx, word [rsi + 2]
+    movzx r8d, word [rsi + 4]
     mov qword [rsi], 0
     call give
     mov ecx, r12d

@@ -1,0 +1,27 @@
+# Repairs (milestone 18 part 4, design/items/items_inventory.md): the
+# Tinker's table and the bindings.
+
+[recipe tinkers_table]
+shape = III / PWP / P.P
+I = iron_bar
+P = *_planks
+W = workbench
+result = tinkers_table
+
+# wood, stone and copper tools
+[recipe fibre_binding]
+ingredients = plant_fibre, plant_fibre, resin
+result = fibre_binding 2
+station = workbench
+
+# iron and diamond tools
+[recipe flux]
+ingredients = salt, sand, coal
+result = flux 2
+station = workbench
+
+# mythril, adamantite and star crystal tools
+[recipe star_essence]
+ingredients = star_crystal, crystal_shard, crystal_shard
+result = star_essence
+station = tinkers_table

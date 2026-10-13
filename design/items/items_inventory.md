@@ -117,3 +117,20 @@ should change):
   opens its grid in Creative.
 * Sneak + right click on a workbench or chest places a block against it.
 * The recipe book shows only what you can make right now.
+
+## Built in part 4 (tools, smelting, repair)
+
+* The 32 tools with the tier table's numbers; durability bars on slots.
+* Furnace (8 cobblestone) and blast furnace (iron bars, a furnace, smooth
+  stone); both glow while burning. Smelting: copper / iron / silver / gold
+  ores → bars (10 s), mythril (16 s) and adamantite (20 s) only in the
+  blast furnace; sand → glass, cobblestone → stone, stone → smooth stone,
+  clay → bricks. Fuels as decided.
+* Tinker's table (iron bars, a workbench, planks): put a worn tool and
+  1–3 pairs of material + binding in its grid. Bindings as decided; plant
+  fibre drops 20 % from grasses and ferns, 35 % from vines, reeds and
+  cattails; resin 10 % from logs; crystal sprouts drop a crystal shard.
+
+Chosen while building (tell me if any should change): the chance numbers
+above; clay → bricks; a furnace keeps cooking while you are anywhere in
+the world; lit furnaces give light.

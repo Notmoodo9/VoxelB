@@ -3,6 +3,8 @@
 # want this tool; `tier` decides what drops (mining.cfg); `durability` is
 # the number of blocks a tool breaks before it breaks itself. Pictures:
 # assets/textures/items/<name>.png (tools/texgen/itemgen.py).
+# `repair` and `binding`: what a Tinker's table repairs it with (one of
+# each restores a third of its durability; up to 3 pairs at once).
 
 # ---- wooden ----
 [item wooden_pickaxe]
@@ -12,6 +14,8 @@ tab = tools
 stack = 1
 tool = pickaxe
 tier = wood
+repair = *_planks
+binding = fibre_binding
 speed = 2
 durability = 60
 
@@ -22,6 +26,8 @@ tab = tools
 stack = 1
 tool = axe
 tier = wood
+repair = *_planks
+binding = fibre_binding
 speed = 2
 durability = 60
 
@@ -32,6 +38,8 @@ tab = tools
 stack = 1
 tool = shovel
 tier = wood
+repair = *_planks
+binding = fibre_binding
 speed = 2
 durability = 60
 
@@ -42,6 +50,8 @@ tab = tools
 stack = 1
 tool = hoe
 tier = wood
+repair = *_planks
+binding = fibre_binding
 speed = 2
 durability = 60
 
@@ -53,6 +63,8 @@ tab = tools
 stack = 1
 tool = pickaxe
 tier = stone
+repair = cobblestone, mossy_cobblestone
+binding = fibre_binding
 speed = 4
 durability = 132
 
@@ -63,6 +75,8 @@ tab = tools
 stack = 1
 tool = axe
 tier = stone
+repair = cobblestone, mossy_cobblestone
+binding = fibre_binding
 speed = 4
 durability = 132
 
@@ -73,6 +87,8 @@ tab = tools
 stack = 1
 tool = shovel
 tier = stone
+repair = cobblestone, mossy_cobblestone
+binding = fibre_binding
 speed = 4
 durability = 132
 
@@ -83,6 +99,8 @@ tab = tools
 stack = 1
 tool = hoe
 tier = stone
+repair = cobblestone, mossy_cobblestone
+binding = fibre_binding
 speed = 4
 durability = 132
 
@@ -94,6 +112,8 @@ tab = tools
 stack = 1
 tool = pickaxe
 tier = copper
+repair = copper_bar
+binding = fibre_binding
 speed = 5
 durability = 190
 
@@ -104,6 +124,8 @@ tab = tools
 stack = 1
 tool = axe
 tier = copper
+repair = copper_bar
+binding = fibre_binding
 speed = 5
 durability = 190
 
@@ -114,6 +136,8 @@ tab = tools
 stack = 1
 tool = shovel
 tier = copper
+repair = copper_bar
+binding = fibre_binding
 speed = 5
 durability = 190
 
@@ -124,6 +148,8 @@ tab = tools
 stack = 1
 tool = hoe
 tier = copper
+repair = copper_bar
+binding = fibre_binding
 speed = 5
 durability = 190
 
@@ -135,6 +161,8 @@ tab = tools
 stack = 1
 tool = pickaxe
 tier = iron
+repair = iron_bar
+binding = flux
 speed = 6
 durability = 250
 
@@ -145,6 +173,8 @@ tab = tools
 stack = 1
 tool = axe
 tier = iron
+repair = iron_bar
+binding = flux
 speed = 6
 durability = 250
 
@@ -155,6 +185,8 @@ tab = tools
 stack = 1
 tool = shovel
 tier = iron
+repair = iron_bar
+binding = flux
 speed = 6
 durability = 250
 
@@ -165,6 +197,8 @@ tab = tools
 stack = 1
 tool = hoe
 tier = iron
+repair = iron_bar
+binding = flux
 speed = 6
 durability = 250
 
@@ -176,6 +210,8 @@ tab = tools
 stack = 1
 tool = pickaxe
 tier = diamond
+repair = diamond
+binding = flux
 speed = 8
 durability = 1560
 
@@ -186,6 +222,8 @@ tab = tools
 stack = 1
 tool = axe
 tier = diamond
+repair = diamond
+binding = flux
 speed = 8
 durability = 1560
 
@@ -196,6 +234,8 @@ tab = tools
 stack = 1
 tool = shovel
 tier = diamond
+repair = diamond
+binding = flux
 speed = 8
 durability = 1560
 
@@ -206,6 +246,8 @@ tab = tools
 stack = 1
 tool = hoe
 tier = diamond
+repair = diamond
+binding = flux
 speed = 8
 durability = 1560
 
@@ -217,6 +259,8 @@ tab = tools
 stack = 1
 tool = pickaxe
 tier = mythril
+repair = mythril_bar
+binding = star_essence
 speed = 10
 durability = 2400
 
@@ -227,6 +271,8 @@ tab = tools
 stack = 1
 tool = axe
 tier = mythril
+repair = mythril_bar
+binding = star_essence
 speed = 10
 durability = 2400
 
@@ -237,6 +283,8 @@ tab = tools
 stack = 1
 tool = shovel
 tier = mythril
+repair = mythril_bar
+binding = star_essence
 speed = 10
 durability = 2400
 
@@ -247,6 +295,8 @@ tab = tools
 stack = 1
 tool = hoe
 tier = mythril
+repair = mythril_bar
+binding = star_essence
 speed = 10
 durability = 2400
 
@@ -258,6 +308,8 @@ tab = tools
 stack = 1
 tool = pickaxe
 tier = adamantite
+repair = adamantite_bar
+binding = star_essence
 speed = 12
 durability = 3600
 
@@ -268,6 +320,8 @@ tab = tools
 stack = 1
 tool = axe
 tier = adamantite
+repair = adamantite_bar
+binding = star_essence
 speed = 12
 durability = 3600
 
@@ -278,6 +332,8 @@ tab = tools
 stack = 1
 tool = shovel
 tier = adamantite
+repair = adamantite_bar
+binding = star_essence
 speed = 12
 durability = 3600
 
@@ -288,6 +344,8 @@ tab = tools
 stack = 1
 tool = hoe
 tier = adamantite
+repair = adamantite_bar
+binding = star_essence
 speed = 12
 durability = 3600
 
@@ -299,6 +357,8 @@ tab = tools
 stack = 1
 tool = pickaxe
 tier = star_crystal
+repair = star_crystal
+binding = star_essence
 speed = 16
 durability = 5000
 
@@ -309,6 +369,8 @@ tab = tools
 stack = 1
 tool = axe
 tier = star_crystal
+repair = star_crystal
+binding = star_essence
 speed = 16
 durability = 5000
 
@@ -319,6 +381,8 @@ tab = tools
 stack = 1
 tool = shovel
 tier = star_crystal
+repair = star_crystal
+binding = star_essence
 speed = 16
 durability = 5000
 
@@ -329,5 +393,7 @@ tab = tools
 stack = 1
 tool = hoe
 tier = star_crystal
+repair = star_crystal
+binding = star_essence
 speed = 16
 durability = 5000

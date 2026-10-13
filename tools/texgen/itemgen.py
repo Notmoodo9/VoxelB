@@ -256,6 +256,144 @@ def bar(base):
     return outline(img)
 
 
+
+# ---- repair materials and bindings (milestone 18 part 4) ----
+def plant_fibre():
+    pal = ramp("7cbf3a", n=6, spread=0.2)
+    img = np.zeros((N, N, 4))
+    for k, (x0, ph) in enumerate(((5, 0.0), (8, 1.3), (11, 2.4))):
+        for y in range(2, 14):
+            x = int(round(x0 + 1.4 * np.sin(y * 0.55 + ph)))
+            img[y, x, :3] = pal[2 + (k + y) % 3]
+            img[y, x, 3] = 1.0
+    return outline(img, (0.1, 0.18, 0.05))
+
+
+def resin():
+    m = shape_mask([
+        "................",
+        "................",
+        ".......4........",
+        "......445.......",
+        "......4455......",
+        ".....344555.....",
+        ".....3445555....",
+        "....33445555....",
+        "....23344555....",
+        "....22334455....",
+        "....22233444....",
+        ".....222333.....",
+        "......2222......",
+        "................",
+        "................",
+        "................",
+    ])
+    pal = ramp("e89a2a", n=6, spread=0.22)
+    img = paint(m, pal)
+    img[6, 8, :3] = (1.0, 0.95, 0.75)
+    return outline(img, (0.3, 0.14, 0.02))
+
+
+def crystal_shard():
+    m = shape_mask([
+        "................",
+        "..........5.....",
+        ".........45.....",
+        "........445.....",
+        ".......3445.....",
+        "......33445.....",
+        ".....233444.....",
+        ".....2334.......",
+        "....22334.......",
+        "....2233........",
+        "...1223.........",
+        "...122..........",
+        "...11...........",
+        "................",
+        "................",
+        "................",
+    ])
+    pal = ramp("b07af0", n=6, spread=0.22)
+    pal[5] = (0.95, 0.9, 1.0)
+    return outline(paint(m, pal), (0.15, 0.06, 0.25))
+
+
+def fibre_binding():
+    # a coil of cord, wound round and tied
+    pal = ramp("b8a060", n=6, spread=0.2)
+    img = np.zeros((N, N, 4))
+    for y in range(N):
+        for x in range(N):
+            dx, dy = x - 7.5, (y - 8.0) * 1.3
+            r = (dx * dx + dy * dy) ** 0.5
+            if 2.0 <= r <= 6.2:
+                band = int(r * 1.6) % 2
+                img[y, x, :3] = pal[3 + band] if dy < 0 else pal[1 + band]
+                img[y, x, 3] = 1.0
+    img[7:10, 12:15, :3] = pal[4]                 # the loose end
+    img[7:10, 12:15, 3] = 1.0
+    return outline(img, (0.2, 0.14, 0.06))
+
+
+def flux():
+    # a little heap of pale powder with blue-white grains
+    m = shape_mask([
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        ".......55.......",
+        ".....445554.....",
+        "....34455554....",
+        "...3344555543...",
+        "..233444555432..",
+        "..223334444332..",
+        "...1122233211...",
+        "................",
+        "................",
+        "................",
+    ])
+    pal = ramp("c8d8e8", n=6, spread=0.18, sat_boost=0.8)
+    img = paint(m, pal, rng("flux"), jitter=1)
+    for y, x in ((8, 6), (9, 10), (10, 5), (11, 9)):
+        img[y, x, :3] = (0.55, 0.75, 1.0)
+    return outline(img, (0.1, 0.12, 0.18))
+
+
+def star_essence():
+    # a small stoppered vial holding a gold-white glow
+    m = shape_mask([
+        "................",
+        "......2222......",
+        "......2332......",
+        ".......11.......",
+        "......1001......",
+        ".....155551.....",
+        "....15555551....",
+        "....15544551....",
+        "....15544551....",
+        "....15555551....",
+        ".....155551.....",
+        "......1111......",
+        "................",
+        "................",
+        "................",
+        "................",
+    ])
+    img = np.zeros((N, N, 4))
+    cols = {0: (0.6, 0.75, 0.85), 1: (0.55, 0.7, 0.85), 2: (0.45, 0.3, 0.18), 3: (0.6, 0.42, 0.25),
+            4: (1.0, 1.0, 0.92), 5: (1.0, 0.82, 0.3)}
+    for y in range(N):
+        for x in range(N):
+            k = m[y, x]
+            if k >= 0:
+                img[y, x, :3] = cols[k]
+                img[y, x, 3] = 1.0
+    return outline(img, (0.12, 0.1, 0.18))
+
+
 ITEMS = {
     "coal": coal,
     "diamond": lambda: gem("diamond", "37d6e0"),
@@ -268,6 +406,12 @@ ITEMS = {
     "gold_bar": lambda: bar("ffd23a"),
     "mythril_bar": lambda: bar("3a8aff"),
     "adamantite_bar": lambda: bar("e8343a"),
+    "plant_fibre": plant_fibre,
+    "resin": resin,
+    "crystal_shard": crystal_shard,
+    "fibre_binding": fibre_binding,
+    "flux": flux,
+    "star_essence": star_essence,
 }
 for _tier in TIER_COLOURS:
     for _kind in ("pickaxe", "axe", "shovel", "hoe"):

@@ -54,3 +54,33 @@ title = Furnace
 
 [item blast_furnace_lit]
 title = Blast furnace
+
+# ---- repairs (milestone 18 part 4): bindings and what they are made of ----
+# plant fibre: sometimes from grass, ferns, vines and reeds; resin:
+# sometimes from logs; crystal shards: from crystal sprouts (mining.cfg)
+[item plant_fibre]
+texture = plant_fibre
+tab = items
+
+[item resin]
+texture = resin
+tab = items
+
+[item crystal_shard]
+texture = crystal_shard
+tab = items
+
+# a tool's binding (Tinker's table): wood, stone, copper tools
+[item fibre_binding]
+texture = fibre_binding
+tab = items
+
+# iron and diamond tools
+[item flux]
+texture = flux
+tab = items
+
+# mythril, adamantite and star crystal tools
+[item star_essence]
+texture = star_essence
+tab = items

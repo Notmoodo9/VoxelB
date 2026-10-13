@@ -1,14 +1,77 @@
 # Progress
 
 ## Current state
-**Milestone 18, part 3: Crafting and chests: DONE** (v0.18.3, Windows CI green: run #97)
+**Milestone 18 (items, inventory, crafting, tools, smelting): DONE** — part 4: Tools, smelting and repair (v0.18.4, Windows CI: see below)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
 
-Next: **Milestone 18, part 4: tools, smelting, repair** (the four tool
-types in 8 tiers with durability, furnace and blast furnace with fuels,
-Tinker's table and the bindings; design/items/items_inventory.md).
+Next: **Milestone 19 (🎨 DESIGN): entity framework + passive animals +
+pathfinding.** The entity framework is engine work; the animals start
+with a design interview (which animals, per biome, what they drop, how
+they behave).
+
+---
+
+## Milestone 18, part 4 — done (2026-10-13): tools, smelting, repair (D96)
+
+### What was built
+* **Tools**: pickaxe, axe, shovel and hoe in 8 tiers (wooden, stone,
+  copper, iron, diamond, mythril, adamantite, star crystal) with the
+  design's speeds and durabilities, new pixel-art pictures, a Tools tab,
+  and recipes in the familiar shapes. Mining with the right tool is faster
+  and higher tiers unlock the ores step by step; tools wear by one per
+  block and break when worn out. **Durability bars** on every slot and
+  the hotbar (green → red).
+* **Furnace and blast furnace** (new blocks, facing the player): input,
+  fuel, output; a flame that burns down and an arrow that fills. They keep
+  smelting while you are away and **glow** (block swaps to a lit version
+  with light) while burning. Ores → bars (mythril, adamantite only in the
+  blast furnace, which is twice as fast), sand → glass, cobblestone →
+  stone → smooth stone, clay → bricks. Fuels: coal, wood, sticks.
+* **Tinker's table** (new block): crafts like a workbench and **repairs**
+  tools — a worn tool with 1–3 pairs of its material and binding gives a
+  third of its durability back per pair. Bindings: fibre binding (plant
+  fibre + resin), flux (salt + sand + coal), star essence (star crystal +
+  crystal shards, at the table). Plant fibre and resin come as chance
+  drops from grasses / vines and logs; crystal sprouts drop shards.
+* Six metal bars, plant fibre, resin, crystal shard and the three bindings
+  as items with pictures.
+* Found and fixed while testing: a worn tool carried in the mouse came back
+  new when the window closed (also through drops) — wear now travels with
+  the item everywhere. The 8th Creative tab was hidden under the search
+  field — the field now narrows.
+
+### Verified (scripted with xdotool, Survival test worlds)
+* A wooden shovel digging 3 sand: wear 3 in player.dat; hotbar bars show
+  a full green bar, a short red one for an iron pickaxe at 200/250 and a
+  yellow one for a stone axe at 66/132.
+* Furnace placed and opened; shift-click sent iron ore to the input and
+  coal to the fuel slot; the flame and arrow filled; 3 iron bars came out
+  with the window closed; the furnace showed its glowing front; saved as
+  `burn = 831, 1600`, 3 iron bars, 1 coal.
+* Tinker's table: iron pickaxe at wear 200 + iron bar + flux → wear 116
+  (84 = a third of 250, rounded up), bar and flux used up.
+* Bonus drops: with a temporary 100 % rule on sand, a resin drop fell into
+  the hole next to the sand (then the rule was removed).
+* Creative: all 8 tabs visible; the Tools tab lists the 32 tools.
+* Debug build: no asserts, `recipes: self-check PASS`; debug and release
+  headless tests pass. Loaded: 695 items, 355 recipes, 5 stations,
+  10 smelting recipes, 5 fuel lines.
+
+### Performance
+* Simulation tick with a furnace burning: 3 µs average, 14 µs max (debug
+  overlay). Furnaces cost one pass over the container table per tick
+  (only furnace entries do work); the lit swap is one block edit when the
+  fire starts or dies.
+
+### Deferred
+* A sword and combat use of axes (milestone 21); hoes till nothing yet
+  (farming later).
+* Lava buckets as fuel (with buckets).
+* Facing on placement for stairs, doors etc. (known since M16).
+* Bookshelves (need books).
+
 
 ---
 

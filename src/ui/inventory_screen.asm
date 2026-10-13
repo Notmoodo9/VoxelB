@@ -519,9 +519,18 @@ PROC catalog, 16, rbx, rsi, rdi, r12, r13
     mov qword [rsp + 48], SEARCH_CAP
     lea rax, [rel s_search]
     mov [rsp + 56], rax
+    ; (as wide as 214, but never over the tabs)
+    imul r9d, [rel g_tab_count], 58
+    neg r9d
+    add r9d, CAT_COLS * STEP - 4 - 6
+    cmp r9d, 214
+    jle .field_w
+    mov r9d, 214
+.field_w:
     mov edx, [LOCAL(C_X)]
-    add edx, CAT_COLS * STEP - 4 - 214
-    INVOKE ui_textfield, SEARCH_ID, rdx, [LOCAL(C_Y)], 214
+    add edx, CAT_COLS * STEP - 4
+    sub edx, r9d
+    INVOKE ui_textfield, SEARCH_ID, rdx, [LOCAL(C_Y)], r9
     test eax, eax
     jz .heading
     mov dword [rel g_scroll], 0

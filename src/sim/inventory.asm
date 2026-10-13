@@ -21,6 +21,8 @@
 ;                                    wears it by one (slot durability field =
 ;                                    uses spent); worn out, it breaks
 ;   inv_add(ecx = item, edx = count) -> eax count that did not fit
+;   inv_add_dur(ecx = item, edx = count, r8d = wear) -> eax   (a worn item
+;                                    keeps its wear and joins no stack)
 ;   inv_flush()                      send the changed slots (end of tick)
 ;   inv_mark(ecx = slot)             a slot changed (clobbers rax)
 ;   inv_stack_of(ecx = item) -> eax  its stack size (clobbers rax)
@@ -35,7 +37,7 @@
 %include "save.inc"
 
 global inv_init, inv_packet, inv_selected_block, inv_used_selected, inv_add
-global inv_wear_selected
+global inv_wear_selected, inv_add_dur
 global inv_flush, g_inv, g_inv_sel, inv_mark, inv_stack_of, inv_room
 global inv_cursor_back
 
@@ -136,9 +138,10 @@ PROC inv_init, 0, rbx, rsi, rdi
     lea rax, [rel g_save_inv]
     movzx ecx, word [rax + rbx * 8]
     movzx edx, word [rax + rbx * 8 + 2]
+    movzx r8d, word [rax + rbx * 8 + 4]
     test ecx, ecx
     jz .back_next
-    call inv_add
+    call inv_add_dur
 .back_next:
     inc ebx
     jmp .back
@@ -168,19 +171,25 @@ PROC inv_init, 0, rbx, rsi, rdi
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; inv_add — put items in: onto stacks of the same item first, then into
-; empty slots (hotbar first).
-;   in:  ecx = item, edx = count
+; inv_add / inv_add_dur — put items in: onto stacks of the same unworn
+; item first, then into empty slots (hotbar first). A worn item (r8d wear
+; > 0) only goes into an empty slot and keeps its wear.
+;   in:  ecx = item, edx = count, r8d = wear (inv_add: 0)
 ;   out: eax = how many did not fit
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC inv_add, 0, rbx, rsi, rdi, r12
+inv_add:
+    xor r8d, r8d
+PROC inv_add_dur, 0, rbx, rsi, rdi, r12, r13
     mov ebx, ecx
     mov esi, edx
+    movzx r13d, r8w                     ; wear
     call stack_of
     mov r12d, eax                       ; stack size
     ; onto stacks
     xor edi, edi
+    test r13d, r13d
+    jnz .empties
 .merge:
     test esi, esi
     jz .done
@@ -189,6 +198,8 @@ PROC inv_add, 0, rbx, rsi, rdi, r12
     SLOT_PTR rax, rdi
     cmp [rax + SLOT_ITEM], bx
     jne .merge_next
+    cmp word [rax + SLOT_DUR], 0
+    jne .merge_next                     ; (a worn one)
     movzx ecx, word [rax + SLOT_COUNT]
     mov edx, r12d
     sub edx, ecx                        ; room
@@ -217,7 +228,7 @@ PROC inv_add, 0, rbx, rsi, rdi, r12
     cmova edx, esi
     mov [rax + SLOT_ITEM], bx
     mov [rax + SLOT_COUNT], dx
-    mov word [rax + SLOT_DUR], 0
+    mov [rax + SLOT_DUR], r13w
     sub esi, edx
     mov ecx, edi
     call mark
@@ -610,7 +621,8 @@ PROC click, 0, rbx, rsi, rdi, r12, r13
     test ecx, ecx
     jz .done
     movzx edx, word [rdi + SLOT_COUNT]
-    call inv_add
+    movzx r8d, word [rdi + SLOT_DUR]
+    call inv_add_dur
     lea rdi, [rel g_inv + INV_CURSOR * SLOT_SIZE]
     mov [rdi + SLOT_COUNT], ax
     test eax, eax

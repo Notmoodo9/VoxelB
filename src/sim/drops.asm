@@ -12,6 +12,7 @@
 ; Public API:
 ;   drops_reset()                       a new world: none
 ;   drops_spawn(ecx = item, edx = count, r8 = f64[3] centre) -> eax id / -1
+;   drops_spawn_dur(... r9d = wear)     a worn tool
 ;   drops_tick()                        once per simulation tick
 ; =============================================================================
 %include "macros.inc"
@@ -19,9 +20,9 @@
 %include "packet.inc"
 %include "physics.inc"
 
-global drops_reset, drops_spawn, drops_tick, g_drop_count
+global drops_reset, drops_spawn, drops_spawn_dur, drops_tick, g_drop_count
 
-extern phys_block, inv_add, pkt_send, g_to_client, g_block_coll
+extern phys_block, inv_add_dur, pkt_send, g_to_client, g_block_coll
 extern g_pl_pos, g_item_stack
 
 %define LIFE_TICKS      6000            ; 5 minutes at 20 ticks per second
@@ -38,7 +39,8 @@ struc DROP
     .count  resw 1
     .age    resd 1                      ; ticks
     .flags  resd 1
-    .pad    resb 8
+    .wear   resw 1                      ; a worn tool keeps its wear
+    .pad    resb 6
 endstruc
 
 section .rdata
@@ -112,9 +114,12 @@ ENDPROC
 ;   out: eax = id (slot), -1 if the table is full
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC drops_spawn, 0, rbx, rsi, rdi, r12
+drops_spawn:
+    xor r9d, r9d
+PROC drops_spawn_dur, 0, rbx, rsi, rdi, r12, r13
     mov esi, ecx
     mov edi, edx
+    mov r13d, r9d
     lea rbx, [rel g_drops]
     xor eax, eax
 .find:
@@ -135,6 +140,7 @@ PROC drops_spawn, 0, rbx, rsi, rdi, r12
     mov [rbx + DROP.pos + 16], rax
     mov [rbx + DROP.item], si
     mov [rbx + DROP.count], di
+    mov [rbx + DROP.wear], r13w
     mov dword [rbx + DROP.age], 0
     mov dword [rbx + DROP.flags], F_ACTIVE | F_DIRTY
     ; a little hop in a random direction
@@ -304,7 +310,8 @@ PROC drops_tick, 16, rbx, rsi, rdi, r12
     ; picked up: what fits goes into the inventory
     movzx ecx, word [rbx + DROP.item]
     movzx edx, word [rbx + DROP.count]
-    call inv_add
+    movzx r8d, word [rbx + DROP.wear]
+    call inv_add_dur
     test eax, eax
     jnz .partly
     call gone
@@ -444,6 +451,9 @@ PROC merge, 0, rdi, r12, r13
     jne .next
     mov ax, [rdi + DROP.item]
     cmp ax, [rbx + DROP.item]
+    jne .next
+    mov ax, [rdi + DROP.wear]
+    cmp ax, [rbx + DROP.wear]
     jne .next
     movsd xmm0, [rdi + DROP.pos]
     subsd xmm0, [rbx + DROP.pos]

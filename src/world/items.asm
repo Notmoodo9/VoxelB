@@ -27,7 +27,8 @@
 ;     g_item_tex (char* texture name or 0: a sprite instead of a block icon),
 ;     g_item_flags (ITEMF_*), g_item_tool (u8 TOOL_*), g_item_tier (u8
 ;     TIER_*), g_item_speed (f32, 1 = by hand), g_item_dur (u16 uses, 0 =
-;     does not wear)
+;     does not wear), g_item_repair / g_item_binding (char*: a tool's repair
+;     material and binding patterns, 0 = cannot be repaired)
 ;   item_tool_index(name) / item_tier_index(name) -> eax TOOL_* / TIER_*, -1
 ;   g_block_item (u16 per block id: the item of a block, any state)
 ;   tabs: g_tab_count, g_tab_titles, g_tab_icon (u16 item)
@@ -46,6 +47,7 @@ global g_item_count, g_item_names, g_item_titles, g_item_block, g_item_stack
 global g_item_tab, g_item_tex, g_item_flags, g_block_item
 global g_tab_count, g_tab_titles, g_tab_icon
 global g_item_tool, g_item_tier, g_item_speed, g_item_dur
+global g_item_repair, g_item_binding
 global item_tool_index, item_tier_index, items_match_list
 
 extern str_ieq, str_len, str_copy, str_parse_u64, str_dup, str_parse_float
@@ -79,6 +81,8 @@ k_tool:         db "tool", 0
 k_tier:         db "tier", 0
 k_speed:        db "speed", 0
 k_durability:   db "durability", 0
+k_repair:       db "repair", 0
+k_binding:      db "binding", 0
 tool_0:         db "none", 0
 tool_1:         db "pickaxe", 0
 tool_2:         db "axe", 0
@@ -122,6 +126,9 @@ g_item_tier:    resb MAX_ITEMS
 alignb 4
 g_item_speed:   resd MAX_ITEMS
 g_item_dur:     resw MAX_ITEMS
+alignb 8
+g_item_repair:  resq MAX_ITEMS          ; tools: repair material patterns (0 none)
+g_item_binding: resq MAX_ITEMS          ; tools: the binding a repair needs
 alignb 8
 g_block_item:   resw 65536
 g_tab_titles:   resq MAX_TABS
@@ -659,7 +666,7 @@ PROC items_pair, 0, rbx, rsi, rdi
     lea rdx, [rel k_durability]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
-    jz .i_hid
+    jz .i_repair
     mov rcx, rsi
     call str_parse_u64
     test r8, r8
@@ -668,6 +675,23 @@ PROC items_pair, 0, rbx, rsi, rdi
     ja .bad
     lea rcx, [rel g_item_dur]
     mov [rcx + rdi * 2], ax
+    RETURN
+.i_repair:
+    ; repair = <material patterns>, binding = <item patterns> (Tinker's table)
+    lea rdx, [rel k_repair]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_binding
+    lea rcx, [rel g_item_repair]
+    mov [rcx + rdi * 8], rsi
+    RETURN
+.i_binding:
+    lea rdx, [rel k_binding]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_hid
+    lea rcx, [rel g_item_binding]
+    mov [rcx + rdi * 8], rsi
     RETURN
 .i_hid:
     lea rdx, [rel k_hidden]

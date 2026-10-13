@@ -521,7 +521,9 @@ name and a title made from it ("stone_bricks" → "Stone bricks"). Records:
 | | `tool` | `pickaxe`, `axe`, `shovel` or `hoe`: the item is that tool (default none) |
 | | `tier` | `wood`, `stone`, `copper`, `iron`, `diamond`, `mythril`, `adamantite`, `star_crystal` (default hand) |
 | | `speed` | mining speed with the right tool (default 1 = by hand) |
-| | `durability` | uses before it breaks (0 = never wears) |
+| | `durability` | uses before it breaks (0 = never wears); each block a tool breaks (not ones that break at once) wears it by one |
+| | `repair` | a tool's repair material (item patterns), used at a station with `repair = 1` (the Tinker's table) |
+| | `binding` | the binding (item patterns) each repair also needs |
 
 An `[item]` with an existing item's name (a block's, too) changes that item.
 
@@ -535,6 +537,7 @@ An `[item]` with an existing item's name (a block's, too) changes that item.
 | | `blocks` | block name patterns (`*` = anything) |
 | | `shapes` | block shapes (`plant`, `tall_plant`, `fluid`, …) |
 | `[drops]` | `<block pattern> = <item> [count]` | what a block drops instead of itself; `none` = nothing |
+| `[bonus]` | `<block pattern> = <item> <count>, <percent>` | a chance of something extra besides the usual drop (resin from logs, plant fibre from grass) |
 
 A block takes the first material whose `shapes` or `blocks` match it (all
 its states alike); unmatched blocks are hardness 1, any tool, no tier. The
@@ -552,6 +555,16 @@ only name a station defined before it).
 | `[container <name>]` | `block` | the block that opens these slots on right click (a chest) |
 | | `slots` | 1–27 (default 27) |
 | | `joins` | `1`: two side by side with the same facing open as one container of twice the slots |
+| `[station <name>]` | `repair` | `1`: its grid also repairs tools (a worn tool + 1–3 pairs of its `repair` material and `binding` → a third of its durability back per pair) |
+| `[furnace <name>]` | `block` | the furnace block (right click opens input, fuel, output) |
+| | `lit` | the block shown while it burns (same facing; also opens it) |
+| | `speed` | 1–8: smelts and burns fuel that many times faster (default 1) |
+| | `blast` | `1`: can also smelt the `[smelt]` recipes marked `blast` |
+| `[smelt <name>]` | `input` | item patterns it smelts |
+| | `result` | `<item> [count]` |
+| | `seconds` | time in a furnace of speed 1 (default 10) |
+| | `blast` | `1`: only in a furnace with `blast = 1` |
+| `[fuel]` | `<item pattern> = seconds` | how long one item burns (one line per fuel; one item smelts in 10 s) |
 | `[recipe <name>]` | `shape` | rows split by `/`, up to 3 × 3; one character per cell: a key letter, or `.` for an empty cell. A shape matches anywhere in the grid, mirrored too |
 | | `A` … `Z` | a key: item name patterns (`*` = anything; a comma list = any of them) |
 | | `ingredients` | instead of a shape: up to 9 patterns, one item each, in any cells (shapeless) |
@@ -605,7 +618,9 @@ Text in the format above (the game rewrites them on every save, via a
 `containers.dat` holds what is in the chests: a `[container x y z]`
 record (the block position) per container that holds anything, then its
 `slot = index, item, count, durability` lines (a double chest is two
-records, 27 slots each).
+records, 27 slots each). A furnace also has `station = <name>`,
+`burn = <ticks left>, <ticks of that fuel>` and `cook = <ticks>` (it keeps
+smelting while you are away; 20 ticks a second).
 
 `thumb.png` (256 × 144 RGB) in the world folder is the picture shown in
 the world list; the game rewrites it on every save.

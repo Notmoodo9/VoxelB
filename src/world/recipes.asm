@@ -40,7 +40,8 @@
 ;   g_station_slots (u8: a container's slots, 0 = a crafting station),
 ;   g_station_joins (u8), g_station_kind (u8 STATION_*), g_station_speed (u8),
 ;   g_station_blast (u8), g_station_lit (u16 base block id, 0 none),
-;   g_station_unlit (u16 base block id of `block`)
+;   g_station_unlit (u16 base block id of `block`), g_station_repair (u8:
+;   its grid repairs tools: crafting.asm)
 ;   station_find(rcx = name) -> eax station + 1, -1 none
 ;   smelt_find(ecx = item, edx = 1 in a blast furnace) -> eax smelt, -1
 ;   g_smelt_result (u16), g_smelt_amount (u8), g_smelt_ticks (u32)
@@ -60,6 +61,7 @@ global g_rec_h, g_rec_cells, g_block_station, g_station_grid, g_station_count
 global g_rec_n, g_rec_ok, g_rec_names, g_station_names, recipe_cell_ok
 global g_station_slots, g_station_joins, g_station_kind, g_station_speed
 global g_station_blast, g_station_lit, g_station_unlit, station_find
+global g_station_repair
 global smelt_find, fuel_ticks, g_smelt_result, g_smelt_amount, g_smelt_ticks
 
 extern str_ieq, str_len, str_parse_u64, str_dup, str_copy, str_parse_float
@@ -96,6 +98,7 @@ k_speed:        db "speed", 0
 k_blast:        db "blast", 0
 k_input:        db "input", 0
 k_seconds:      db "seconds", 0
+k_repair:       db "repair", 0
 k_block:        db "block", 0
 k_grid:         db "grid", 0
 k_shape:        db "shape", 0
@@ -176,6 +179,7 @@ g_station_joins: resb MAX_STATIONS
 g_station_kind: resb MAX_STATIONS
 g_station_speed: resb MAX_STATIONS
 g_station_blast: resb MAX_STATIONS
+g_station_repair: resb MAX_STATIONS
 alignb 2
 g_station_lit:  resw MAX_STATIONS
 g_station_unlit: resw MAX_STATIONS
@@ -682,6 +686,18 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     mov [rcx + rdi], al
     RETURN
 .not_station_blast:
+    lea rdx, [rel k_repair]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_repair
+    mov rcx, rsi
+    call str_parse_u64
+    test rax, rax
+    setnz al
+    lea rcx, [rel g_station_repair]
+    mov [rcx + rdi], al
+    RETURN
+.not_repair:
     lea rdx, [rel k_slots]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
