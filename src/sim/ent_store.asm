@@ -12,7 +12,8 @@
 ; File: <world>\overworld\entities\e.<rx>.<rz>.vxe
 ;   "VXEN", u32 version (1), u32 animals, u32 0, 128 bytes of column bits,
 ;   then 64 bytes per animal: f64 x, y, z, f32 yaw, u16 health, u16 flags
-;   (1 baby), u32 age (ticks), 24 bytes "mob:variant" (zero-padded), 4 zero.
+;   (1 baby), u32 age (ticks), 24 bytes "mob:variant" (zero-padded), u32
+;   herd id (0: none; milestone 19 part 2, in the field that was 0).
 ; Unknown variants (a removed data file) are dropped with a warning.
 ;
 ; Herds: every column within POP_RADIUS of the player, once generated, is
@@ -336,7 +337,8 @@ PROC save_region, 32, rbx, rsi, rdi, r12, r13
     mov [rdi + 44], rcx
     mov rcx, [rax + 16]
     mov [rdi + 52], rcx
-    mov dword [rdi + 60], 0
+    mov eax, [rbx + EntT.herd]
+    mov [rdi + 60], eax
     add rdi, RECORD_BYTES
     inc dword [LOCAL(SR_N)]
 .next:
@@ -470,6 +472,8 @@ PROC load_region, 32, rsi, rdi, r12, r13
 .health:
     mov ecx, [rsi + 32]
     mov [rax + EntT.age], ecx
+    mov ecx, [rsi + 60]
+    mov [rax + EntT.herd], ecx
 .next:
     add rsi, RECORD_BYTES
     inc dword [LOCAL(LR_I)]
@@ -724,8 +728,9 @@ ENDPROC
 %define PO_LZ       44
 %define PO_I        48
 %define PO_PLACED   52
+%define PO_HERD     72
 %define PO_START    56                  ; u64
-PROC populate, 64, rbx, rsi, rdi, r12
+PROC populate, 80, rbx, rsi, rdi, r12
     mov [LOCAL(PO_CX)], ecx
     mov [LOCAL(PO_CZ)], edx
     mov [LOCAL(PO_FORCE)], r8d
@@ -854,6 +859,9 @@ PROC populate, 64, rbx, rsi, rdi, r12
     mov [LOCAL(PO_LZ)], eax
     mov dword [LOCAL(PO_I)], 0
     mov dword [LOCAL(PO_PLACED)], 0
+    call rng                            ; the herd's id (never 0)
+    or eax, 1
+    mov [LOCAL(PO_HERD)], eax
 .animal:
     mov eax, [LOCAL(PO_I)]
     cmp eax, [LOCAL(PO_N)]
@@ -896,6 +904,10 @@ PROC populate, 64, rbx, rsi, rdi, r12
     call ent_new
     test eax, eax
     js .animal
+    imul rax, rax, EntT_size
+    lea rcx, [rel g_ents]
+    mov edx, [LOCAL(PO_HERD)]
+    mov [rcx + rax + EntT.herd], edx
     inc dword [LOCAL(PO_PLACED)]
     jmp .animal
 .herd_placed:

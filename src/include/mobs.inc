@@ -12,6 +12,7 @@
 %define MAX_VARIANTS    256
 %define MAX_SPAWNS      256
 %define MAX_MOB_DROPS   4
+%define MAX_MOB_FOODS   4
 %define SKIN_PX         64              ; every skin is 64 x 64 (one texture array)
 
 ; part motions
@@ -56,6 +57,9 @@ struc MOB
     .drop_item  resw MAX_MOB_DROPS
     .drop_min   resb MAX_MOB_DROPS
     .drop_max   resb MAX_MOB_DROPS
+    .foods      resd 1                  ; part 2: what it follows and eats to breed
+    .food       resw MAX_MOB_FOODS
+    .graze      resd 1                  ; 1: eats grass (grass turns to dirt a while)
 endstruc
 
 struc VARIANT

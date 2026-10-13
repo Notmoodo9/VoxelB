@@ -618,6 +618,8 @@ animal never needs assembly. Records:
 | | `speed` | walking speed, blocks per second (running away: 2.2 ×) |
 | | `temper` | `calm` (runs when hurt) or `wild` (also runs from a player within 12 blocks) |
 | | `drop` | `item, min, max` — loot when it dies (up to 4; babies drop nothing) |
+| | `food` | items (up to 4): it follows a player holding one; feeding a grown-up makes it look for a mate, feeding a baby helps it grow (Milestone 19 part 2) |
+| | `graze` | `1`: it eats grass (the grass block turns to dirt for 1–3 minutes) |
 | | `variant` | `name, skin, model` — a look (`assets/textures/mobs/<skin>.png`); herds are of one variant |
 | `[spawn]` | `mob` | the animal |
 | | `variant` | one of its variants (default its first) |
@@ -694,6 +696,7 @@ The animals, by region of 32 × 32 chunk columns (blocks `rx * 1024` …
   column had its herd roll (it never gets another from generation).
 * Then 64 bytes per animal: f64 x, y, z (feet centre), f32 yaw, u16 health,
   u16 flags (1 = baby), u32 age in ticks, 24 bytes `mob:variant`
-  (zero-padded), 4 zero bytes. An unknown `mob:variant` (a removed data
-  file) is dropped with a warning.
+  (zero-padded), u32 herd id (0 = none; part 2 — files from part 1 have 0
+  there). An unknown `mob:variant` (a removed data file) is dropped with a
+  warning.
 

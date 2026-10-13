@@ -85,5 +85,10 @@ Naming: right-click an animal with a name tag; a small journal page asks for the
   shadows) and the **cow** in its four looks. Raw and cooked beef,
   leather. Not yet: paths, following food, herds keeping together,
   grazing, sleep, breeding (part 2); the other animals (part 3).
+* **Part 2 (v0.19.2)**: A* paths; following a player holding wheat;
+  feeding (right click) and breeding, babies that keep near a grown-up and
+  grow up in 20 minutes; herds that stay together, gather and lie down at
+  night and run together; grazing (grass → dirt, grows back). Wild wheat
+  plants (plains, meadow, steppe) give wheat.
 * See them: the plains around spawn of the default seed (20261009),
   e.g. `voxelb.exe --pos 41.5 106 -36 --look 0 -25`.

@@ -65,6 +65,8 @@ k_size:         db "size", 0
 k_speed:        db "speed", 0
 k_temper:       db "temper", 0
 k_drop:         db "drop", 0
+k_food:         db "food", 0
+k_graze:        db "graze", 0
 k_variant:      db "variant", 0
 k_biomes:       db "biomes", 0
 k_chance:       db "chance", 0
@@ -482,7 +484,7 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     lea rdx, [rel k_drop]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
-    jz .b_variant
+    jz .b_food
     mov edi, [r12 + MOB.drops]
     cmp edi, MAX_MOB_DROPS
     jae .full_mob
@@ -535,6 +537,48 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     lea rcx, [rel str_full]
     mov rdx, [r12 + MOB.name]
     call warn
+    RETURN
+.b_food:
+    ; food = item, item ... (up to 4)
+    lea rdx, [rel k_food]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .b_graze
+    mov [LOCAL(0)], rsi
+.food_next:
+    mov rcx, [LOCAL(0)]
+    test rcx, rcx
+    jz .food_done
+    call cfg_next_token
+    mov [LOCAL(0)], rdx
+    mov [LOCAL(8)], rax
+    mov rcx, rax
+    call item_find
+    cmp eax, 0
+    jle .food_unknown
+    mov ecx, [r12 + MOB.foods]
+    cmp ecx, MAX_MOB_FOODS
+    jae .full_mob
+    mov [r12 + MOB.food + rcx * 2], ax
+    inc dword [r12 + MOB.foods]
+    jmp .food_next
+.food_unknown:
+    lea rcx, [rel str_no_item]
+    mov rdx, [LOCAL(8)]
+    call warn
+    jmp .food_next
+.food_done:
+    RETURN
+.b_graze:
+    lea rdx, [rel k_graze]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .b_variant
+    mov rcx, rsi
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    mov [r12 + MOB.graze], eax
     RETURN
 .b_variant:
     lea rdx, [rel k_variant]

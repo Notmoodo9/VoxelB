@@ -179,3 +179,10 @@ textures    = river_grass
 render      = cutout
 sway        = 1
 waterlogged = 1
+
+# animal food until farming (milestone 19, design/mobs/passive_animals.md)
+[block wild_wheat]
+shape    = plant
+textures = wild_wheat
+render   = cutout
+sway     = 1

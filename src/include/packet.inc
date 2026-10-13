@@ -42,6 +42,7 @@ endstruc
 %define PKT_C_SWAP_HANDS    11          ; the main and the off hand trade items (no payload)
 %define PKT_C_INV_DRAG      12          ; DRAG_PKT: a stack spread over slots (Shift+drag / right-drag)
 %define PKT_C_ATTACK        13          ; ENT_PKT .id: hit an animal (milestone 19)
+%define PKT_C_INTERACT      14          ; ENT_PKT .id: use the item in hand on an animal (feed it)
 
 ; inventory (milestone 18): slots 0-8 are the hotbar, 9-35 the inventory
 struc INV_PKT
@@ -142,6 +143,8 @@ endstruc
 %define EPF_HURT            2           ; flashes red
 %define EPF_DYING           4           ; falls over
 %define EPF_WATER           8           ; swimming
+%define EPF_SLEEP           16          ; lying down (part 2)
+%define EPF_LOVE            32          ; fed, looking for a mate (part 2)
 %define MAX_ENTITIES        8192
 
 struc FURNACE_PKT

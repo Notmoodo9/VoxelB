@@ -2502,7 +2502,35 @@ def build_all():
     make_stations(out)
     make_furnaces(out)
     make_tinkers_table(out)
+    make_animals(out)
     return out
+
+
+def make_animals(out):
+    # wild wheat (milestone 19): thin green-gold stalks with drooping ears,
+    # the cows' food until farming
+    r = rng("wild_wheat")
+    stalk = ramp("8aa04a", 4, spread=0.2)
+    ear = ramp("e0b84a", 5, spread=0.24)
+    img = np.zeros((N, N, 4))
+    for i, (x0, top, lean) in enumerate(((3, 3, 1), (6, 1, -1), (8, 4, 1), (11, 2, -1), (13, 5, 1))):
+        for y in range(top + 4, N):
+            k = N - 1 - y
+            x = int(round(x0 + lean * (k * k) / 140.0))
+            if 0 <= x < N:
+                img[y, x, :3] = stalk[1 + (y + i) % 2]; img[y, x, 3] = 1.0
+        # the ear: a plump spike of grains with whiskers
+        xe = int(round(x0 + lean * ((N - 1 - top - 4) ** 2) / 140.0))
+        for y in range(top, top + 5):
+            for dx in (0, lean):
+                x = xe + dx * (1 if (y - top) % 2 else 0)
+                if 0 <= x < N:
+                    img[y, x, :3] = ear[2 + (y + dx) % 3]; img[y, x, 3] = 1.0
+        if 0 <= xe - lean < N and top > 0:
+            img[top - 1, xe - lean, :3] = ear[4]; img[top - 1, xe - lean, 3] = 1.0
+        if r.random() < 0.5 and 0 <= xe + 2 * lean < N:
+            img[top + 1, xe + 2 * lean, :3] = ear[3]; img[top + 1, xe + 2 * lean, 3] = 1.0
+    out["wild_wheat"] = img
 
 
 def main(argv):

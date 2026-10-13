@@ -1838,3 +1838,36 @@ block for their upper half (mossy cobblestone boulders).
   distance walked; a dying animal tips over red for a second, then drops
   its loot. Clicking an animal nearer than the targeted block hits it
   (PKT_C_ATTACK); the simulation checks the reach.
+
+## D99 — Animal paths and behaviour (M19 part 2)
+* **A\* over block cells** (pathfind.asm): a cell is where feet can be (the
+  body's height in blocks free of collision and lava, ground below or water
+  at the feet). 8 directions without corner cutting, 1-block step-ups (room
+  above the head first), drops of up to 3; costs 10 / 14 / +6 up / +2 per
+  block down / +20 in water; octile + height estimate; a binary heap of
+  `f << 12 | node` dwords and an open-addressing cell hash. Bounded: 480
+  cells, 24 blocks from the start; if the goal isn't reached the path
+  leads to the cell that got closest (a flight, a chase or a wander still
+  progresses). Paths keep 16 waypoints and are worked out again on a timer
+  for moving targets; **at most 3 paths per tick** — the others wait a
+  tick, so a crowd never makes a tick slow. This replaces part 1's cliff
+  look-ahead.
+* **Behaviour is a priority list** evaluated every tick (behave.asm):
+  running away, sleeping, love, following food, gathering at night, a baby
+  near a grown-up, then idle / wander / graze. Love outranks following a
+  player who holds food, so fed animals pair up even while the player
+  still holds wheat.
+* **Herds have ids** given when a herd is placed (random, never 0), saved
+  in the entity record; babies get their parents'. Herd centres are summed
+  once a second over the awake animals (hash of 512 herds). Strays wander
+  back, everyone gathers at night, a hurt animal's herd within 16 blocks
+  runs too.
+* **Grazing edits the world** through the simulation's own block edits
+  (edit_apply, so the client remeshes as for any edit): grass block →
+  dirt; a list (512) brings the grass back after 1–3 minutes if it is
+  still dirt. The list is not saved: a patch grazed just before quitting
+  stays dirt until the player changes it.
+* **Wheat before farming**: wild wheat, a new plant in plains, meadows and
+  the steppe, drops wheat (the cows' food, design doc "forage").
+* **Testing breeding without aiming**: `--breed-test` feeds every awake
+  grown-up 5 seconds in (logged); births are logged at INFO.

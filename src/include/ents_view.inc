@@ -23,7 +23,8 @@ struc VENT
     .flags      resw 1                  ; EPF_*
     .active     resd 1
     .sky_wait   resd 1                  ; frames until the sky is looked at again
-    .pad        resb 24
+    .sleep      resd 1                  ; f32 lying down 0 .. 1 (part 2)
+    .pad        resb 20
 endstruc                                ; 128 bytes
 
 %ifndef ENTS_VIEW_IMPL

@@ -16,6 +16,7 @@ foliage_color = 4CB070
 plant = tall_grass, 0.12
 plant = short_grass, 0.20
 plant = clover, 0.10
+plant = wild_wheat, 0.006           # (milestone 19: cow food)
 
 # flowers everywhere in drifts: mostly one colour, some mixed
 flowers        = lavender, blue_lupin, pink_lupin, white_lupin, buttercup, oxeye_daisy, cornflower, allium, pink_tulip

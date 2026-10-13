@@ -9,11 +9,9 @@
 ; move and are sent to the client (PKT_S_ENTITY when something changed);
 ; the others wait, frozen, and the client forgets them (PKT_S_ENTITY_GONE).
 ;
-; Thinking (part 1 of the milestone; paths and herds come in part 2): idle
-; (stand, look around, look at a player close by), wander to a spot a few
-; blocks away (never off a drop of more than 3 blocks or into lava), and
-; run from the player for a few seconds when hit. Wild animals also run
-; when the player comes close.
+;
+; Deciding where to go is behave.asm's (part 2: paths, herds, food, sleep,
+; breeding); this module keeps the table, the bodies and the packets.
 ; Bodies: a box of the mob's size against the blocks (physics.asm), gravity,
 ; a jump when walking into a 1-block step, floating and swimming in water.
 ; Hits (PKT_C_ATTACK): 1 damage (weapons come with combat, milestone 21),
@@ -37,7 +35,7 @@
 %include "entity.inc"
 
 global ents_reset, ents_tick, ents_attack, ent_new, ent_remove, g_ents, g_ent_count
-global g_ent_awake, g_ent_tick_us, g_ent_sent
+global g_ent_awake, g_ent_tick_us, g_ent_sent, g_paths
 
 extern pkt_send, g_to_client, drops_spawn, sincosf, atan2f, timer_elapsed_us
 extern g_pl_pos, g_pl_eye, g_pl_reach
@@ -95,6 +93,7 @@ c_abs_d:        dq 0x7FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF
 section .bss
 alignb 16
 g_ents:         resb MAX_ENTITIES * EntT_size
+g_paths:        resb MAX_ENTITIES * PATH_MAX * WP_BYTES ; each animal's path
 g_box:          resq 6
 g_region:       resq 6
 g_move:         resq 3
@@ -212,6 +211,7 @@ PROC ents_reset, 0, rdi
     mov dword [rel g_ent_awake], 0
     mov dword [rel g_ent_sent], 0
     mov dword [rel g_hint], 0
+    call behave_reset
     RETURN
 ENDPROC
 
@@ -278,6 +278,7 @@ PROC ent_new, 16, rbx, rsi, rdi, r12, r13
     mov eax, [rcx + rax + MOB.health]
     mov [rbx + EntT.health], ax
     mov [rbx + EntT.region], r13w
+    mov dword [rbx + EntT.target], -1
     and edi, EF_BABY
     or edi, EF_ACTIVE | EF_DIRTY
     mov [rbx + EntT.flags], edi
@@ -362,6 +363,14 @@ PROC send, 0
     jz .not_water
     or eax, EPF_WATER
 .not_water:
+    test ecx, EF_SLEEP
+    jz .not_asleep
+    or eax, EPF_SLEEP
+.not_asleep:
+    cmp word [rbx + EntT.love], 0
+    je .not_love
+    or eax, EPF_LOVE
+.not_love:
     mov [rel g_out + ENT_PKT.flags], ax
     test ecx, EF_SENT
     jnz .known
@@ -395,82 +404,6 @@ PROC block_at, 0
     roundsd xmm2, xmm2, 9
     cvttsd2si r8d, xmm2
     call phys_block
-    RETURN
-ENDPROC
-
-; -----------------------------------------------------------------------------
-; safe_ahead — can entity rbx walk on in its heading (xmm0 = dx, xmm1 = dz,
-; a unit vector, doubles)? Not off a drop of more than 3 blocks, not into
-; lava, not into a wall 2 blocks high.
-;   out: eax = 1 safe
-;   clobbers: volatile registers
-; -----------------------------------------------------------------------------
-%define SA_X    0
-%define SA_Z    8
-%define SA_Y    16
-%define SA_I    24
-PROC safe_ahead, 32
-    movsd xmm2, xmm0
-    movsd xmm3, xmm1
-    call size_of                        ; xmm0 half width
-    addsd xmm0, [rel c_probe]
-    mulsd xmm2, xmm0
-    mulsd xmm3, xmm0
-    addsd xmm2, [rbx + EntT.pos]
-    addsd xmm3, [rbx + EntT.pos + 16]
-    movsd [LOCAL(SA_X)], xmm2
-    movsd [LOCAL(SA_Z)], xmm3
-    movsd xmm0, [rbx + EntT.pos + 8]
-    addsd xmm0, [rel c_half]            ; (the middle of the feet block)
-    movsd [LOCAL(SA_Y)], xmm0
-    ; a wall: the feet and head blocks both solid
-    movsd xmm0, [LOCAL(SA_X)]
-    movsd xmm1, [LOCAL(SA_Y)]
-    addsd xmm1, [rel c_margin]
-    movsd xmm2, [LOCAL(SA_Z)]
-    call block_at
-    cmp eax, -1
-    je .no
-    lea rcx, [rel g_block_coll]
-    cmp byte [rcx + rax], 0
-    je .ground
-    movsd xmm0, [LOCAL(SA_X)]
-    movsd xmm1, [LOCAL(SA_Y)]
-    movsd xmm2, [LOCAL(SA_Z)]
-    call block_at
-    cmp eax, -1
-    je .no
-    lea rcx, [rel g_block_coll]
-    cmp byte [rcx + rax], 0
-    jne .no
-.ground:
-    ; something to stand on within 3 blocks below (water counts; lava stops it)
-    mov dword [LOCAL(SA_I)], 0
-.down:
-    movsd xmm0, [LOCAL(SA_X)]
-    movsd xmm1, [LOCAL(SA_Y)]
-    cvtsi2sd xmm2, dword [LOCAL(SA_I)]
-    subsd xmm1, xmm2
-    movsd xmm2, [LOCAL(SA_Z)]
-    call block_at
-    cmp eax, -1
-    je .no
-    lea rcx, [rel g_block_move]
-    test byte [rcx + rax], MOVE_LAVA
-    jnz .no
-    test byte [rcx + rax], MOVE_WATER
-    jnz .yes
-    lea rcx, [rel g_block_coll]
-    cmp byte [rcx + rax], 0
-    jne .yes
-    inc dword [LOCAL(SA_I)]
-    cmp dword [LOCAL(SA_I)], 4
-    jb .down
-.no:
-    xor eax, eax
-    RETURN
-.yes:
-    mov eax, 1
     RETURN
 ENDPROC
 
@@ -602,330 +535,6 @@ PROC body, 16, rsi
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; think — entity rbx (id esi) decides where to go; sets its velocity.
-;   in:  xmm0 = dx, xmm1 = dz to the player (doubles, entity - player),
-;        xmm2 = distance^2
-;   clobbers: volatile registers
-; -----------------------------------------------------------------------------
-%define TH_DX       0
-%define TH_DZ       8
-%define TH_D2       16
-%define TH_WX       24                  ; wanted velocity
-%define TH_WZ       32
-%define TH_SPEED    40
-%define TH_UX       48                  ; heading (unit)
-%define TH_UZ       56
-PROC think, 64
-    movsd [LOCAL(TH_DX)], xmm0
-    movsd [LOCAL(TH_DZ)], xmm1
-    movsd [LOCAL(TH_D2)], xmm2
-    xorps xmm0, xmm0
-    movsd [LOCAL(TH_WX)], xmm0
-    movsd [LOCAL(TH_WZ)], xmm0
-    call mob_of
-    cvtss2sd xmm0, [rax + MOB.speed]
-    mulsd xmm0, [rel c_per_tick]
-    movsd [LOCAL(TH_SPEED)], xmm0
-    ; wild animals run from a player close by
-    cmp dword [rax + MOB.temper], TEMPER_WILD
-    jne .no_wild
-    movsd xmm0, [LOCAL(TH_D2)]
-    comisd xmm0, [rel c_wild2]
-    jae .no_wild
-    cmp byte [rbx + EntT.state], AI_FLEE
-    je .no_wild
-    call start_flee
-.no_wild:
-    cmp word [rbx + EntT.timer], 0
-    je .timer_done
-    dec word [rbx + EntT.timer]
-.timer_done:
-    movzx eax, byte [rbx + EntT.state]
-    cmp eax, AI_WANDER
-    je .wander
-    cmp eax, AI_FLEE
-    je .flee
-
-    ; ---- idle: stand; look around; then maybe wander ----
-    cmp word [rbx + EntT.timer], 0
-    jne .look
-    mov ecx, 10
-    call rand_below
-    cmp eax, 7
-    jae .rest_again
-    call pick_goal
-    mov byte [rbx + EntT.state], AI_WANDER
-    mov ecx, 200
-    call rand_below
-    add eax, 100
-    mov [rbx + EntT.timer], ax
-    jmp .look
-.rest_again:
-    mov ecx, 100
-    call rand_below
-    add eax, 40
-    mov [rbx + EntT.timer], ax
-    jmp .look
-
-    ; ---- wander: walk to the goal ----
-.wander:
-    cmp word [rbx + EntT.timer], 0
-    je .to_idle
-    jmp .go_goal
-
-    ; ---- flee: run to the goal, away from the player ----
-.flee:
-    cmp word [rbx + EntT.timer], 0
-    je .to_idle
-    movsd xmm0, [LOCAL(TH_SPEED)]
-    mulsd xmm0, [rel c_flee_mul]
-    movsd [LOCAL(TH_SPEED)], xmm0
-    ; keep running away: a new goal when near the old one
-.go_goal:
-    movsd xmm0, [rbx + EntT.goal]
-    subsd xmm0, [rbx + EntT.pos]
-    movsd xmm1, [rbx + EntT.goal + 8]
-    subsd xmm1, [rbx + EntT.pos + 16]
-    movsd xmm2, xmm0
-    mulsd xmm2, xmm0
-    movsd xmm3, xmm1
-    mulsd xmm3, xmm1
-    addsd xmm2, xmm3
-    comisd xmm2, [rel c_arrive2]
-    jb .arrived
-    sqrtsd xmm2, xmm2
-    ; stuck: no closer for 2 seconds
-    cvtsd2ss xmm3, xmm2
-    movss xmm4, [rbx + EntT.best]
-    subss xmm4, [rel c_progress]
-    comiss xmm3, xmm4
-    jae .not_closer
-    movss [rbx + EntT.best], xmm3
-    mov word [rbx + EntT.stuck], 0
-    jmp .heading
-.not_closer:
-    inc word [rbx + EntT.stuck]
-    cmp word [rbx + EntT.stuck], 40
-    jae .arrived
-.heading:
-    divsd xmm0, xmm2
-    divsd xmm1, xmm2
-    movsd [LOCAL(TH_UX)], xmm0
-    movsd [LOCAL(TH_UZ)], xmm1
-    ; never off a cliff or into lava (swimming animals can't tell: water is fine)
-    test dword [rbx + EntT.flags], EF_WATER
-    jnz .walk
-    call safe_ahead
-    test eax, eax
-    jz .arrived
-    movsd xmm0, [LOCAL(TH_UX)]
-    movsd xmm1, [LOCAL(TH_UZ)]
-.walk:
-    mulsd xmm0, [LOCAL(TH_SPEED)]
-    mulsd xmm1, [LOCAL(TH_SPEED)]
-    movsd [LOCAL(TH_WX)], xmm0
-    movsd [LOCAL(TH_WZ)], xmm1
-    ; the body turns to where it goes: yaw = atan2(dx, -dz)
-    cvtsd2ss xmm0, [LOCAL(TH_UX)]
-    cvtsd2ss xmm1, [LOCAL(TH_UZ)]
-    xorps xmm1, [rel c_neg_f]
-    call atan2f
-    movss xmm1, xmm0
-    movss xmm0, [rbx + EntT.yaw]
-    movss xmm2, [rel c_turn]
-    call turn
-    movss [rbx + EntT.yaw], xmm0
-    ; looks ahead while walking
-    mov dword [rbx + EntT.look_yaw], 0
-    mov dword [rbx + EntT.look_pitch], 0
-    jmp .apply
-.arrived:
-    cmp byte [rbx + EntT.state], AI_FLEE
-    jne .to_idle
-    cmp word [rbx + EntT.timer], 0
-    je .to_idle
-    call flee_goal                      ; still running: further away
-    jmp .apply
-.to_idle:
-    mov byte [rbx + EntT.state], AI_IDLE
-    mov ecx, 120
-    call rand_below
-    add eax, 30
-    mov [rbx + EntT.timer], ax
-
-    ; ---- the head: at a player close by, else now and then somewhere ----
-.look:
-    movsd xmm0, [LOCAL(TH_D2)]
-    comisd xmm0, [rel c_look2]
-    jae .look_around
-    ; towards the player: yaw = atan2(-dx, dz) (from the animal) - body
-    movsd xmm0, [LOCAL(TH_DX)]
-    xorpd xmm0, [rel c_sign_d]
-    cvtsd2ss xmm0, xmm0
-    cvtsd2ss xmm1, [LOCAL(TH_DZ)]
-    call atan2f
-    subss xmm0, [rbx + EntT.yaw]
-    call wrap
-    minss xmm0, [rel c_head_max]
-    movss xmm1, [rel c_head_max]
-    xorps xmm1, [rel c_neg_f]
-    maxss xmm0, xmm1
-    movss [rbx + EntT.look_yaw], xmm0
-    ; pitch: up to the eyes
-    movsd xmm1, [LOCAL(TH_D2)]
-    sqrtsd xmm1, xmm1
-    cvtsd2ss xmm1, xmm1
-    movsd xmm0, [rel g_pl_pos + 8]
-    subsd xmm0, [rbx + EntT.pos + 8]
-    subsd xmm0, [rel c_eye_lift]
-    cvtsd2ss xmm0, xmm0
-    call atan2f
-    minss xmm0, [rel c_pitch_max]
-    movss xmm1, [rel c_pitch_max]
-    xorps xmm1, [rel c_neg_f]
-    maxss xmm0, xmm1
-    movss [rbx + EntT.look_pitch], xmm0
-    jmp .apply
-.look_around:
-    mov ecx, 60
-    call rand_below
-    test eax, eax
-    jnz .apply
-    call rand01
-    subsd xmm0, [rel c_half]
-    cvtsd2ss xmm0, xmm0
-    addss xmm0, xmm0
-    mulss xmm0, [rel c_look_far]
-    movss [rbx + EntT.look_yaw], xmm0
-    call rand01
-    subsd xmm0, [rel c_half]
-    cvtsd2ss xmm0, xmm0
-    mulss xmm0, [rel c_pitch_max]
-    movss [rbx + EntT.look_pitch], xmm0
-
-    ; ---- the velocity approaches the wanted one ----
-.apply:
-    movsd xmm2, [rel c_acc_ground]
-    test dword [rbx + EntT.flags], EF_WATER
-    jz .not_water
-    movsd xmm2, [rel c_acc_water]
-    jmp .acc
-.not_water:
-    test dword [rbx + EntT.flags], EF_GROUND
-    jnz .acc
-    movsd xmm2, [rel c_acc_air]
-.acc:
-    movsd xmm0, [LOCAL(TH_WX)]
-    subsd xmm0, [rbx + EntT.vel]
-    mulsd xmm0, xmm2
-    addsd xmm0, [rbx + EntT.vel]
-    movsd [rbx + EntT.vel], xmm0
-    movsd xmm0, [LOCAL(TH_WZ)]
-    subsd xmm0, [rbx + EntT.vel + 16]
-    mulsd xmm0, xmm2
-    addsd xmm0, [rbx + EntT.vel + 16]
-    movsd [rbx + EntT.vel + 16], xmm0
-    ; a jump when it walked into a step (on the ground, wanting to move)
-    test dword [rbx + EntT.flags], EF_BUMPED
-    jz .no_jump
-    movsd xmm0, [LOCAL(TH_WX)]
-    mulsd xmm0, xmm0
-    movsd xmm1, [LOCAL(TH_WZ)]
-    mulsd xmm1, xmm1
-    addsd xmm0, xmm1
-    comisd xmm0, [rel c_moving2]
-    jb .no_jump
-    test dword [rbx + EntT.flags], EF_WATER
-    jnz .swim_jump
-    test dword [rbx + EntT.flags], EF_GROUND
-    jz .no_jump
-    movsd xmm0, [rel c_jump]
-    movsd [rbx + EntT.vel + 8], xmm0
-    jmp .no_jump
-.swim_jump:
-    movsd xmm0, [rel c_jump]
-    mulsd xmm0, [rel c_half]
-    movsd [rbx + EntT.vel + 8], xmm0    ; (climbing out of water)
-.no_jump:
-    ; the head turns towards what it looks at
-    movss xmm0, [rbx + EntT.head_yaw]
-    movss xmm1, [rbx + EntT.look_yaw]
-    movss xmm2, [rel c_head_turn]
-    call turn
-    movss [rbx + EntT.head_yaw], xmm0
-    movss xmm0, [rbx + EntT.head_pitch]
-    movss xmm1, [rbx + EntT.look_pitch]
-    movss xmm2, [rel c_head_turn]
-    call turn
-    movss [rbx + EntT.head_pitch], xmm0
-    RETURN
-ENDPROC
-
-; pick_goal — a wander goal a few blocks away   clobbers: volatile
-PROC pick_goal, 0
-    call rand01
-    subsd xmm0, [rel c_half]
-    addsd xmm0, xmm0
-    mulsd xmm0, [rel c_wander_r]
-    addsd xmm0, [rbx + EntT.pos]
-    movsd [rbx + EntT.goal], xmm0
-    call rand01
-    subsd xmm0, [rel c_half]
-    addsd xmm0, xmm0
-    mulsd xmm0, [rel c_wander_r]
-    addsd xmm0, [rbx + EntT.pos + 16]
-    movsd [rbx + EntT.goal + 8], xmm0
-    mov dword [rbx + EntT.best], 0x7F000000
-    mov word [rbx + EntT.stuck], 0
-    RETURN
-ENDPROC
-
-; flee_goal — a goal straight away from the player (a little to the side)
-;   clobbers: volatile
-PROC flee_goal, 0
-    movsd xmm0, [rbx + EntT.pos]
-    subsd xmm0, [rel g_pl_pos]
-    movsd xmm1, [rbx + EntT.pos + 16]
-    subsd xmm1, [rel g_pl_pos + 16]
-    movsd xmm2, xmm0
-    mulsd xmm2, xmm0
-    movsd xmm3, xmm1
-    mulsd xmm3, xmm1
-    addsd xmm2, xmm3
-    sqrtsd xmm2, xmm2
-    addsd xmm2, [rel c_tiny]
-    movsd xmm3, [rel c_flee_dist]
-    divsd xmm3, xmm2
-    mulsd xmm0, xmm3
-    mulsd xmm1, xmm3
-    movsd [rel g_move], xmm0
-    movsd [rel g_move + 16], xmm1
-    ; a random sideways part
-    call rand01
-    subsd xmm0, [rel c_half]
-    mulsd xmm0, [rel c_wander_r]
-    movsd xmm1, [rel g_move]
-    addsd xmm1, xmm0
-    addsd xmm1, [rbx + EntT.pos]
-    movsd [rbx + EntT.goal], xmm1
-    movsd xmm1, [rel g_move + 16]
-    subsd xmm1, xmm0
-    addsd xmm1, [rbx + EntT.pos + 16]
-    movsd [rbx + EntT.goal + 8], xmm1
-    mov dword [rbx + EntT.best], 0x7F000000
-    mov word [rbx + EntT.stuck], 0
-    RETURN
-ENDPROC
-
-; start_flee — entity rbx runs from the player for a few seconds
-PROC start_flee, 0
-    mov byte [rbx + EntT.state], AI_FLEE
-    mov word [rbx + EntT.timer], FLEE_TICKS
-    call flee_goal
-    RETURN
-ENDPROC
-
-; -----------------------------------------------------------------------------
 ; die — entity rbx (id esi) drops its loot and is gone.
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
@@ -1019,7 +628,7 @@ PROC ents_attack, 0, rbx, rsi
     mov byte [rbx + EntT.death], 0
     jmp .done
 .alive:
-    call start_flee
+    call behave_hurt                    ; it and its herd run
 .done:
     RETURN
 ENDPROC
@@ -1037,6 +646,7 @@ ENDPROC
 PROC ents_tick, 64, rbx, rsi, rdi
     call timer_elapsed_us
     mov [LOCAL(T_START)], rax
+    call behave_tick                    ; herd centres, regrowing grass
     mov dword [rel g_ent_awake], 0
     cmp dword [rel g_ent_count], 0
     je .stats
@@ -1099,7 +709,7 @@ PROC ents_tick, 64, rbx, rsi, rdi
     movsd xmm0, [LOCAL(T_DX)]
     movsd xmm1, [LOCAL(T_DZ)]
     movsd xmm2, [LOCAL(T_D2)]
-    call think
+    call behave                         ; (behave.asm, part 2)
 .fall:
     ; ---- gravity, water, the move ----
     movsd xmm0, [rbx + EntT.vel + 8]

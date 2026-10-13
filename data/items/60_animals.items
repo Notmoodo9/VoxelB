@@ -14,3 +14,9 @@ tab = food
 [item leather]
 texture = leather
 tab = items
+
+# animal food until farming (wild wheat; seeds, carrots and berries come
+# with the other animals)
+[item wheat]
+texture = wheat
+tab = food

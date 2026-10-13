@@ -13,6 +13,7 @@ foliage_color = 48B02C
 # ground cover: share of grass blocks
 plant = short_grass, 0.30
 plant = tall_grass, 0.05
+plant = wild_wheat, 0.006           # (milestone 19: cow food)
 
 # wildflowers in small same-colour clusters
 flowers       = poppy, dandelion, cornflower, oxeye_daisy, allium, red_tulip, orange_tulip, white_tulip, pink_tulip

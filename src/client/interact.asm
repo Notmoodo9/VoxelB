@@ -334,9 +334,21 @@ PROC interact_update, 0, rbx
     jz .done
     test ebx, ebx
     jz .done
-    ; aiming at an animal: a click hits it (milestone 19)
+    ; aiming at an animal: a click hits it, a right click feeds it (milestone 19)
     cmp dword [rel g_ent_target], 0
     jl .blocks
+    mov ecx, ACT_PLACE_BLOCK
+    call input_pressed
+    test eax, eax
+    jz .no_use
+    mov eax, [rel g_ent_target]
+    mov [rel g_attack + ENT_PKT.id], eax
+    lea rcx, [rel g_to_sim]
+    lea r8, [rel g_attack]
+    INVOKE pkt_send, rcx, PKT_C_INTERACT, r8, ENT_PKT_size
+    call held_swing
+    jmp .done
+.no_use:
     mov ecx, ACT_BREAK_BLOCK
     call input_pressed
     test eax, eax

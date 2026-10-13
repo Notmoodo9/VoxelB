@@ -456,6 +456,33 @@ def leather():
     return outline(img, (0.14, 0.07, 0.03))
 
 
+def wheat():
+    """A bound sheaf of golden wheat ears."""
+    r = rng("wheat_item")
+    m = shape_mask([
+        "................",
+        "...5..5...5.....",
+        "..454.45.454....",
+        "..4544545454....",
+        "...44454544.....",
+        "....4445444.....",
+        ".....44544......",
+        "......444.......",
+        "......777.......",
+        ".....2.2.2......",
+        "....2..2..2.....",
+        "...2...2...2....",
+        "..2....2....2...",
+        "..1....1....1...",
+        "................",
+        "................",
+    ])
+    pal = list(ramp("e0b04a", n=6, spread=0.22))
+    pal += [pal[0]] + [np.array((0.55, 0.32, 0.16))]
+    img = paint(m, np.array(pal), r, jitter=1)
+    return outline(img, (0.2, 0.12, 0.04))
+
+
 ITEMS = {
     "coal": coal,
     "diamond": lambda: gem("diamond", "37d6e0"),
@@ -477,6 +504,7 @@ ITEMS = {
     "beef": lambda: meat(True),
     "cooked_beef": lambda: meat(False),
     "leather": leather,
+    "wheat": wheat,
 }
 for _tier in TIER_COLOURS:
     for _kind in ("pickaxe", "axe", "shovel", "hoe"):

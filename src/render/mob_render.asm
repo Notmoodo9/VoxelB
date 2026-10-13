@@ -63,6 +63,9 @@ c_tail_walk:    dd 0.35
 c_tail_sway:    dd 0.22
 c_tail_rate:    dd 1.7
 c_id_phase:     dd 0.7
+c_sink:         dd 0.62                 ; lying down: blocks lower (adult)
+c_love_rate:    dd 5.0
+c_love_amp:     dd 0.17
 
 section .bss
 alignb 16
@@ -254,6 +257,7 @@ ENDPROC
 %define P_END       64
 %define P_ID        68
 %define P_CP        72                  ; f32 cos pitch
+%define P_LOVE      76                  ; f32 pink pulse
 PROC mobs_prepare, 80, rbx, rsi, rdi, r12
     call timer_elapsed_us
     mov [rel g_prep_start], rax
@@ -318,6 +322,14 @@ PROC prepare, 80, rbx, rsi, rdi, r12, r13
     cvtsd2ss xmm3, xmm0
     movss [LOCAL(P_REL)], xmm3
     cvtsd2ss xmm3, xmm1
+    ; lying down: the body sinks onto its folded legs
+    movss xmm4, [rbx + VENT.sleep]
+    mulss xmm4, [rel c_sink]
+    test word [rbx + VENT.flags], EPF_BABY
+    jz .sink
+    mulss xmm4, [rel c_baby]
+.sink:
+    subss xmm3, xmm4
     movss [LOCAL(P_REL + 4)], xmm3
     cvtsd2ss xmm3, xmm2
     movss [LOCAL(P_REL + 8)], xmm3
@@ -376,6 +388,18 @@ PROC prepare, 80, rbx, rsi, rdi, r12, r13
     mulss xmm0, [rel c_tail_walk]
     addss xmm0, [rel c_tail_rest]
     movss [LOCAL(P_TAILP)], xmm0
+    ; fed: a soft pink pulse
+    xor eax, eax
+    mov [LOCAL(P_LOVE)], eax
+    test word [rbx + VENT.flags], EPF_LOVE
+    jz .no_love
+    movss xmm0, [LOCAL(P_TIME)]
+    mulss xmm0, [rel c_love_rate]
+    call sincosf
+    mulss xmm0, [rel c_love_amp]
+    addss xmm0, [rel c_love_amp]
+    movss [LOCAL(P_LOVE)], xmm0
+.no_love:
     ; ---- the boxes ----
 .part:
     mov eax, [LOCAL(P_PART)]
@@ -463,7 +487,8 @@ PROC prepare, 80, rbx, rsi, rdi, r12, r13
     mov eax, [rbx + VENT.hurt]
     mov [rdi + 84], eax
     mov [rdi + 88], r8d
-    mov dword [rdi + 92], 0
+    mov eax, [LOCAL(P_LOVE)]
+    mov [rdi + 92], eax
     add rdi, INST_BYTES
     inc dword [rel g_mob_boxes]
     jmp .part

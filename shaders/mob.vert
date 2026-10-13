@@ -16,7 +16,7 @@ struct Part {
     vec4 c;     // box corner from the pivot (pixels), skin layer
     vec4 d;     // box size (pixels), the box's pitch
     vec4 e;     // the box's yaw, the body's roll (dying), skin u, v (pixels)
-    vec4 f;     // sky light 0..1, red tint 0..1, box scale (baby heads), -
+    vec4 f;     // sky light 0..1, red tint 0..1, box scale (baby heads), pink tint 0..1
 };
 layout(std430, binding = 11) readonly buffer Parts { Part parts[]; };
 
@@ -29,7 +29,7 @@ out vec3 v_rel;
 out vec2 v_uv;
 out vec3 v_n;
 flat out float v_layer;
-flat out vec2 v_light;    // sky, tint
+flat out vec3 v_light;    // sky, red tint, pink tint (fed)
 
 const vec2 ST[6] = vec2[](vec2(0, 0), vec2(1, 0), vec2(1, 1), vec2(0, 0), vec2(1, 1), vec2(0, 1));
 
@@ -67,6 +67,6 @@ void main() {
     v_rel = rel;
     v_n = n;
     v_layer = P.c.w;
-    v_light = P.f.xy;
+    v_light = vec3(P.f.x, P.f.y, P.f.w);
     gl_Position = (u_cascade > 0 ? sd.m[u_cascade - 1] : u_viewproj) * vec4(rel, 1.0);
 }

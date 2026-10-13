@@ -38,6 +38,7 @@ extern dig_reset, dig_tick, drops_reset, drops_tick, g_world_mode
 extern craft_reset, craft_window, craft_recipe, craft_tick, furnace_tick
 extern cont_reset, save_load_containers, g_block_flags
 extern ents_reset, ents_tick, ents_attack, store_reset, store_open, store_update
+extern behave_interact
 extern timer_elapsed_us, g_frame_us, g_time_of_day, g_day_length
 
 %define TICK_US             50000       ; 20 TPS
@@ -208,6 +209,12 @@ PROC sim_tick, 16, rbx, rsi, rdi
     call ents_attack                    ; (milestone 19)
     jmp .packet
 .not_attack:
+    cmp eax, PKT_C_INTERACT
+    jne .not_interact
+    lea rcx, [rel g_pkt + PKT.data]
+    call behave_interact                ; (milestone 19 part 2: feeding)
+    jmp .packet
+.not_interact:
     cmp eax, PKT_C_TOGGLE_FLY
     jne .packet                         ; (unknown packets are ignored)
     call player_toggle_fly

@@ -47,6 +47,7 @@ extern g_pkt_sent_sim, g_pkt_sent_client, g_pkt_dropped
 extern g_drop_count
 extern g_ent_count, g_ent_awake, g_ent_sent, g_ent_tick_us, g_ents_shown
 extern g_mobs_drawn, g_mob_boxes, g_store_pop_us, g_store_pop_count, g_mob_prep_us
+extern g_herd_count, g_regrow_count, g_pf_calls, g_pf_us
 extern g_target_valid, g_target, g_target_id, g_held_block, g_edit_applied, g_edit_rejected
 extern g_stream_remeshes, g_fluid_updates, g_fluid_changes, g_fluid_pending
 
@@ -173,6 +174,10 @@ s_a_tick:       db " us)   tick ", 0
 s_a_herds:      db " us   columns checked ", 0
 s_a_pop:        db " (last ", 0
 s_a_us:         db " us)", 0
+s_a_herds2:     db "   herds ", 0
+s_a_regrow:     db "   grazed ", 0
+s_a_paths:      db "   paths ", 0
+s_a_pavg:       db " (avg ", 0
 s_t_edits:      db "   edits ", 0
 s_t_rej:        db "  rejected ", 0
 s_t_remesh:     db "  remeshed columns ", 0
@@ -653,6 +658,25 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
     PUTNUM [rel g_store_pop_count], 0
     PUT s_a_pop
     PUTNUM [rel g_store_pop_us], 0
+    PUT s_a_us
+    PUT s_nl
+    PUT s_a_herds2
+    mov eax, [rel g_herd_count]
+    PUTNUM rax, 0
+    PUT s_a_regrow
+    mov eax, [rel g_regrow_count]
+    PUTNUM rax, 0
+    PUT s_a_paths
+    PUTNUM [rel g_pf_calls], 0
+    PUT s_a_pavg
+    mov rax, [rel g_pf_us]
+    mov rcx, [rel g_pf_calls]
+    xor edx, edx
+    test rcx, rcx
+    jz .pf_none
+    div rcx
+.pf_none:
+    PUTNUM rax, 0
     PUT s_a_us
     PUT s_nl
     ; distant terrain tiles (milestone 12)

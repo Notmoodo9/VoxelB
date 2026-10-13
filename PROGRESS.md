@@ -1,17 +1,65 @@
 # Progress
 
 ## Current state
-**Milestone 19, part 1: Animals — the entity framework and cows: DONE** (v0.19.1, Windows CI green: run #105)
+**Milestone 19, part 2: Animals — paths and behaviour: DONE** (v0.19.2, Windows CI: see below)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
 
-Next: **Milestone 19, part 2: paths and behaviour** — A* paths over the
-blocks, following a player who holds their food, herds that keep together
-and flee together, grazing (grass to dirt and back), sleeping at night,
-breeding and babies (design/mobs/passive_animals.md, already approved).
-Then part 3: sheep, pig/boar, chicken, deer, rabbit, goat, forage plants,
-shearing, milking, eggs, leads and name tags.
+Next: **Milestone 19, part 3: the other animals** — sheep, pig and wild
+boar, chicken, deer, rabbit, goat; forage (seeds from grass, wild carrots,
+berries); shearing, milking, eggs, leads and name tags
+(design/mobs/passive_animals.md). Before it: the owner's answers on the
+proposed recipes (bucket, shears, lead, name tag), hides → leather, the
+name-tag page and pig/boar drops.
+
+---
+
+## Milestone 19, part 2 — done (2026-10-13): paths and behaviour (D99)
+
+### What was built
+* **Paths** (A\* over the blocks): animals walk around obstacles, step up
+  1 block, go down drops of up to 3, swim across water, never walk into
+  lava; a goal they can't reach still gets them as close as possible.
+* **Wheat**: wild wheat grows in plains, meadows and the steppe; breaking
+  it gives wheat (a new item, Food tab).
+* **Following food**: hold wheat and cows within 10 blocks walk to you and
+  stand 2.5 blocks away looking up at you.
+* **Feeding and babies**: right-click a cow with wheat — it pulses pink
+  and looks for another fed cow within 12 blocks; when they meet a calf of
+  one of their looks appears (half size, bigger head), and both rest 5
+  minutes. Calves keep within 5 blocks of a grown-up of their herd and grow
+  up in 20 minutes (feeding one takes 2 minutes off). Creative feeding
+  uses no wheat.
+* **Herds**: every herd has an id (saved); strays wander back; at night
+  the herd gathers and lies down until morning (a hit wakes them); hit one
+  and the whole herd nearby runs.
+* **Grazing**: cows lower their heads and eat; the grass under them turns
+  to dirt and grows back 1–3 minutes later.
+* Overlay: herds, grazed patches waiting to regrow, paths worked out and
+  their average time. Start option `--breed-test` (feeds every grown-up
+  nearby 5 s in; for testing).
+
+### Verified (scripted with xdotool)
+* Holding wheat: the herd walked up and stood around the player (screens).
+* `--breed-test`: 7 cows fed → 3 calves born (log); a saved region showed
+  the calf (flag 1) between its parents with their herd id.
+* Night (`--time 22`): the herd gathered and lay down (screen); grazed
+  dirt patches next to cows (screen; overlay "grazed").
+* Debug and release headless tests pass; a debug run with breeding: no
+  asserts.
+* Found and fixed: following outranked love (fed cows never paired while
+  the player held wheat); feeding by aiming couldn't be scripted (mouse
+  turning is unreliable in the test VM) — hence `--breed-test`.
+
+### Performance (llvmpipe test VM)
+* Paths: 370–410 µs each on average (480 cells at most), at most 3 per
+  tick. Animal tick (7 awake, behaviour included): 18–26 µs without paths.
+
+### Deferred
+* Grazed patches still waiting to regrow are not saved (they stay dirt).
+* Animals pushing each other apart (calves can stand inside a parent).
+* Hearts or particles for fed animals (a pink pulse for now).
 
 ---
 

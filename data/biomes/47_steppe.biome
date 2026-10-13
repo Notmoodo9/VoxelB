@@ -15,6 +15,7 @@ foliage_color = 8AAA60
 plant = feather_grass, 0.12
 plant = short_grass, 0.15
 plant = sagebrush, 0.015
+plant = wild_wheat, 0.008           # (milestone 19: cow food)
 
 flowers       = blue_sage, yarrow, pasqueflower
 flower_chance = 0.01

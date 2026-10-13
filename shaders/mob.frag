@@ -24,7 +24,7 @@ in vec3 v_rel;
 in vec2 v_uv;
 in vec3 v_n;
 flat in float v_layer;
-flat in vec2 v_light;
+flat in vec3 v_light;
 
 out vec4 o_color;
 
@@ -103,6 +103,7 @@ void main() {
     vec3 lit = max(curve(vec3(v_light.x)) * sky_light(u_sun_dir) * u_daylight * sky_part, curve(block));
     vec3 color = c.rgb * face * (AMBIENT + (1.0 - AMBIENT) * lit);
     color = mix(color, vec3(0.95, 0.12, 0.08) * max(max(lit.r, lit.g), 0.35), v_light.y * 0.6);
+    color = mix(color, vec3(1.0, 0.45, 0.7) * max(max(lit.r, lit.g), 0.35), v_light.z);   // fed
     color = pow(max(color, vec3(0.0)), vec3(2.2));
 
     float fog_d = dist * u_fog;

@@ -49,6 +49,7 @@ c_amp_rate:     dd 8.0
 c_roll_max:     dd 1.5707963
 c_roll_rate:    dd 4.0                  ; radians per second
 c_hurt_rate:    dd 6.0                  ; the red fades per second
+c_sleep_rate:   dd 2.0                  ; lying down / getting up per second
 c_sky_open:     dd 1.0
 c_sky_leaves:   dd 0.72
 c_sky_side:     dd 0.6                  ; under a roof, open sky beside it
@@ -147,6 +148,13 @@ ents_view_packet:
     mov [r8 + VENT.phase], eax
     mov [r8 + VENT.amp], eax
     mov [r8 + VENT.roll], eax
+    mov [r8 + VENT.sleep], eax
+    test word [r8 + VENT.flags], EPF_SLEEP
+    jz .awake
+    mov eax, [rel c_one_f]
+    mov [r8 + VENT.sleep], eax          ; (already asleep when it came in sight)
+    xor eax, eax
+.awake:
     mov [r8 + VENT.sky_wait], eax       ; (look at the sky right away)
     mov eax, [rel c_sky_open]
     mov [r8 + VENT.sky], eax
@@ -269,6 +277,19 @@ PROC ents_view_update, 32, rbx, rsi, rdi
     mulss xmm0, xmm1
     addss xmm0, [rbx + VENT.amp]
     movss [rbx + VENT.amp], xmm0
+    ; ---- lying down / getting up ----
+    xorps xmm0, xmm0
+    test word [rbx + VENT.flags], EPF_SLEEP
+    jz .sleep_target
+    movss xmm0, [rel c_one_f]
+.sleep_target:
+    subss xmm0, [rbx + VENT.sleep]
+    movss xmm1, [LOCAL(U_DT)]
+    mulss xmm1, [rel c_sleep_rate]
+    minss xmm1, [rel c_one_f]
+    mulss xmm0, xmm1
+    addss xmm0, [rbx + VENT.sleep]
+    movss [rbx + VENT.sleep], xmm0
     ; ---- dying: tips over; hurt: the red fades ----
     test word [rbx + VENT.flags], EPF_DYING
     jz .not_dying
