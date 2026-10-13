@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 19, part 2: Animals — paths and behaviour: DONE** (v0.19.2, Windows CI: see below)
+**Milestone 19, part 2: Animals — paths and behaviour: DONE** (v0.19.2, Windows CI green: run #107)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
