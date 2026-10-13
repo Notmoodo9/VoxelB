@@ -19,6 +19,8 @@
 %define STATION_CRAFTING    0
 %define STATION_CONTAINER   1
 %define STATION_FURNACE     2               ; diamond 5, mythril 6, adamantite 7, star_crystal 8
+%define STATION_RACK        3               ; a drying rack (milestone 19 part 3)
+%define MAX_HANGS           16              ; [rack] hang lines
 %ifndef ITEMS_IMPL
 extern items_load, item_find
 extern g_item_count, g_item_names, g_item_titles, g_item_block, g_item_stack

@@ -17,7 +17,7 @@
 
 global dig_reset, dig_tick
 
-extern phys_block, mining_time, mining_drop, mining_bonus, edit_request, drops_spawn
+extern phys_block, mining_time, mining_drop, mining_bonus, mining_bonus2, edit_request, drops_spawn
 extern pkt_send, g_to_client, g_world_mode, g_inv, g_inv_sel, inv_wear_selected
 
 %define TICK_S          0.05
@@ -224,6 +224,22 @@ PROC dig_tick, 16, rbx, rsi
     mov ebx, eax
     mov esi, edx
     mov [LOCAL(D_INSTANT)], r8d         ; (reused: the chance)
+    call rand100
+    cmp eax, [LOCAL(D_INSTANT)]
+    jae .bonus2
+    mov ecx, ebx
+    mov edx, esi
+    lea r8, [rel g_at]
+    call drops_spawn
+.bonus2:
+    ; and a second one (seeds from grass, milestone 19)
+    mov ecx, [LOCAL(D_BLOCK)]
+    call mining_bonus2
+    test eax, eax
+    jz .done
+    mov ebx, eax
+    mov esi, edx
+    mov [LOCAL(D_INSTANT)], r8d
     call rand100
     cmp eax, [LOCAL(D_INSTANT)]
     jae .done

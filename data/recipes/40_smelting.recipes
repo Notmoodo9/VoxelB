@@ -60,3 +60,18 @@ stick = 5
 input = beef
 result = cooked_beef
 seconds = 8
+
+[smelt cooked_pork]
+input = pork
+result = cooked_pork
+seconds = 8
+
+[smelt cooked_mutton]
+input = mutton
+result = cooked_mutton
+seconds = 8
+
+[smelt cooked_chicken]
+input = chicken
+result = cooked_chicken
+seconds = 8

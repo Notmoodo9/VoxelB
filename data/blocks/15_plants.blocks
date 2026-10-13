@@ -186,3 +186,9 @@ shape    = plant
 textures = wild_wheat
 render   = cutout
 sway     = 1
+
+[block wild_carrot]
+shape    = plant
+textures = wild_carrot
+render   = cutout
+sway     = 1

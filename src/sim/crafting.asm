@@ -40,6 +40,7 @@ global craft_reset, craft_window, craft_recipe, craft_update, craft_take
 global craft_tick, g_win_kind, g_win_grid, g_win_slots, g_win_station
 global craft_block_broken, craft_sync, g_win_cont
 
+extern racks_use
 extern g_inv, inv_mark, inv_stack_of, inv_room, inv_add, inv_add_dur, inv_cursor_back
 extern recipe_match, recipe_cell_ok, g_recipe_count, g_rec_result
 extern g_rec_amount, g_rec_station, g_rec_w, g_rec_h, g_rec_n, g_rec_ok
@@ -270,6 +271,17 @@ PROC craft_window, 16, rbx, rsi, rdi
     test eax, eax
     jz .done
     mov [LOCAL(4)], eax
+    ; a drying rack: right click hangs or takes a hide (racks.asm)
+    lea rcx, [rel g_station_kind]
+    cmp byte [rcx + rax - 1], STATION_RACK
+    jne .not_rack
+    mov ecx, esi
+    mov edx, edi
+    mov r8d, [LOCAL(0)]
+    mov r9d, eax
+    call racks_use
+    RETURN
+.not_rack:
     lea rcx, [rel g_station_slots]
     cmp byte [rcx + rax - 1], 0
     je .station

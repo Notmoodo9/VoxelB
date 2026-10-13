@@ -24,6 +24,7 @@
 ;       -> xmm0 seconds (< 0: unbreakable), eax 1 if it will drop
 ;   mining_drop(ecx = block) -> eax item (0 = nothing), edx count
 ;   mining_bonus(ecx = block) -> eax item (0 = none), edx count, r8d percent
+;   mining_bonus2(ecx = block)  the same for a second matching [bonus] line
 ;   g_block_hardness (f32), g_block_tool, g_block_tier (u8) per block id
 ; =============================================================================
 %include "macros.inc"
@@ -34,7 +35,7 @@
 %include "block.inc"
 %include "items.inc"
 
-global mining_load, mining_time, mining_drop, mining_bonus
+global mining_load, mining_time, mining_drop, mining_bonus, mining_bonus2
 global g_block_hardness, g_block_tool, g_block_tier
 
 extern str_ieq, str_parse_u64, str_parse_float, item_find
@@ -110,6 +111,9 @@ g_block_dropn:  resb 65536              ; how many
 g_block_bonus:  resw 65536              ; [bonus]: the extra item
 g_block_bonusn: resb 65536
 g_block_bonusp: resb 65536              ; its chance (percent)
+g_block_bonus2: resw 65536              ; a second matching [bonus] line (M19)
+g_block_bonusn2: resb 65536
+g_block_bonusp2: resb 65536
 g_block_tool:   resb 65536
 g_block_tier:   resb 65536
 alignb 4
@@ -541,6 +545,43 @@ PROC mining_load, 16, rbx, rsi, rdi, r12, r13
 .chance:
     lea rcx, [rel g_block_bonusp]
     mov [rcx + rbx], al
+    ; a second matching line: a second extra (milestone 19: seeds from grass)
+.bonus2_line:
+    inc esi
+    cmp esi, [rel g_bonus_count]
+    jae .next
+    lea rax, [rel g_bonus_pat]
+    mov rcx, [rax + rsi * 8]
+    mov rdx, r13
+    call items_match_list
+    test eax, eax
+    jz .bonus2_line
+    lea rax, [rel g_bonus_val]
+    mov rcx, [rax + rsi * 8]
+    call parse_drop
+    cmp eax, 0
+    jle .next
+    lea rcx, [rel g_block_bonus2]
+    mov [rcx + rbx * 2], ax
+    lea rcx, [rel g_block_bonusn2]
+    mov [rcx + rbx], dl
+    lea rax, [rel g_bonus_val]
+    mov rcx, [rax + rsi * 8]
+.comma2:
+    mov al, [rcx]
+    test al, al
+    jz .always2
+    inc rcx
+    cmp al, ','
+    jne .comma2
+    call str_parse_u64
+    cmp rax, 100
+    jbe .chance2
+.always2:
+    mov eax, 100
+.chance2:
+    lea rcx, [rel g_block_bonusp2]
+    mov [rcx + rbx], al
 .next:
     inc ebx
     jmp .block
@@ -619,6 +660,16 @@ mining_bonus:
     lea rax, [rel g_block_bonusn]
     movzx edx, byte [rax + rcx]
     lea rax, [rel g_block_bonus]
+    movzx eax, word [rax + rcx * 2]
+    ret
+
+; mining_bonus2 — the second [bonus] line matching block ecx (as mining_bonus)
+mining_bonus2:
+    lea rax, [rel g_block_bonusp2]
+    movzx r8d, byte [rax + rcx]
+    lea rax, [rel g_block_bonusn2]
+    movzx edx, byte [rax + rcx]
+    lea rax, [rel g_block_bonus2]
     movzx eax, word [rax + rcx * 2]
     ret
 

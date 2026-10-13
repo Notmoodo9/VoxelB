@@ -11,6 +11,7 @@ foliage_color = 2E8A22
 
 plant = short_grass, 0.25
 plant = fern, 0.15
+plant = wild_carrot, 0.002          # (milestone 19: pig food; forest edges)
 
 # trees: about one per 40 blocks^2 (a trunk every 5-8 blocks)
 tree         = small_oak, 40

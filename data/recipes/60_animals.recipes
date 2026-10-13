@@ -1,0 +1,25 @@
+# Animal husbandry (milestone 19 part 3, design/mobs/passive_animals.md).
+
+[recipe shears]
+shape = .I / I.
+I = iron_bar
+result = shears
+station = workbench
+
+# hides: salt first (by hand), then dry them on a drying rack
+[recipe salted_leather]
+ingredients = raw_leather, salt
+result = salted_leather
+
+[recipe drying_rack]
+shape = SSS / S.S / S.S
+S = stick
+result = drying_rack
+
+# [rack <name>]: the block a hide hangs on; hang = what is hung (a salted
+# hide), the rack showing it while it dries, what it gives, the rack
+# showing it dry; seconds = drying time
+[rack drying_rack]
+block = drying_rack
+hang = salted_leather, drying_rack_salted, leather, drying_rack_leather
+seconds = 120

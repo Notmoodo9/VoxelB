@@ -483,6 +483,206 @@ def wheat():
     return outline(img, (0.2, 0.12, 0.04))
 
 
+def hide(base, salted, name):
+    """A stretched hide; salted ones are speckled white."""
+    r = rng(name)
+    m = shape_mask([
+        "................",
+        "................",
+        "...33.....33....",
+        "..3445...5443...",
+        "..34455555543...",
+        "...445555554....",
+        "...344555543....",
+        "...344555443....",
+        "..2344455443....",
+        "..23344554432...",
+        "..22333443322...",
+        "...22.2332.22...",
+        "................",
+        "................",
+        "................",
+        "................",
+    ])
+    pal = ramp(base, n=6, spread=0.2)
+    img = paint(m, pal, r, jitter=1)
+    if salted:
+        for y in range(16):
+            for x in range(16):
+                if img[y, x, 3] > 0 and r.random() < 0.18:
+                    img[y, x, :3] = (0.95, 0.94, 0.9)
+    img = np.roll(img, 1, axis=0)
+    return outline(img, (0.16, 0.08, 0.06))
+
+
+def shears():
+    m = shape_mask([
+        "................",
+        "...........55...",
+        "..........5445..",
+        ".........544.5..",
+        "........544..5..",
+        ".......5445.5...",
+        "......5445.55...",
+        ".....4445.......",
+        "....2224........",
+        "...2.2.24.......",
+        "..2..2..44......",
+        "..2..2...44.....",
+        "...22.....4.....",
+        "................",
+        "................",
+        "................",
+    ])
+    pal = list(ramp("c0c8d0", n=6, spread=0.2))
+    pal[2] = np.array((0.55, 0.22, 0.16))
+    return outline(paint(m, np.array(pal)))
+
+
+def seeds():
+    r = rng("seeds")
+    img = np.zeros((16, 16, 4))
+    pal = ramp("c8b060", n=4, spread=0.25)
+    for (y, x) in ((5, 5), (6, 9), (8, 6), (9, 10), (10, 4), (11, 8), (7, 12), (12, 11), (4, 8)):
+        img[y, x, :3] = pal[2]; img[y, x, 3] = 1
+        img[y + 1, x, :3] = pal[1]; img[y + 1, x, 3] = 1
+    return outline(img, (0.25, 0.18, 0.08))
+
+
+def carrot():
+    m = shape_mask([
+        "................",
+        "..........7.7...",
+        "...........77...",
+        "..........777...",
+        ".........45.....",
+        "........4554....",
+        ".......45543....",
+        "......45543......",
+        ".....45543.......",
+        "....45543.......",
+        "...4543.........",
+        "..443...........",
+        "..3.............",
+        "................",
+        "................",
+        "................",
+    ])
+    pal = list(ramp("f07820", n=6, spread=0.22)) + [np.array((0.2, 0.6, 0.2))] * 2
+    return outline(paint(m, np.array(pal)))
+
+
+def berries():
+    img = np.zeros((16, 16, 4))
+    pal = ramp("d82848", n=5, spread=0.25)
+    for (cy, cx) in ((6, 6), (8, 10), (10, 5), (11, 9)):
+        for dy in range(-1, 2):
+            for dx in range(-1, 2):
+                if abs(dy) + abs(dx) < 2:
+                    img[cy + dy, cx + dx, :3] = pal[2 + (dy < 0) + (dx < 0)]; img[cy + dy, cx + dx, 3] = 1
+        img[cy - 1, cx - 1, :3] = (1, 0.85, 0.85)
+    for (y, x) in ((3, 8), (4, 8), (4, 7), (5, 9)):
+        img[y, x, :3] = (0.25, 0.55, 0.2); img[y, x, 3] = 1
+    return outline(img, (0.22, 0.05, 0.08))
+
+
+def chunk_meat(base, raw, name):
+    """A plain cut (pork, mutton): marbled raw, browned cooked."""
+    r = rng(name)
+    m = shape_mask([
+        "................",
+        "................",
+        "................",
+        "....3445554.....",
+        "...344555554....",
+        "..23445555543...",
+        "..233445555432..",
+        "..123344555332..",
+        "...12233444321..",
+        "....112233221...",
+        "......11111.....",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+    ])
+    pal = ramp(base, n=6, spread=0.22)
+    img = paint(m, pal, r, jitter=1)
+    for y in range(16):
+        for x in range(16):
+            if img[y, x, 3] > 0 and r.random() < (0.12 if raw else 0.06):
+                img[y, x, :3] = (0.98, 0.9, 0.86) if raw else pal[1] * 0.8
+    img = np.roll(img, 2, axis=0)
+    return outline(img, (0.16, 0.05, 0.05) if raw else (0.12, 0.06, 0.03))
+
+
+def drumstick(raw):
+    r = rng("chicken_raw" if raw else "chicken_cooked")
+    m = shape_mask([
+        "................",
+        "................",
+        ".....3445.......",
+        "....344554......",
+        "...34455554.....",
+        "...344555543....",
+        "...2344555432...",
+        "....23345543....",
+        ".....2233432....",
+        "........2.99....",
+        ".........9.99...",
+        "..........999...",
+        "...........9....",
+        "................",
+        "................",
+        "................",
+    ])
+    base = "f0b8a0" if raw else "c07838"
+    pal = list(ramp(base, n=6, spread=0.2)) + [ramp(base, 6)[0]] * 3 + [np.array((0.95, 0.92, 0.85))]
+    img = paint(m, np.array(pal), r, jitter=1)
+    return outline(img, (0.2, 0.1, 0.06))
+
+
+def egg():
+    m = shape_mask([
+        "................",
+        "................",
+        "......4455......",
+        ".....445555.....",
+        "....44555555....",
+        "....34455555....",
+        "...3444555554...",
+        "...3344455554...",
+        "...2334444443...",
+        "...2233344433...",
+        "....22333332....",
+        ".....112221.....",
+        "................",
+        "................",
+        "................",
+        "................",
+    ])
+    pal = ramp("e8d4b0", n=6, spread=0.16)
+    img = paint(m, pal, rng("egg"), jitter=0)
+    img[4, 7, :3] = (1, 1, 0.98)
+    return outline(img, (0.3, 0.22, 0.14))
+
+
+def feather():
+    img = np.zeros((16, 16, 4))
+    pal = ramp("f4f0e8", n=5, spread=0.12)
+    for i in range(11):
+        y, x = 13 - i, 3 + i
+        img[y, x, :3] = (0.6, 0.55, 0.5); img[y, x, 3] = 1      # the quill
+        if i > 2:
+            for d in (1, 2):
+                if y - d >= 0:
+                    img[y - d, x, :3] = pal[2 + (d == 1)]; img[y - d, x, 3] = 1
+                if x + d < 16:
+                    img[y, x + d, :3] = pal[1 + (d == 1)]; img[y, x + d, 3] = 1
+    return outline(img, (0.35, 0.32, 0.3))
+
+
 ITEMS = {
     "coal": coal,
     "diamond": lambda: gem("diamond", "37d6e0"),
@@ -505,6 +705,20 @@ ITEMS = {
     "cooked_beef": lambda: meat(False),
     "leather": leather,
     "wheat": wheat,
+    "raw_leather": lambda: hide("c88a74", False, "raw_leather"),
+    "salted_leather": lambda: hide("c88a74", True, "salted_leather"),
+    "shears": shears,
+    "seeds": seeds,
+    "carrot": carrot,
+    "berries": berries,
+    "pork": lambda: chunk_meat("f08a90", True, "pork_raw"),
+    "cooked_pork": lambda: chunk_meat("b0683a", False, "pork_cooked"),
+    "mutton": lambda: chunk_meat("c83a44", True, "mutton_raw"),
+    "cooked_mutton": lambda: chunk_meat("8a4a2a", False, "mutton_cooked"),
+    "chicken": lambda: drumstick(True),
+    "cooked_chicken": lambda: drumstick(False),
+    "egg": egg,
+    "feather": feather,
 }
 for _tier in TIER_COLOURS:
     for _kind in ("pickaxe", "axe", "shovel", "hoe"):

@@ -51,3 +51,7 @@ light = 9, 3, 14
 light = 13, 4, 12
 [block pink_lamp]
 light = 14, 8, 11
+
+# natural sheep wool shades (milestone 19 part 3, design/mobs/passive_animals.md)
+[block cream_wool]
+[block russet_wool]

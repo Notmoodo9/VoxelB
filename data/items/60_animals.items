@@ -20,3 +20,68 @@ tab = items
 [item wheat]
 texture = wheat
 tab = food
+
+# part 3: meat, eggs, feathers, forage, hides, shears
+[item pork]
+title = Raw pork
+texture = pork
+tab = food
+
+[item cooked_pork]
+texture = cooked_pork
+tab = food
+
+[item mutton]
+title = Raw mutton
+texture = mutton
+tab = food
+
+[item cooked_mutton]
+texture = cooked_mutton
+tab = food
+
+[item chicken]
+title = Raw chicken
+texture = chicken
+tab = food
+
+[item cooked_chicken]
+texture = cooked_chicken
+tab = food
+
+[item egg]
+texture = egg
+stack = 16
+tab = food
+
+[item seeds]
+texture = seeds
+tab = food
+
+[item carrot]
+texture = carrot
+tab = food
+
+[item berries]
+texture = berries
+tab = food
+
+[item feather]
+texture = feather
+tab = items
+
+# hides must be salted (raw hide + salt) and dried on a drying rack
+[item raw_leather]
+texture = raw_leather
+tab = items
+
+[item salted_leather]
+title = Salted raw leather
+texture = salted_leather
+tab = items
+
+[item shears]
+texture = shears
+stack = 1
+durability = 238
+tab = tools

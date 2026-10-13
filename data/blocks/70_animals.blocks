@@ -1,0 +1,17 @@
+# Animal husbandry blocks (milestone 19 part 3, design/mobs/passive_animals.md).
+
+# The drying rack: right click with a salted hide hangs it up; after about
+# 2 minutes it is dry and right click takes the leather (data/recipes/
+# 60_animals.recipes, [rack]). The racks with a hide are the same rack
+# showing what hangs on it.
+[block drying_rack]
+textures = side: drying_rack, end: drying_rack_top
+render   = cutout
+
+[block drying_rack_salted]
+textures = side: drying_rack_salted, end: drying_rack_top
+render   = cutout
+
+[block drying_rack_leather]
+textures = side: drying_rack_leather, end: drying_rack_top
+render   = cutout

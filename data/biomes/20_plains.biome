@@ -14,6 +14,7 @@ foliage_color = 48B02C
 plant = short_grass, 0.30
 plant = tall_grass, 0.05
 plant = wild_wheat, 0.006           # (milestone 19: cow food)
+plant = wild_carrot, 0.004          # (milestone 19: pig food)
 
 # wildflowers in small same-colour clusters
 flowers       = poppy, dandelion, cornflower, oxeye_daisy, allium, red_tulip, orange_tulip, white_tulip, pink_tulip

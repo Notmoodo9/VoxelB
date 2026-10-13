@@ -61,7 +61,8 @@ global g_rec_h, g_rec_cells, g_block_station, g_station_grid, g_station_count
 global g_rec_n, g_rec_ok, g_rec_names, g_station_names, recipe_cell_ok
 global g_station_slots, g_station_joins, g_station_kind, g_station_speed
 global g_station_blast, g_station_lit, g_station_unlit, station_find
-global g_station_repair
+global g_station_repair, g_hang_count, g_hang_station, g_hang_input, g_hang_wet
+global g_hang_result, g_hang_dry, g_station_ticks
 global smelt_find, fuel_ticks, g_smelt_result, g_smelt_amount, g_smelt_ticks
 
 extern str_ieq, str_len, str_parse_u64, str_dup, str_copy, str_parse_float
@@ -91,6 +92,8 @@ k_container:    db "container", 0
 k_slots:        db "slots", 0
 k_joins:        db "joins", 0
 k_furnace:      db "furnace", 0
+k_rack:         db "rack", 0
+k_hang:         db "hang", 0
 k_smelt:        db "smelt", 0
 k_fuel:         db "fuel", 0
 k_lit:          db "lit", 0
@@ -195,6 +198,15 @@ g_fuel_tick:    resd MAX_FUELS
 g_smelt_count:  resd 1
 g_fuel_count:   resd 1
 g_block_station: resb 65536
+alignb 4
+g_station_ticks: resd MAX_STATIONS      ; a rack's drying time (ticks)
+g_hang_count:   resd 1
+g_hang_station: resb MAX_HANGS
+alignb 2
+g_hang_input:   resw MAX_HANGS          ; what is hung (an item)
+g_hang_wet:     resw MAX_HANGS          ; the rack showing it while it dries
+g_hang_result:  resw MAX_HANGS          ; what it gives
+g_hang_dry:     resw MAX_HANGS          ; the rack showing it dry
 alignb 4
 g_recipe_count: resd 1
 g_station_count: resd 1
@@ -309,6 +321,10 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     INVOKE str_ieq, rbx, rdx
     test eax, eax
     jnz .smelt
+    lea rdx, [rel k_rack]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jnz .rack
 .bad_header:
     lea rcx, [rel str_unknown]
     mov rdx, rbx
@@ -348,6 +364,11 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     xor ecx, ecx
     mov edx, 3                          ; input, fuel, output
     mov r9d, STATION_FURNACE
+    jmp .usable
+.rack:
+    xor ecx, ecx                        ; no grid, no slots: right click hangs / takes
+    xor edx, edx
+    mov r9d, STATION_RACK
 .usable:
     mov eax, [rel g_station_count]
     cmp eax, MAX_STATIONS
@@ -724,6 +745,30 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     mov [rcx + rdi], al
     RETURN
 .not_joins:
+    lea rdx, [rel k_hang]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_hang
+    mov rcx, rsi
+    mov edx, edi
+    call parse_hang
+    RETURN
+.not_hang:
+    lea rdx, [rel k_seconds]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_rack_seconds
+    mov rcx, rsi
+    call str_parse_u64
+    test rax, rax
+    jz .bad
+    cmp rax, 3600
+    ja .bad
+    imul eax, eax, 20
+    lea rcx, [rel g_station_ticks]
+    mov [rcx + rdi * 4], eax
+    RETURN
+.not_rack_seconds:
     lea rdx, [rel k_grid]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
@@ -747,6 +792,93 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     mov rdx, rbx
     call warn
 .done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; parse_hang — a [rack] `hang = input, wet rack, result, dry rack` line.
+;   in:  rcx = the value, edx = the station
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC parse_hang, 16, rbx, rsi, rdi, r12
+    mov rsi, rcx
+    mov r12d, edx
+    mov ebx, [rel g_hang_count]
+    cmp ebx, MAX_HANGS
+    jae .bad
+    ; input item
+    mov rcx, rsi
+    call cfg_next_token
+    mov rsi, rdx
+    mov rcx, rax
+    mov [LOCAL(0)], rax
+    call item_find
+    cmp eax, 0
+    jle .no_item
+    lea rcx, [rel g_hang_input]
+    mov [rcx + rbx * 2], ax
+    ; the rack with it, wet
+    test rsi, rsi
+    jz .bad
+    mov rcx, rsi
+    call cfg_next_token
+    mov rsi, rdx
+    mov [LOCAL(0)], rax
+    mov rcx, rax
+    call block_find
+    cmp eax, 0
+    jle .no_block
+    lea rcx, [rel g_hang_wet]
+    mov [rcx + rbx * 2], ax
+    lea rcx, [rel g_block_station]
+    lea edx, [r12 + 1]
+    mov [rcx + rax], dl
+    ; the result item
+    test rsi, rsi
+    jz .bad
+    mov rcx, rsi
+    call cfg_next_token
+    mov rsi, rdx
+    mov [LOCAL(0)], rax
+    mov rcx, rax
+    call item_find
+    cmp eax, 0
+    jle .no_item
+    lea rcx, [rel g_hang_result]
+    mov [rcx + rbx * 2], ax
+    ; the rack with it, dry
+    test rsi, rsi
+    jz .bad
+    mov rcx, rsi
+    call cfg_next_token
+    mov [LOCAL(0)], rax
+    mov rcx, rax
+    call block_find
+    cmp eax, 0
+    jle .no_block
+    lea rcx, [rel g_hang_dry]
+    mov [rcx + rbx * 2], ax
+    lea rcx, [rel g_block_station]
+    lea edx, [r12 + 1]
+    mov [rcx + rax], dl
+    lea rcx, [rel g_hang_station]
+    mov [rcx + rbx], r12b
+    inc dword [rel g_hang_count]
+    RETURN
+.no_item:
+    lea rcx, [rel str_no_item]
+    mov rdx, [LOCAL(0)]
+    call warn
+    RETURN
+.no_block:
+    lea rcx, [rel str_no_block]
+    mov rdx, [LOCAL(0)]
+    call warn
+    RETURN
+.bad:
+    lea rcx, [rel str_bad]
+    lea rdx, [rel k_hang]
+    call warn
     RETURN
 ENDPROC
 

@@ -2532,6 +2532,69 @@ def make_animals(out):
             img[top + 1, xe + 2 * lean, :3] = ear[3]; img[top + 1, xe + 2 * lean, 3] = 1.0
     out["wild_wheat"] = img
 
+    # the drying rack (milestone 19 part 3): a frame of sticks; a salted hide
+    # stretched in it, or the finished leather
+    wood = ramp("8a6034", 5, spread=0.2)
+    def frame():
+        img = np.zeros((N, N, 4))
+        for y in range(N):
+            for x in (1, 2, 13, 14):            # posts
+                img[y, x, :3] = wood[1 + (x in (2, 14)) + (y % 5 == 0)]; img[y, x, 3] = 1.0
+        for x in range(N):
+            for y in (1, 2):                    # top bar
+                img[y, x, :3] = wood[3 if y == 1 else 2]; img[y, x, 3] = 1.0
+            img[12, x, :3] = wood[1]; img[12, x, 3] = 1.0   # lower bar
+        return img
+    out["drying_rack"] = frame()
+    top = np.zeros((N, N, 4))
+    for x in range(N):
+        for y in (1, 2, 13, 14):
+            top[y, x, :3] = wood[2 + (y in (1, 13))]; top[y, x, 3] = 1.0
+    out["drying_rack_top"] = top
+    def hung(base, name, spots):
+        r2 = rng(name)
+        img = frame()
+        hp = ramp(base, 5, spread=0.2)
+        v = noise(r2, 4, 2)
+        for y in range(3, 12):
+            for x in range(3, 13):
+                if (y in (3, 11)) and (x in (3, 12)):
+                    continue                     # rounded corners
+                k = stretch(v)[y, x] * 0.999
+                img[y, x, :3] = shade(np.array([[k]]), hp)[0, 0]
+                img[y, x, 3] = 1.0
+        for (y, x) in ((3, 3), (3, 12), (11, 3), (11, 12)):     # ties to the frame
+            img[y, x, :3] = hexrgb("d8cfb0"); img[y, x, 3] = 1.0
+        for (y, x) in spots:
+            img[y, x, :3] = hp[0]
+        return img
+    out["drying_rack_salted"] = hung("c08a7a", "rack_salted", ((5, 6), (8, 9), (7, 5)))
+    out["drying_rack_leather"] = hung("9a5a2a", "rack_leather", ((6, 8), (9, 6)))
+
+    # natural sheep wool shades (milestone 19 part 3)
+    out["cream_wool"] = wool("efe3c2", rng("cream_wool"))
+    out["russet_wool"] = wool("a8522c", rng("russet_wool"))
+    # wild carrot: feathery leaves and a white umbel of flowers
+    r = rng("wild_carrot")
+    img = np.zeros((N, N, 4))
+    leaf = ramp("5aa03a", 4, spread=0.22)
+    for x0 in (4, 7, 9, 12):
+        for y in range(7, N):
+            x = x0 + (1 if (y + x0) % 5 == 0 else 0)
+            if 0 <= x < N:
+                img[y, x, :3] = leaf[1 + (y % 2)]; img[y, x, 3] = 1.0
+            if y % 3 == 0 and 0 <= x + 1 < N:
+                img[y, x + 1, :3] = leaf[3]; img[y, x + 1, 3] = 1.0
+    for y in range(3, 8):
+        img[y, 8, :3] = leaf[1]; img[y, 8, 3] = 1.0
+    fl = ramp("f4f0e4", 4, spread=0.1)
+    for dx in range(-4, 5):
+        for dy in (0, 1):
+            if abs(dx) + dy * 2 <= 4 and r.random() < 0.85:
+                img[2 + dy, 8 + dx, :3] = fl[2 + (dx % 2)]; img[2 + dy, 8 + dx, 3] = 1.0
+    img[3, 8, :3] = (0.5, 0.15, 0.3)                 # the dark centre flower
+    out["wild_carrot"] = img
+
 
 def main(argv):
     os.makedirs(OUT, exist_ok=True)
