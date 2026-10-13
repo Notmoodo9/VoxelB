@@ -56,8 +56,10 @@
 %include "packet.inc"
 %include "save.inc"
 %include "items.inc"
+%include "containers.inc"
 
 global save_open, save_load_player, save_column, save_load_column, save_all
+global save_load_containers
 global save_update
 global g_save_enabled, g_save_exists, g_save_player_flags, g_save_held
 global g_save_inv, g_save_inv_loaded, g_save_inv_sel
@@ -72,7 +74,7 @@ extern block_find, timer_elapsed_us, thumb_write
 extern g_seed_override, g_seed_override_set, g_force_flat, g_generator
 extern g_world_seed, g_time_override, g_sim_time
 extern g_cam_pos, g_cam_yaw, g_cam_pitch, g_held_block, g_block_names
-extern g_inv, g_inv_sel
+extern g_inv, g_inv_sel, craft_sync
 extern g_pl_pos, g_pl_eye, g_pl_flags, g_loaded, g_loaded_count
 
 IMPORT CreateFileA, ReadFile, WriteFile, CloseHandle, SetFilePointerEx
@@ -118,6 +120,13 @@ str_overworld:  db "overworld", 0
 str_region:     db "region", 0
 str_world_dat:  db "world.dat", 0
 str_player_dat: db "player.dat", 0
+str_cont_dat:   db "containers.dat", 0
+str_cont_lbl:   db "containers.dat", 0
+k_container_h:  db "container ", 0
+t_head_cont:    db "# VoxelB chests (written by the game; DATA_FORMAT.md)", 10, 0
+t_container:    db 10, 10, "[container ", 0
+t_space:        db " ", 0
+t_bracket:      db "]", 0
 str_tmp:        db ".tmp", 0
 str_r:          db "r.", 0
 str_dot:        db ".", 0
@@ -209,6 +218,7 @@ g_save_inv_loaded:  resd 1
 g_save_inv_sel:     resd 1
 alignb 8
 g_save_inv:         resq INV_SAVED      ; player.dat's slots, for inv_init
+g_cur_cont:         resd 1              ; containers.dat: the entry being read
 g_save_columns:     resq 1              ; columns written
 g_save_bytes:       resq 1              ; compressed bytes written
 g_save_loaded:      resq 1              ; columns loaded from regions
@@ -720,7 +730,12 @@ PROC player_pair, 0, rbx, rsi, rdi
     test eax, eax
     jz .done
     mov rcx, rsi
+    lea rdx, [rel g_save_inv]
+    mov r8d, INV_SAVED
     call parse_slot
+    test eax, eax
+    jz .done
+    mov dword [rel g_save_inv_loaded], 1
 .done:
     RETURN
 ENDPROC
@@ -729,18 +744,26 @@ ENDPROC
 ; parse_slot — "slot = <index>, <item>, <count>[, <durability>]" into the
 ; inventory waiting for the simulation (g_save_inv). Unknown items (a data
 ; file changed) are left out.
-;   in:  rcx = value text
+;   in:  rcx = value text, rdx = the slots (SLOT[]), r8d = how many
+;   out: eax = 1 if a slot was stored
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
+%define PS_BASE     0
+%define PS_BOUND    8
+%define PS_STORED   12
 PROC parse_slot, 16, rbx, rsi, rdi
+    mov [LOCAL(PS_BASE)], rdx
+    mov [LOCAL(PS_BOUND)], r8d
+    mov dword [LOCAL(PS_STORED)], 0
     mov rsi, rcx
     call cfg_next_token
     mov rsi, rdx
     mov rcx, rax
     call str_parse_u64
-    cmp rax, INV_SAVED
+    mov ecx, [LOCAL(PS_BOUND)]
+    cmp rax, rcx
     jae .done
-    lea rbx, [rel g_save_inv]
+    mov rbx, [LOCAL(PS_BASE)]
     lea rbx, [rbx + rax * 8]
     test rsi, rsi
     jz .done
@@ -768,7 +791,7 @@ PROC parse_slot, 16, rbx, rsi, rdi
     mov [rbx], di
     mov [rbx + 2], ax
     mov word [rbx + 4], 0
-    mov dword [rel g_save_inv_loaded], 1
+    mov dword [LOCAL(PS_STORED)], 1
     test rsi, rsi
     jz .done
     mov rcx, rsi
@@ -777,6 +800,7 @@ PROC parse_slot, 16, rbx, rsi, rdi
     call str_parse_u64
     mov [rbx + 4], ax
 .done:
+    mov eax, [LOCAL(PS_STORED)]
     RETURN
 ENDPROC
 
@@ -1568,6 +1592,239 @@ PROC write_player_dat, 16, rbx, rsi, rdi
     RETURN
 ENDPROC
 
+
+; -----------------------------------------------------------------------------
+; save_load_containers — containers.dat: what is in the chests (milestone 18;
+; after cont_reset).
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC save_load_containers, 0
+    cmp dword [rel g_save_enabled], 0
+    je .none
+    cmp dword [rel g_save_exists], 0
+    je .none
+    lea rdx, [rel str_cont_dat]
+    call load_dat
+    test rax, rax
+    jz .release
+    mov dword [rel g_cur_cont], -1
+    lea rdx, [rel cont_pair]
+    lea r9, [rel str_cont_lbl]
+    mov qword [rsp + 32], CFG_SECTIONS
+    INVOKE cfg_parse_ex, rax, rdx, 0, r9
+.release:
+    call release_dat
+.none:
+    RETURN
+ENDPROC
+
+; parse_int — eax = the signed number at rcx (spaces skipped), rdx = past it
+parse_int:
+    xor eax, eax
+    xor r8d, r8d                        ; negative
+.space:
+    cmp byte [rcx], ' '
+    jne .sign
+    inc rcx
+    jmp .space
+.sign:
+    cmp byte [rcx], '-'
+    jne .digit
+    mov r8d, 1
+    inc rcx
+.digit:
+    movzx edx, byte [rcx]
+    sub edx, '0'
+    cmp edx, 9
+    ja .end
+    imul eax, eax, 10
+    add eax, edx
+    inc rcx
+    jmp .digit
+.end:
+    test r8d, r8d
+    jz .out
+    neg eax
+.out:
+    mov rdx, rcx
+    ret
+
+; containers.dat callback: rcx = name or header, rdx = value (0: header)
+PROC cont_pair, 16, rbx, rsi
+    mov rbx, rcx
+    mov rsi, rdx
+    test rsi, rsi
+    jnz .setting
+    ; "[container x y z]"
+    mov dword [rel g_cur_cont], -1
+    lea rdx, [rel k_container_h]
+    xor ecx, ecx
+.prefix:
+    mov al, [rdx + rcx]
+    test al, al
+    jz .coords
+    cmp al, [rbx + rcx]
+    jne .done
+    inc ecx
+    jmp .prefix
+.coords:
+    lea rcx, [rbx + rcx]
+    call parse_int
+    mov [LOCAL(0)], eax
+    mov rcx, rdx
+    call parse_int
+    mov [LOCAL(4)], eax
+    mov rcx, rdx
+    call parse_int
+    mov r8d, eax
+    mov ecx, [LOCAL(0)]
+    mov edx, [LOCAL(4)]
+    call cont_get
+    mov [rel g_cur_cont], eax
+    RETURN
+.setting:
+    cmp dword [rel g_cur_cont], -1
+    je .done
+    lea rdx, [rel k_slot]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .done
+    mov ecx, [rel g_cur_cont]
+    call cont_slots
+    mov rdx, rax
+    mov rcx, rsi
+    mov r8d, CONT_SLOTS
+    call parse_slot
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; write_containers — containers.dat: every container that holds something.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC write_containers, 16, rbx, rsi, rdi, r12
+    lea rcx, [rel g_arena_scratch]
+    call arena_mark
+    mov [LOCAL(0)], rax
+    ; room: a line per slot (48 bytes is plenty) and a header per container
+    mov eax, [rel g_cont_count]
+    imul eax, eax, CONT_SLOTS * 48 + 64
+    add eax, 256
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_alloc, rcx, rax, 16
+    test rax, rax
+    jz .done
+    mov rbx, rax
+    mov rcx, rax
+    lea rdx, [rel t_head_cont]
+    call str_copy
+    lea rdx, [rel t_version]
+    mov rcx, rax
+    call str_copy
+    INVOKE str_append_dec, rax, FORMAT_VERSION, 0
+    lea rdi, [rel g_conts]
+    xor r12d, r12d
+.cont:
+    cmp r12d, [rel g_cont_count]
+    jae .write
+    cmp dword [rdi + CONT.used], 0
+    je .cont_next
+    ; anything in it?
+    xor ecx, ecx
+.any:
+    cmp ecx, CONT_SLOTS
+    jae .cont_next
+    cmp word [rdi + CONT.slots + rcx * 8], 0
+    jne .header
+    inc ecx
+    jmp .any
+.header:
+    lea rdx, [rel t_container]
+    mov rcx, rax
+    call str_copy
+    movsxd rdx, dword [rdi + CONT.x]
+    INVOKE str_append_sdec, rax, rdx, 0
+    lea rdx, [rel t_space]
+    mov rcx, rax
+    call str_copy
+    movsxd rdx, dword [rdi + CONT.y]
+    INVOKE str_append_sdec, rax, rdx, 0
+    lea rdx, [rel t_space]
+    mov rcx, rax
+    call str_copy
+    movsxd rdx, dword [rdi + CONT.z]
+    INVOKE str_append_sdec, rax, rdx, 0
+    lea rdx, [rel t_bracket]
+    mov rcx, rax
+    call str_copy
+    xor esi, esi
+.slot:
+    cmp esi, CONT_SLOTS
+    jae .cont_next
+    movzx ecx, word [rdi + CONT.slots + rsi * 8]
+    test ecx, ecx
+    jz .slot_next
+    mov rcx, rax
+    lea rdx, [rdi + CONT.slots + rsi * 8]
+    mov r8d, esi
+    call append_slot
+.slot_next:
+    inc esi
+    jmp .slot
+.cont_next:
+    add rdi, CONT_size
+    inc r12d
+    jmp .cont
+.write:
+    lea rdx, [rel t_nl]
+    mov rcx, rax
+    call str_copy
+    lea rcx, [rel g_path]
+    lea rdx, [rel g_dir]
+    call str_copy
+    lea rdx, [rel str_cont_dat]
+    mov rcx, rax
+    call str_copy
+    lea rcx, [rel g_path]
+    mov rdx, rbx
+    call write_text
+.done:
+    lea rcx, [rel g_arena_scratch]
+    INVOKE arena_reset_to, rcx, [LOCAL(0)]
+    RETURN
+ENDPROC
+
+; append_slot — "slot = i, item, count, durability" at cursor rcx
+;   in:  rcx = cursor, rdx = SLOT*, r8d = index   out: rax = cursor
+;   clobbers: volatile registers
+PROC append_slot, 0, rbx, rsi
+    mov rbx, rdx
+    mov esi, r8d
+    lea rdx, [rel t_slot]
+    call str_copy
+    INVOKE str_append_dec, rax, rsi, 0
+    lea rdx, [rel t_comma]
+    mov rcx, rax
+    call str_copy
+    movzx edx, word [rbx]
+    lea rcx, [rel g_item_names]
+    mov rdx, [rcx + rdx * 8]
+    mov rcx, rax
+    call str_copy
+    lea rdx, [rel t_comma]
+    mov rcx, rax
+    call str_copy
+    movzx edx, word [rbx + 2]
+    INVOKE str_append_dec, rax, rdx, 0
+    lea rdx, [rel t_comma]
+    mov rcx, rax
+    call str_copy
+    movzx edx, word [rbx + 4]
+    INVOKE str_append_dec, rax, rdx, 0
+    RETURN
+ENDPROC
+
 ; -----------------------------------------------------------------------------
 ; save_all — world.dat, player.dat and every changed loaded column.
 ;   out: eax = 1
@@ -1582,6 +1839,8 @@ PROC save_all, 16, rbx, rsi, rdi
     mov rdi, [rel g_save_bytes]
     call write_world_dat
     call write_player_dat
+    call craft_sync                     ; (an open chest's window)
+    call write_containers
     mov dword [rel g_save_exists], 1
     lea rcx, [rel g_path]
     lea rdx, [rel g_dir]

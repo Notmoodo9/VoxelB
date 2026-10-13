@@ -30,7 +30,7 @@
 global edit_reset, edit_request, edit_tick, edit_apply, g_edit_applied, g_edit_rejected
 
 extern g_pl_pos, g_pl_eye, g_pl_reach, g_pl_width, g_pl_height
-extern fluid_schedule_around
+extern fluid_schedule_around, craft_block_broken
 
 %define QUEUE_SLOTS     64              ; power of two
 %define RETRY_TICKS     100             ; 5 s
@@ -297,6 +297,11 @@ PROC edit_request, 16, rbx, rsi, rdi, r12, r13, r14
     mov r8d, edi
     xor r9d, r9d
     call queue_edit
+    ; a window on it closes; a chest's items drop (milestone 18)
+    mov ecx, ebx
+    mov edx, esi
+    mov r8d, edi
+    call craft_block_broken
     mov eax, 1
     RETURN
 

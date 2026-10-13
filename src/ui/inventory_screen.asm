@@ -64,6 +64,8 @@ s_search:       db "Search", 0
 s_found:        db "Search results", 0
 s_none:         db "Nothing found", 0
 s_crafting:     db "Crafting", 0
+s_chest:        db "Chest", 0
+s_large_chest:  db "Large chest", 0
 s_recipes:      db "Recipes", 0
 s_no_recipes:   db "Nothing to make", 0
 s_no_recipes2:  db "with what you have", 0
@@ -963,6 +965,7 @@ ENDPROC
 %define F_IX    8                       ; player slots left / top
 %define F_IY    12
 %define F_GRID  16
+%define F_ROWS  20                      ; a container's rows (0: none)
 PROC inv_screen_frame, 24, rbx, rsi, rdi, r12
     mov [LOCAL(F_W)], ecx
     mov [LOCAL(F_H)], edx
@@ -993,6 +996,23 @@ PROC inv_screen_frame, 24, rbx, rsi, rdi, r12
     xor eax, eax                        ; (the catalog instead)
 .grid:
     mov [LOCAL(F_GRID)], eax
+    mov dword [LOCAL(F_ROWS)], 0
+    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_CHEST
+    jne .not_chest
+    ; a chest: its rows of 9 above the player's slots
+    mov eax, [rel g_cwin + WIN_PKT.slots]
+    add eax, INV_HOTBAR - 1
+    xor edx, edx
+    mov ecx, INV_HOTBAR
+    div ecx
+    mov [LOCAL(F_ROWS)], eax
+    mov dword [LOCAL(F_GRID)], 0
+    mov dword [rel g_creative], 0
+    mov eax, INV_HOTBAR * STEP - 4 + 2 * PAD
+    imul ecx, [LOCAL(F_ROWS)], STEP
+    add ecx, 18 + 34 + 16 + 3 * STEP + 10 + STEP - 4 + PAD
+    jmp .size
+.not_chest:
     cmp dword [rel g_cwin + WIN_PKT.kind], WIN_INVENTORY
     jne .not_catalog
     cmp dword [rel g_creative], 0
@@ -1026,6 +1046,8 @@ PROC inv_screen_frame, 24, rbx, rsi, rdi, r12
     add eax, [rel g_px]
     cmp dword [rel g_creative], 0
     jne .ix
+    cmp dword [LOCAL(F_ROWS)], 0
+    jne .ix
     mov eax, [rel g_px]
     add eax, PAD + BOOK_W + BOOK_GAP
 .ix:
@@ -1039,14 +1061,44 @@ PROC inv_screen_frame, 24, rbx, rsi, rdi, r12
     ; the title, the grid and its result, the recipe book
     lea rcx, [rel s_inventory]
     cmp dword [rel g_cwin + WIN_PKT.kind], WIN_CRAFTING
-    jne .title
+    jne .title_chest
     lea rcx, [rel s_crafting]
+.title_chest:
+    cmp dword [LOCAL(F_ROWS)], 0
+    je .title
+    lea rcx, [rel s_chest]
+    cmp dword [LOCAL(F_ROWS)], 3
+    jbe .title
+    lea rcx, [rel s_large_chest]
 .title:
     mov r8d, [rel g_py]
     add r8d, 18
     mov dword [rsp + 32], COL_TEXT
     mov qword [rsp + 40], UI_BOLD
     INVOKE ui_label, rcx, [LOCAL(F_IX)], r8, 24
+    cmp dword [LOCAL(F_ROWS)], 0
+    je .crafting
+    ; the container's slots
+    xor ebx, ebx
+.cslot:
+    cmp ebx, [rel g_cwin + WIN_PKT.slots]
+    jae .slots
+    cmp ebx, INV_CONTAINER_MAX
+    jae .slots
+    mov eax, ebx
+    xor edx, edx
+    mov ecx, INV_HOTBAR
+    div ecx                             ; eax = row, edx = column
+    imul ecx, edx, STEP
+    add ecx, [LOCAL(F_IX)]
+    imul edx, eax, STEP
+    add edx, [rel g_py]
+    add edx, 18 + 34
+    lea r8d, [ebx + INV_CONTAINER]
+    call slot_at
+    inc ebx
+    jmp .cslot
+.crafting:
     mov edx, [rel g_py]
     add edx, 18 + 34
     INVOKE craft_area, [LOCAL(F_IX)], rdx, [LOCAL(F_GRID)]

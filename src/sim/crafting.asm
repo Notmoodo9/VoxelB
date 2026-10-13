@@ -12,6 +12,10 @@
 ; grid and the carried stack back into the slots (what does not fit is
 ; dropped at the player's feet). A station window closes by itself when
 ; the player walks away or the block is gone.
+; A container block ([container] in data/recipes, a chest) opens its slots
+; (containers.asm) as the window's container slots; two that join (side by
+; side, the same facing) open as one of twice the size. Breaking a
+; container drops what is in it.
 ;
 ; Public API:
 ;   craft_reset()
@@ -20,22 +24,29 @@
 ;   craft_update()                       the grid may have changed
 ;   craft_take(ecx = INVB_*)             a click on the result
 ;   craft_tick()                         once per tick
+;   craft_block_broken(ecx = x, edx = y, r8d = z)   a block was broken
+;   craft_sync()                         the open container's slots back into
+;                                        its store (before a save)
 ;   g_win_kind (WIN_*), g_win_grid (0 / 2 / 3), g_win_slots (container),
 ;   g_win_station (0 by hand)
 ; =============================================================================
 %include "macros.inc"
 %include "packet.inc"
 %include "items.inc"
+%include "containers.inc"
+%include "world.inc"
 
 global craft_reset, craft_window, craft_recipe, craft_update, craft_take
 global craft_tick, g_win_kind, g_win_grid, g_win_slots, g_win_station
+global craft_block_broken, craft_sync
 
 extern g_inv, inv_mark, inv_stack_of, inv_room, inv_add, inv_cursor_back
 extern recipe_match, recipe_cell_ok, g_recipe_count, g_rec_result
 extern g_rec_amount, g_rec_station, g_rec_w, g_rec_h, g_rec_n, g_rec_ok
 extern g_rec_cells, g_block_station, g_station_grid
 extern phys_block, drops_spawn, pkt_send, g_to_client
-extern g_pl_pos, g_pl_eye
+extern g_pl_pos, g_pl_eye, g_station_slots, g_station_joins
+extern g_block_state, g_block_flags
 
 %define SLOT_SIZE       8
 %define MAX_REACH_SQ    64.0            ; a station's window closes beyond 8 blocks
@@ -54,6 +65,9 @@ g_win_slots:    resd 1
 g_win_station:  resd 1
 g_win_pos:      resd 3
 g_recipe:       resd 1                  ; what the grid makes, -1 nothing
+g_win_pos2:     resd 3                  ; a double container's other block
+g_win_cont:     resd 2                  ; its container entries (second -1)
+g_win_half:     resd 1                  ; slots per block
 g_items:        resw 9                  ; recipe_match's grid
 alignb 8
 g_at:           resq 3
@@ -77,7 +91,10 @@ craft_reset:
     mov [rel g_win_grid], eax
     mov [rel g_win_slots], eax
     mov [rel g_win_station], eax
+    mov [rel g_win_half], eax
     mov dword [rel g_recipe], -1
+    mov dword [rel g_win_cont], -1
+    mov dword [rel g_win_cont + 4], -1
     ret
 
 ; cell_slot — eax = the inventory slot of grid cell ecx (0..8), or -1 if the
@@ -159,6 +176,24 @@ ENDPROC
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC close_window, 0, rbx, rsi
+    ; a container: its slots go back into its store and leave the window
+    cmp dword [rel g_win_kind], WIN_CHEST
+    jne .not_chest
+    call craft_sync
+    mov ebx, INV_CONTAINER
+.clear:
+    cmp ebx, INV_ALL
+    jae .not_chest
+    SLOT_PTR rsi, rbx
+    cmp qword [rsi], 0
+    je .clear_next
+    mov qword [rsi], 0
+    mov ecx, ebx
+    call inv_mark
+.clear_next:
+    inc ebx
+    jmp .clear
+.not_chest:
     call inv_cursor_back
     ; (a full inventory: the carried stack is dropped)
     lea rsi, [rel g_inv + INV_CURSOR * SLOT_SIZE]
@@ -228,6 +263,19 @@ PROC craft_window, 16, rbx, rsi, rdi
     test eax, eax
     jz .done
     mov [LOCAL(4)], eax
+    lea rcx, [rel g_station_slots]
+    cmp byte [rcx + rax - 1], 0
+    je .station
+    ; a container
+    mov edx, eax
+    mov ecx, [LOCAL(0)]
+    mov [rel g_win_pos], esi
+    mov [rel g_win_pos + 4], edi
+    mov [rel g_win_pos + 8], ecx
+    mov ecx, edx
+    call open_container
+    RETURN
+.station:
     call close_window
     mov [rel g_win_pos], esi
     mov [rel g_win_pos + 4], edi
@@ -291,8 +339,11 @@ near_enough:
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC craft_tick, 0
+    cmp dword [rel g_win_kind], WIN_CHEST
+    je .check
     cmp dword [rel g_win_kind], WIN_CRAFTING
     jne .done
+.check:
     call near_enough
     test eax, eax
     jz .close
@@ -301,10 +352,262 @@ PROC craft_tick, 0
     mov r8d, [rel g_win_pos + 8]
     call station_at
     cmp eax, [rel g_win_station]
+    jne .close
+    cmp dword [rel g_win_cont + 4], -1
+    je .done
+    ; a double container: its other half too
+    mov ecx, [rel g_win_pos2]
+    mov edx, [rel g_win_pos2 + 4]
+    mov r8d, [rel g_win_pos2 + 8]
+    call station_at
+    cmp eax, [rel g_win_station]
     je .done
 .close:
     call close_window
     call send_window                    ; (WIN_NONE: the screen closes)
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; open_container — open the container block at g_win_pos (station ecx),
+; joined with a neighbour when its [container] joins.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define O_ST    0
+%define O_ID    4
+PROC open_container, 16, rbx, rsi, rdi, r12
+    mov [LOCAL(O_ST)], ecx
+    ; (the old window closes first; g_win_pos is kept)
+    mov ebx, [rel g_win_pos]
+    mov esi, [rel g_win_pos + 4]
+    mov edi, [rel g_win_pos + 8]
+    call close_window
+    mov [rel g_win_pos], ebx
+    mov [rel g_win_pos + 4], esi
+    mov [rel g_win_pos + 8], edi
+    call near_enough
+    test eax, eax
+    jz .done
+    mov ecx, ebx
+    mov edx, esi
+    mov r8d, edi
+    call phys_block
+    mov [LOCAL(O_ID)], eax
+    mov ecx, ebx
+    mov edx, esi
+    mov r8d, edi
+    call cont_get
+    cmp eax, -1
+    je .done
+    mov [rel g_win_cont], eax
+    mov dword [rel g_win_cont + 4], -1
+    mov eax, [LOCAL(O_ST)]
+    lea rcx, [rel g_station_slots]
+    movzx ecx, byte [rcx + rax - 1]
+    mov [rel g_win_half], ecx
+    mov [rel g_win_slots], ecx
+    lea rcx, [rel g_station_joins]
+    cmp byte [rcx + rax - 1], 0
+    je .opened
+    ; a neighbour of the same block and facing, beside it (a facing block:
+    ; along the front's side; otherwise any of the four)
+    xor r12d, r12d                      ; 0 -x, 1 +x, 2 -z, 3 +z
+.side:
+    cmp r12d, 4
+    jae .opened
+    mov eax, [LOCAL(O_ID)]
+    lea rcx, [rel g_block_flags]
+    test byte [rcx + rax], BLOCKF_FACING
+    jz .any_side
+    lea rcx, [rel g_block_state]
+    movzx ecx, byte [rcx + rax]
+    and ecx, 1                          ; front along z (0) or x (1)
+    mov edx, r12d
+    shr edx, 1                          ; this side along x (0) or z (1)
+    cmp ecx, edx
+    jne .next_side                      ; (in front or behind)
+.any_side:
+    mov ecx, ebx
+    mov r8d, edi
+    mov eax, r12d
+    and eax, 1
+    lea eax, [eax * 2 - 1]              ; -1 / +1
+    cmp r12d, 2
+    jae .z
+    add ecx, eax
+    jmp .look
+.z:
+    add r8d, eax
+.look:
+    mov [rel g_win_pos2], ecx
+    mov [rel g_win_pos2 + 4], esi
+    mov [rel g_win_pos2 + 8], r8d
+    mov edx, esi
+    call phys_block
+    cmp eax, [LOCAL(O_ID)]
+    je .join
+.next_side:
+    inc r12d
+    jmp .side
+.join:
+    mov ecx, [rel g_win_pos2]
+    mov edx, [rel g_win_pos2 + 4]
+    mov r8d, [rel g_win_pos2 + 8]
+    call cont_get
+    cmp eax, -1
+    je .opened
+    ; the half with the lower x / z first, whichever was clicked
+    mov ecx, [rel g_win_cont]
+    test r12d, 1
+    jnz .order
+    xchg eax, ecx                       ; (the other one is lower)
+.order:
+    mov [rel g_win_cont], ecx
+    mov [rel g_win_cont + 4], eax
+    mov eax, [rel g_win_half]
+    add eax, eax
+    mov [rel g_win_slots], eax
+.opened:
+    ; the slots into the window
+    xor r12d, r12d                      ; half
+.half:
+    cmp r12d, 2
+    jae .shown
+    lea rax, [rel g_win_cont]
+    mov ecx, [rax + r12 * 4]
+    cmp ecx, -1
+    je .shown
+    call cont_slots
+    mov rsi, rax
+    xor ebx, ebx
+.slot:
+    cmp ebx, [rel g_win_half]
+    jae .half_next
+    mov rax, [rsi + rbx * 8]
+    mov edx, [rel g_win_half]
+    imul edx, r12d
+    lea ecx, [edx + ebx + INV_CONTAINER]
+    SLOT_PTR rdx, rcx
+    mov [rdx], rax
+    call inv_mark
+    inc ebx
+    jmp .slot
+.half_next:
+    inc r12d
+    jmp .half
+.shown:
+    mov eax, [LOCAL(O_ST)]
+    mov [rel g_win_station], eax
+    mov dword [rel g_win_kind], WIN_CHEST
+    mov dword [rel g_win_grid], 0
+    call send_window
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; craft_sync — the open container's window slots back into its store.
+;   clobbers: rax, rcx, rdx, r8, r9
+; -----------------------------------------------------------------------------
+PROC craft_sync, 0, rbx, rsi
+    cmp dword [rel g_win_kind], WIN_CHEST
+    jne .done
+    xor esi, esi                        ; half
+.half:
+    cmp esi, 2
+    jae .done
+    lea rax, [rel g_win_cont]
+    mov ecx, [rax + rsi * 4]
+    cmp ecx, -1
+    je .done
+    call cont_slots
+    mov r8, rax
+    mov r9d, [rel g_win_half]
+    imul r9d, esi
+    xor ebx, ebx
+.slot:
+    cmp ebx, [rel g_win_half]
+    jae .next
+    lea ecx, [r9d + ebx + INV_CONTAINER]
+    SLOT_PTR rdx, rcx
+    mov rax, [rdx]
+    mov [r8 + rbx * 8], rax
+    inc ebx
+    jmp .slot
+.next:
+    inc esi
+    jmp .half
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; craft_block_broken — the block at ecx, edx, r8d was broken: a window on
+; it closes; a container's items drop where it stood.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC craft_block_broken, 16, rbx, rsi, rdi, r12
+    mov ebx, ecx
+    mov esi, edx
+    mov edi, r8d
+    cmp dword [rel g_win_kind], WIN_CRAFTING
+    jb .store                           ; (no window, or the inventory)
+    cmp ebx, [rel g_win_pos]
+    jne .second
+    cmp esi, [rel g_win_pos + 4]
+    jne .second
+    cmp edi, [rel g_win_pos + 8]
+    je .close
+.second:
+    cmp dword [rel g_win_cont + 4], -1
+    je .store
+    cmp ebx, [rel g_win_pos2]
+    jne .store
+    cmp esi, [rel g_win_pos2 + 4]
+    jne .store
+    cmp edi, [rel g_win_pos2 + 8]
+    jne .store
+.close:
+    call close_window
+    call send_window
+.store:
+    mov ecx, ebx
+    mov edx, esi
+    mov r8d, edi
+    call cont_find
+    cmp eax, -1
+    je .done
+    mov r12d, eax
+    ; drop it all from the block's centre
+    cvtsi2sd xmm0, ebx
+    addsd xmm0, [rel c_half]
+    movsd [rel g_at], xmm0
+    cvtsi2sd xmm0, esi
+    addsd xmm0, [rel c_half]
+    movsd [rel g_at + 8], xmm0
+    cvtsi2sd xmm0, edi
+    addsd xmm0, [rel c_half]
+    movsd [rel g_at + 16], xmm0
+    mov ecx, r12d
+    call cont_slots
+    mov rsi, rax
+    xor ebx, ebx
+.slot:
+    cmp ebx, CONT_SLOTS
+    jae .removed
+    movzx ecx, word [rsi + rbx * 8]
+    test ecx, ecx
+    jz .next
+    movzx edx, word [rsi + rbx * 8 + 2]
+    lea r8, [rel g_at]
+    call drops_spawn
+.next:
+    inc ebx
+    jmp .slot
+.removed:
+    mov ecx, r12d
+    call cont_remove
 .done:
     RETURN
 ENDPROC

@@ -7,3 +7,11 @@
 [station workbench]
 block = workbench
 grid = 3
+
+# Containers: right click opens their slots; `joins`: two side by side
+# with the same facing open as one container of twice the slots. Breaking
+# one drops what is in it.
+[container chest]
+block = chest
+slots = 27
+joins = 1

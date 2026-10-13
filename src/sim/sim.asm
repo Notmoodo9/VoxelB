@@ -25,6 +25,7 @@
 %include "packet.inc"
 %include "save.inc"
 %include "physics.inc"
+%include "world.inc"
 
 global sim_init, sim_update, g_sim_alpha, g_sim_tick
 global g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us, g_sim_time
@@ -34,6 +35,7 @@ extern edit_request, edit_tick, fluid_tick
 extern inv_init, inv_packet, inv_selected_block, inv_used_selected, inv_flush
 extern dig_reset, dig_tick, drops_reset, drops_tick, g_world_mode
 extern craft_reset, craft_window, craft_recipe, craft_tick
+extern cont_reset, save_load_containers, g_block_flags
 extern timer_elapsed_us, g_frame_us, g_time_of_day, g_day_length
 
 %define TICK_US             50000       ; 20 TPS
@@ -49,6 +51,7 @@ c_fast:         dq FAST_FORWARD
 c_60:           dq 60.0
 c_one_d:        dq 1.0
 c_tick_us_f:    dd 50000.0
+c_2_over_pi:    dd 0.63661977
 
 section .bss
 alignb 8
@@ -85,6 +88,8 @@ PROC sim_init, 16, rbx, rsi
     mov edx, esi
     call player_spawn
     call craft_reset                    ; (milestone 18)
+    call cont_reset
+    call save_load_containers           ; what is in the chests
     call inv_init
     call dig_reset
     call drops_reset
@@ -196,6 +201,7 @@ PROC sim_tick, 16, rbx, rsi, rdi
     call inv_selected_block
     test eax, eax
     jz .packet
+    call facing_state                   ; (a chest faces the player)
     mov [rel g_pkt + PKT.data + BLOCK_PKT.id], eax
     mov edx, 1
     lea rcx, [rel g_pkt + PKT.data]
@@ -244,6 +250,27 @@ PROC sim_tick, 16, rbx, rsi, rdi
 .done:
     RETURN
 ENDPROC
+
+; -----------------------------------------------------------------------------
+; facing_state — a block placed with shape = facing turns its front to the
+; player (state 0-3: front north, east, south, west).
+;   in:  eax = block id     out: eax = the state's id
+;   clobbers: rcx, rdx, xmm0, xmm1
+; -----------------------------------------------------------------------------
+facing_state:
+    lea rcx, [rel g_block_flags]
+    test byte [rcx + rax], BLOCKF_FACING
+    jz .done
+    ; the quarter the player looks along (0 north, 1 east ...), turned around
+    movss xmm0, [rel g_input + INPUT_PKT.yaw]
+    mulss xmm0, [rel c_2_over_pi]
+    roundss xmm0, xmm0, 0
+    cvtss2si ecx, xmm0
+    add ecx, 2
+    and ecx, 3
+    add eax, ecx
+.done:
+    ret
 
 ; send_state — PKT_S_PLAYER and PKT_S_TIME to the client.  clobbers: volatile
 PROC send_state, 0

@@ -1,13 +1,73 @@
 # Progress
 
 ## Current state
-**Milestone 18, part 2: Mining, drops, Survival (without health yet): DONE** (v0.18.2, Windows CI green: run #95)
+**Milestone 18, part 3: Crafting and chests: DONE** (v0.18.3, Windows CI: see below)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
 
-Next: **Milestone 18, part 3: crafting and chests** (2x2 and 3x3 grids,
-workbench, recipe book, chests that join; design/items/items_inventory.md).
+Next: **Milestone 18, part 4: tools, smelting, repair** (the four tool
+types in 8 tiers with durability, furnace and blast furnace with fuels,
+Tinker's table and the bindings; design/items/items_inventory.md).
+
+---
+
+## Milestone 18, part 3 — done (2026-10-13): crafting and chests (D95)
+
+### What was built
+* **Recipes** from `data/recipes/` (format in DATA_FORMAT.md): shaped
+  (mirrored too) and shapeless, item name patterns as ingredients, and
+  `each = *_planks` to make one recipe per wood or stone — 317 recipes
+  from 3 small files (list in design/items/items_inventory.md).
+* **Crafting by hand**: the Survival inventory (E) has a 2 × 2 grid and a
+  result slot. **Workbench** (new block, own textures): right click opens
+  a 3 × 3 grid (sneak + right click places against it). Taking the result
+  uses one of each grid item; shift-click crafts as many as fit.
+* **Recipe book** beside the grid: what you can make now from your slots
+  and the grid; a click lays the recipe out, shift-click as many sets as
+  you have. Hover shows the name.
+* **Chests** (new block, 27 slots, front latch turns towards you when
+  placed): right click opens; two side by side open as one **large
+  chest** (54); shift-click moves stacks between chest and inventory;
+  contents are saved with the world (`containers.dat`); breaking a chest
+  drops what's inside.
+* Closing a window returns the grid and the carried stack (what doesn't
+  fit drops at your feet); a station window closes when you walk away.
+* New: `shape = facing` for blocks that face the player; `stick` item.
+
+### Verified (scripted with xdotool, Survival test worlds)
+* Inventory: the book offered oak and birch planks, stone bricks, mossy
+  cobblestone, pillars; clicking oak planks put a log in the grid, the
+  result gave 4 planks (logs 6 → 5); then sticks, workbench, pressure
+  plate and mossy planks appeared in the book.
+* Workbench placed and right-clicked: "Crafting" with a 3 × 3 grid and a
+  long book (slabs, stairs, doors, trapdoors, ladders, signs, fences ...).
+  Shift-click on oak stairs laid out 2 full sets from 14 planks (12 used);
+  shift-click on the result put 4 oak stairs in the hotbar.
+* Chest placed with its latch facing the camera; one chest: "Chest" (27);
+  a second placed beside it: "Large chest" (54). Shift-clicked cobblestone
+  and stone in; after reloading the world they were still there
+  (`containers.dat` held them under the lower-x half); breaking that chest
+  dropped cobblestone 9, stone 12 and the chest, all picked up again.
+* Debug build: `recipes: self-check PASS (11 cases)`, no asserts; debug and
+  release headless tests pass.
+* Found and fixed while testing: double chests didn't join (the side test
+  was inverted).
+
+### Performance
+* Reading the recipes: ~16 ms at start (debug build, 772 records
+  expanded, 317 kept). Matching a grid: one pass over the recipes on a
+  slot change in the grid (no per-frame cost). The recipe book is rebuilt
+  only when a slot changes. Chest contents: copied into the window on open
+  and back on close / save (a few hundred bytes).
+
+### Deferred
+* Facing on placement for stairs, doors, trapdoors, ladders, signs (known
+  since M16; chests and other `facing` cubes do face the player).
+* Bookshelves (need books), recipes that need the furnace (part 4).
+* A "show all recipes" toggle in the book (it shows only what you can make).
+* Hoppers or other automation; chests in the world (structures, M23).
+
 
 ---
 

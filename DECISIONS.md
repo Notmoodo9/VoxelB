@@ -1688,3 +1688,47 @@ block for their upper half (mossy cobblestone boulders).
 * `--world "Name with spaces"` is now parsed with its quotes (a quote in a
   folder name made the region files unwritable).
 
+
+## D95 — Recipes, crafting windows, chests (M18 part 3)
+* **Recipe files** (`data/recipes/*.recipes`, DATA_FORMAT.md): shaped
+  recipes (letter keys, `.` empty, matched anywhere in the grid and
+  mirrored), shapeless `ingredients`, a `station` that limits a recipe to
+  one crafting block. Every ingredient is an item **name pattern**, so
+  "any planks" is `*_planks` and needs no tag system. One record with
+  `each = *_planks` becomes one recipe per kind of planks, `{}` standing
+  for the wood (`only` narrows it): the 19 woods' slabs, stairs, fences,
+  doors ... are 12 records, not 228, and a new wood gets its recipes with
+  no recipe changes. Copies that name a block a wood doesn't have drop out
+  silently. 317 recipes come from 3 small files; reading them takes ~16 ms.
+  Debug builds check 11 known grids (mirrored stairs, shapeless, `each`,
+  no match) at start.
+* **Windows are inventory slots.** The crafting grid (37–45), the result
+  (46) and a container's slots (47–100) are slots of the simulation's
+  inventory, so every click (take, put, half, one, shift) works on them
+  without new code and reaches the client as the usual slot packets. The
+  simulation owns which window is open (2 × 2 by hand on E, a station's
+  3 × 3 on right click, a chest) and closes it when the player walks more
+  than 8 blocks away or the block is gone. Closing puts the grid and the
+  carried stack back into the slots (dropping what doesn't fit). They are
+  also saved in player.dat (slots 36–45), so quitting with a full grid
+  loses nothing.
+* **Crafting is checked by the simulation**: the result slot shows what the
+  grid makes; taking it uses one of each grid item; shift takes as many as
+  fit. The **recipe book** lists what the grid and station allow and can be
+  made from what you have (slots + grid; rebuilt only when a slot
+  changes). A click asks the simulation to lay the recipe out (it plans on
+  a copy of the counts first, so a set is placed whole or not at all);
+  shift lays out as many sets as there is material and stack room.
+* **Containers** (`[container]` records next to the stations): a chest's
+  contents live in the simulation keyed by block position (4096 entries,
+  made when first opened), saved in `saves/<world>/containers.dat` (text)
+  while they hold anything. The open window shows a copy that is written
+  back on close and before every save. Two chests side by side with the
+  same facing open as one 54-slot chest, the lower x / z first whichever
+  half is clicked. Breaking a chest (Survival or Creative) closes its
+  window and drops its items.
+* **`shape = facing`**: a cube with 4 states whose side textures are
+  turned at load time (the `north` texture is the front), so the mesher,
+  culling and LOD still see a plain cube. Placing one turns the front to
+  the player (the simulation uses the yaw of the latest input). Stairs,
+  doors etc. still place in their first state (known issue since M16).

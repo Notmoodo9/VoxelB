@@ -98,3 +98,22 @@ gem; leaves, glass, stained glass, ice, short/tall grass, ferns, dead
 bushes, crystal sprouts → nothing (fibre, resin and crystal shards come
 with the bindings in part 4); metal ores drop the ore block itself, which
 the furnace smelts (part 4). Everything else drops itself.
+
+## Built in part 3 (crafting and chests)
+
+Recipes follow the "familiar shapes" decision: logs/bark/stems → 4
+planks; 2 planks → 4 sticks; 2 × 2 planks → workbench; 8 planks in a ring
+→ chest; per wood: 3 planks → 6 slabs, stairs (4), fence (3, with
+sticks), fence gate, door (3), trapdoor (2), ladder (4), sign (3),
+pressure plate, carved planks (2 slabs), mossy planks (planks + vine);
+per stone and terracotta: slabs, stairs, walls, pillars; 4 stone → 4
+stone bricks, 4 sand → sandstone, cobblestone + vine → mossy
+cobblestone, 6 glass → 16 panes. Bookshelves wait for books; smooth stone,
+bricks and glass come from the furnace (part 4).
+
+Not decided in the interview, chosen while building (tell me if any
+should change):
+* In Creative, E shows the catalog (no 2 × 2 grid); a workbench still
+  opens its grid in Creative.
+* Sneak + right click on a workbench or chest places a block against it.
+* The recipe book shows only what you can make right now.

@@ -3,3 +3,9 @@
 
 [block workbench]
 textures = side: workbench_side, top: workbench_top, bottom: oak_planks
+
+# a chest turns its front (the latch) towards the player who places it;
+# two side by side with the same facing open as one large chest
+[block chest]
+shape    = facing
+textures = side: chest_side, top: chest_top, bottom: chest_top, north: chest_front

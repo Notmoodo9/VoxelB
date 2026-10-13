@@ -4,6 +4,9 @@
 ;
 ; data/recipes/*.recipes (file-name order):
 ;   [station <name>]   block = workbench   grid = 3
+;   [container <name>] block = chest  slots = 27  joins = 1  (a container:
+;                      right click opens its slots; joins: two side by side
+;                      with the same facing make one of twice the slots)
 ;   [recipe <id>]      shape = PP / PP     (rows split by '/'; '.' = empty)
 ;                      P = *_planks        (one character: a key; the value
 ;                                           is an item name pattern)
@@ -27,7 +30,9 @@
 ;   g_recipe_count, g_rec_result (u16), g_rec_amount (u8), g_rec_station
 ;   (u8: 0 by hand, else a station), g_rec_w / g_rec_h (u8; 0 = shapeless),
 ;   g_rec_cells (9 patterns per recipe, row by row; shapeless: the list)
-;   g_block_station (u8 per block id: its station, 0 none), g_station_grid
+;   g_block_station (u8 per block id: its station, 0 none), g_station_grid,
+;   g_station_slots (u8: a container's slots, 0 = a crafting station),
+;   g_station_joins (u8)
 ; =============================================================================
 %include "macros.inc"
 %include "log.inc"
@@ -41,6 +46,7 @@ global recipes_load, recipe_match
 global g_recipe_count, g_rec_result, g_rec_amount, g_rec_station, g_rec_w
 global g_rec_h, g_rec_cells, g_block_station, g_station_grid, g_station_count
 global g_rec_n, g_rec_ok, g_rec_names, g_station_names, recipe_cell_ok
+global g_station_slots, g_station_joins
 
 extern str_ieq, str_len, str_parse_u64, str_dup, str_copy
 
@@ -61,6 +67,9 @@ str_pattern:    db "data\recipes\*.recipes", 0
 str_dir:        db "data\recipes\", 0
 k_recipe:       db "recipe", 0
 k_station:      db "station", 0
+k_container:    db "container", 0
+k_slots:        db "slots", 0
+k_joins:        db "joins", 0
 k_block:        db "block", 0
 k_grid:         db "grid", 0
 k_shape:        db "shape", 0
@@ -132,6 +141,8 @@ g_rec_h:        resb MAX_RECIPES
 g_rec_n:        resb MAX_RECIPES        ; shapeless: ingredients
 g_rec_ok:       resb MAX_RECIPES
 g_station_grid: resb MAX_STATIONS
+g_station_slots: resb MAX_STATIONS
+g_station_joins: resb MAX_STATIONS
 g_block_station: resb 65536
 alignb 4
 g_recipe_count: resd 1
@@ -228,6 +239,10 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     INVOKE str_ieq, rbx, rdx
     test eax, eax
     jnz .station
+    lea rdx, [rel k_container]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jnz .container
 .bad_header:
     lea rcx, [rel str_unknown]
     mov rdx, rbx
@@ -242,15 +257,24 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     mov dword [rel g_kind], REC_RECIPE
     RETURN
 .station:
+    mov ecx, 3                          ; a crafting grid
+    xor edx, edx
+    jmp .usable
+.container:
+    xor ecx, ecx                        ; slots, no grid
+    mov edx, 27
+.usable:
     mov eax, [rel g_station_count]
     cmp eax, MAX_STATIONS
     jae .full
     inc dword [rel g_station_count]
     mov [rel g_cur], eax
-    lea rcx, [rel g_station_names]
-    mov [rcx + rax * 8], rdi
-    lea rcx, [rel g_station_grid]
-    mov byte [rcx + rax], 3
+    lea r8, [rel g_station_names]
+    mov [r8 + rax * 8], rdi
+    lea r8, [rel g_station_grid]
+    mov [r8 + rax], cl
+    lea r8, [rel g_station_slots]
+    mov [r8 + rax], dl
     mov dword [rel g_kind], REC_STATION
     RETURN
 .full:
@@ -438,6 +462,32 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     call warn
     RETURN
 .not_block:
+    lea rdx, [rel k_slots]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_slots
+    mov rcx, rsi
+    call str_parse_u64
+    cmp rax, 1
+    jb .bad
+    cmp rax, 27                         ; (a double container: twice that)
+    ja .bad
+    lea rcx, [rel g_station_slots]
+    mov [rcx + rdi], al
+    RETURN
+.not_slots:
+    lea rdx, [rel k_joins]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_joins
+    mov rcx, rsi
+    call str_parse_u64
+    test rax, rax
+    setnz al
+    lea rcx, [rel g_station_joins]
+    mov [rcx + rdi], al
+    RETURN
+.not_joins:
     lea rdx, [rel k_grid]
     INVOKE str_ieq, rbx, rdx
     test eax, eax

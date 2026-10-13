@@ -88,3 +88,8 @@ result = carved_{}_planks
 each = *_planks
 ingredients = {}_planks, vine
 result = mossy_{}_planks
+
+[recipe chest]
+shape = PPP / P.P / PPP
+P = *_planks
+result = chest

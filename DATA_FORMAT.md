@@ -161,6 +161,7 @@ every setting applies to all states):
 | `stalk` | 1 | a thin upright post (4/16 wide) that joins nothing (bamboo) |
 | `fluid` | levels 1–7, falling | flowing liquid: a box as high as its level (14/16 down to 2/16; falling and liquid-covered: full), with the sides drawn where neighbouring liquid is lower. Needs `source` |
 | `axis` | upright, east-west, north-south | a cube log: the `end` texture faces along its axis (logs lying in fallen trees and branches) |
+| `facing` | front north, east, south, west | a cube whose `north` texture is its front; placing turns the front towards the player (chests) |
 
 Faces of a shape take the block's textures by direction, projected like
 a cube's (so a slab shows the lower half of its texture).
@@ -548,6 +549,9 @@ only name a station defined before it).
 |---|---|---|
 | `[station <name>]` | `block` | the block that opens this station's crafting grid on right click (sneak + right click places a block against it) |
 | | `grid` | 2 or 3 (default 3) |
+| `[container <name>]` | `block` | the block that opens these slots on right click (a chest) |
+| | `slots` | 1–27 (default 27) |
+| | `joins` | `1`: two side by side with the same facing open as one container of twice the slots |
 | `[recipe <name>]` | `shape` | rows split by `/`, up to 3 × 3; one character per cell: a key letter, or `.` for an empty cell. A shape matches anywhere in the grid, mirrored too |
 | | `A` … `Z` | a key: item name patterns (`*` = anything; a comma list = any of them) |
 | | `ingredients` | instead of a shape: up to 9 patterns, one item each, in any cells (shapeless) |
@@ -597,6 +601,11 @@ Text in the format above (the game rewrites them on every save, via a
 | | `selected` | the hotbar slot in hand, 0–8 (Milestone 18) |
 | | `slot` | one line per used slot: `index, item, count, durability` (0–8 the hotbar, 9–35 the inventory; 36 the stack carried by the mouse and 37–45 the crafting grid when the game quit with the inventory open: they go back into the slots on load); unknown items are skipped |
 | | `held_block` | (saves from before Milestone 18) a block name: put in hotbar slot 0 |
+
+`containers.dat` holds what is in the chests: a `[container x y z]`
+record (the block position) per container that holds anything, then its
+`slot = index, item, count, durability` lines (a double chest is two
+records, 27 slots each).
 
 `thumb.png` (256 × 144 RGB) in the world folder is the picture shown in
 the world list; the game rewrites it on every save.

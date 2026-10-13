@@ -131,12 +131,16 @@ s_tall_plant:   db "tall_plant", 0
 s_stalk:        db "stalk", 0
 s_fluid:        db "fluid", 0
 s_axis:         db "axis", 0
+s_facing:       db "facing", 0
 align 8
 shape_names:    dq s_cube, s_slab, s_stairs, s_fence, s_gate, s_door, s_trapdoor
                 dq s_ladder, s_sign, s_wall_sign, s_plate, s_wall, s_pillar, s_pane, s_spike
-                dq s_plant, s_tall_plant, s_stalk, s_fluid, s_axis
-shape_states:   db 1, 2, 8, 1, 8, 32, 16, 4, 4, 4, 2, 1, 1, 1, 2, 1, 2, 1, 8, 3
+                dq s_plant, s_tall_plant, s_stalk, s_fluid, s_axis, s_facing
+shape_states:   db 1, 2, 8, 1, 8, 32, 16, 4, 4, 4, 2, 1, 1, 1, 2, 1, 2, 1, 8, 3, 4
 %define SHAPE_AXIS_NAME SHAPE_COUNT     ; "axis": cube-shaped log states (BLOCKF_AXIS)
+%define SHAPE_FACING_NAME (SHAPE_COUNT + 1) ; "facing": a cube turned 4 ways (BLOCKF_FACING)
+; the horizontal faces clockwise seen from above: north (-Z), east, south, west
+facing_ring:    db 4, 1, 5, 0
 str_shape_late:     db "shape must be the first setting of a new block: ", 0
 k_templates:    db "templates", 0
 k_members:      db "members", 0
@@ -619,6 +623,25 @@ PROC sync_states, 0, rbx, rsi, rdi
     mov [r9], rax
     mov eax, [r10 + 8]
     mov [r9 + 8], eax
+    ; facing: state s turns the side faces s quarter turns clockwise (the
+    ; north face's texture, the front, ends up east, south, west)
+    lea rax, [rel g_block_flags]
+    test byte [rax + rbx], BLOCKF_FACING
+    jz .not_facing
+    xor ecx, ecx                        ; ring position i
+.ring:
+    lea rax, [rel facing_ring]
+    movzx edx, byte [rax + rcx]         ; base face ring[i]
+    movzx r11d, word [r10 + rdx * 2]    ; its texture
+    lea edx, [ecx + edi]
+    and edx, 3
+    movzx edx, byte [rax + rdx]         ; face ring[i + s]
+    mov [r9 + rdx * 2], r11w
+    inc ecx
+    cmp ecx, 4
+    jb .ring
+    jmp .next_tex
+.not_facing:
     ; log axis: the end texture (+Y) moves to the X (state 1) or Z (2) faces
     lea rax, [rel g_block_flags]
     test byte [rax + rbx], BLOCKF_AXIS
@@ -666,7 +689,7 @@ PROC set_shape, 0, rbx, rsi, rdi, r12
     mov rsi, rdx
     xor edi, edi
 .find:
-    cmp edi, SHAPE_AXIS_NAME
+    cmp edi, SHAPE_FACING_NAME
     ja .bad
     lea rax, [rel shape_names]
     INVOKE str_ieq, [rax + rdi * 8], rsi
@@ -684,6 +707,13 @@ PROC set_shape, 0, rbx, rsi, rdi, r12
     jnz .ok                             ; already has its axis states
     jmp .grow
 .not_axis:
+    cmp edi, SHAPE_FACING_NAME
+    jne .not_facing
+    lea rax, [rel g_block_flags]
+    test byte [rax + rbx], BLOCKF_FACING
+    jnz .ok
+    jmp .grow
+.not_facing:
     lea rax, [rel g_block_shape]
     cmp [rax + rbx], dil
     je .ok                              ; same shape again: nothing to do
@@ -704,9 +734,16 @@ PROC set_shape, 0, rbx, rsi, rdi, r12
     lea rax, [rel g_block_nstates]
     mov [rax + rbx * 2], r12w
     cmp edi, SHAPE_AXIS_NAME
-    jne .shape_byte
+    jne .facing_flag
     lea rax, [rel g_block_flags]
     or byte [rax + rbx], BLOCKF_AXIS
+    xor edi, edi                        ; (the states are cubes)
+    jmp .shape_byte
+.facing_flag:
+    cmp edi, SHAPE_FACING_NAME
+    jne .shape_byte
+    lea rax, [rel g_block_flags]
+    or byte [rax + rbx], BLOCKF_FACING
     xor edi, edi                        ; (the states are cubes)
 .shape_byte:
     xor ecx, ecx                        ; state
