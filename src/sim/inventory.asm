@@ -17,6 +17,9 @@
 ;                                    C_CREATIVE_SET
 ;   inv_selected_block() -> eax      the block the item in hand places (0)
 ;   inv_used_selected()              one placed: Survival uses up one
+;   inv_wear_selected()              the tool in hand broke a block: Survival
+;                                    wears it by one (slot durability field =
+;                                    uses spent); worn out, it breaks
 ;   inv_add(ecx = item, edx = count) -> eax count that did not fit
 ;   inv_flush()                      send the changed slots (end of tick)
 ;   inv_mark(ecx = slot)             a slot changed (clobbers rax)
@@ -32,6 +35,7 @@
 %include "save.inc"
 
 global inv_init, inv_packet, inv_selected_block, inv_used_selected, inv_add
+global inv_wear_selected
 global inv_flush, g_inv, g_inv_sel, inv_mark, inv_stack_of, inv_room
 global inv_cursor_back
 
@@ -240,6 +244,30 @@ inv_selected_block:
     movzx eax, word [rax + rcx * 2]
 .done:
     ret
+
+; inv_wear_selected — see the header   clobbers: rax, rcx, rdx, r8, r9
+PROC inv_wear_selected, 0
+    cmp dword [rel g_world_mode], MODE_CREATIVE
+    je .done
+    mov ecx, [rel g_inv_sel]
+    SLOT_PTR rax, rcx
+    movzx edx, word [rax + SLOT_ITEM]
+    test edx, edx
+    jz .done
+    lea r9, [rel g_item_dur]
+    movzx edx, word [r9 + rdx * 2]
+    test edx, edx
+    jz .done                            ; does not wear
+    inc word [rax + SLOT_DUR]
+    movzx r8d, word [rax + SLOT_DUR]
+    cmp r8d, edx
+    jb .marked
+    mov qword [rax], 0                  ; worn out: it breaks
+.marked:
+    call mark
+.done:
+    RETURN
+ENDPROC
 
 ; inv_used_selected — one block was placed: Survival uses one up
 PROC inv_used_selected, 0

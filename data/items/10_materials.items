@@ -21,3 +21,29 @@ tab = items
 [item stick]
 texture = stick
 tab = items
+
+# metal bars: smelted from their ores (the furnace; mythril and adamantite
+# need the blast furnace)
+[item copper_bar]
+texture = copper_bar
+tab = items
+
+[item iron_bar]
+texture = iron_bar
+tab = items
+
+[item silver_bar]
+texture = silver_bar
+tab = items
+
+[item gold_bar]
+texture = gold_bar
+tab = items
+
+[item mythril_bar]
+texture = mythril_bar
+tab = items
+
+[item adamantite_bar]
+texture = adamantite_bar
+tab = items

@@ -18,7 +18,7 @@
 global dig_reset, dig_tick
 
 extern phys_block, mining_time, mining_drop, edit_request, drops_spawn
-extern pkt_send, g_to_client, g_world_mode, g_inv, g_inv_sel
+extern pkt_send, g_to_client, g_world_mode, g_inv, g_inv_sel, inv_wear_selected
 
 %define TICK_S          0.05
 %define COOLDOWN_TICKS  5               ; between two blocks when held
@@ -88,6 +88,7 @@ ENDPROC
 ; -----------------------------------------------------------------------------
 %define D_BLOCK     0
 %define D_HARVEST   4
+%define D_INSTANT   8                   ; broke at once: the tool does not wear
 PROC dig_tick, 16, rbx, rsi
     mov rbx, rcx
     cmp dword [rel g_cool], 0
@@ -133,11 +134,15 @@ PROC dig_tick, 16, rbx, rsi
     mov ecx, eax
     call mining_time
     mov [LOCAL(D_HARVEST)], eax
+    mov dword [LOCAL(D_INSTANT)], 0
     xorps xmm1, xmm1
     comiss xmm0, xmm1
     jb .stop                            ; never breaks
     movss xmm2, [rel c_one]
-    je .add                             ; at once
+    jne .timed
+    mov dword [LOCAL(D_INSTANT)], 1
+    jmp .add                            ; at once
+.timed:
     movss xmm2, [rel c_tick]
     divss xmm2, xmm0
 .add:
@@ -164,6 +169,10 @@ PROC dig_tick, 16, rbx, rsi
     call stop
     test esi, esi
     jz .done
+    cmp dword [LOCAL(D_INSTANT)], 0
+    jne .worn
+    call inv_wear_selected              ; (milestone 18 part 4: tools wear)
+.worn:
     cmp dword [LOCAL(D_HARVEST)], 0
     je .done
     mov ecx, [LOCAL(D_BLOCK)]

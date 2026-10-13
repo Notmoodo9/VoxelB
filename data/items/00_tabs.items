@@ -29,6 +29,10 @@ title = Ores & crystals
 icon = diamond_ore
 blocks = *_ore, *_crystal, *_crystal_sprout, *_veined_stone, deep_stone, bedrock, dripstone_block, pointed_dripstone, salt, bone_block
 
+[tab tools]
+title = Tools
+icon = iron_pickaxe
+
 [tab items]
 title = Items
 icon = diamond

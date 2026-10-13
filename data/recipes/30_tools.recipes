@@ -1,0 +1,194 @@
+# Tools (milestone 18 part 4): the familiar shapes, M = the tier's
+# material, S = stick. A shape is also matched mirrored.
+
+[recipe wooden_pickaxe]
+shape = MMM / .S. / .S.
+M = *_planks
+S = stick
+result = wooden_pickaxe
+
+[recipe wooden_axe]
+shape = MM / MS / .S
+M = *_planks
+S = stick
+result = wooden_axe
+
+[recipe wooden_shovel]
+shape = M / S / S
+M = *_planks
+S = stick
+result = wooden_shovel
+
+[recipe wooden_hoe]
+shape = MM / .S / .S
+M = *_planks
+S = stick
+result = wooden_hoe
+
+[recipe stone_pickaxe]
+shape = MMM / .S. / .S.
+M = cobblestone, mossy_cobblestone
+S = stick
+result = stone_pickaxe
+
+[recipe stone_axe]
+shape = MM / MS / .S
+M = cobblestone, mossy_cobblestone
+S = stick
+result = stone_axe
+
+[recipe stone_shovel]
+shape = M / S / S
+M = cobblestone, mossy_cobblestone
+S = stick
+result = stone_shovel
+
+[recipe stone_hoe]
+shape = MM / .S / .S
+M = cobblestone, mossy_cobblestone
+S = stick
+result = stone_hoe
+
+[recipe copper_pickaxe]
+shape = MMM / .S. / .S.
+M = copper_bar
+S = stick
+result = copper_pickaxe
+
+[recipe copper_axe]
+shape = MM / MS / .S
+M = copper_bar
+S = stick
+result = copper_axe
+
+[recipe copper_shovel]
+shape = M / S / S
+M = copper_bar
+S = stick
+result = copper_shovel
+
+[recipe copper_hoe]
+shape = MM / .S / .S
+M = copper_bar
+S = stick
+result = copper_hoe
+
+[recipe iron_pickaxe]
+shape = MMM / .S. / .S.
+M = iron_bar
+S = stick
+result = iron_pickaxe
+
+[recipe iron_axe]
+shape = MM / MS / .S
+M = iron_bar
+S = stick
+result = iron_axe
+
+[recipe iron_shovel]
+shape = M / S / S
+M = iron_bar
+S = stick
+result = iron_shovel
+
+[recipe iron_hoe]
+shape = MM / .S / .S
+M = iron_bar
+S = stick
+result = iron_hoe
+
+[recipe diamond_pickaxe]
+shape = MMM / .S. / .S.
+M = diamond
+S = stick
+result = diamond_pickaxe
+
+[recipe diamond_axe]
+shape = MM / MS / .S
+M = diamond
+S = stick
+result = diamond_axe
+
+[recipe diamond_shovel]
+shape = M / S / S
+M = diamond
+S = stick
+result = diamond_shovel
+
+[recipe diamond_hoe]
+shape = MM / .S / .S
+M = diamond
+S = stick
+result = diamond_hoe
+
+[recipe mythril_pickaxe]
+shape = MMM / .S. / .S.
+M = mythril_bar
+S = stick
+result = mythril_pickaxe
+
+[recipe mythril_axe]
+shape = MM / MS / .S
+M = mythril_bar
+S = stick
+result = mythril_axe
+
+[recipe mythril_shovel]
+shape = M / S / S
+M = mythril_bar
+S = stick
+result = mythril_shovel
+
+[recipe mythril_hoe]
+shape = MM / .S / .S
+M = mythril_bar
+S = stick
+result = mythril_hoe
+
+[recipe adamantite_pickaxe]
+shape = MMM / .S. / .S.
+M = adamantite_bar
+S = stick
+result = adamantite_pickaxe
+
+[recipe adamantite_axe]
+shape = MM / MS / .S
+M = adamantite_bar
+S = stick
+result = adamantite_axe
+
+[recipe adamantite_shovel]
+shape = M / S / S
+M = adamantite_bar
+S = stick
+result = adamantite_shovel
+
+[recipe adamantite_hoe]
+shape = MM / .S / .S
+M = adamantite_bar
+S = stick
+result = adamantite_hoe
+
+[recipe star_crystal_pickaxe]
+shape = MMM / .S. / .S.
+M = star_crystal
+S = stick
+result = star_crystal_pickaxe
+
+[recipe star_crystal_axe]
+shape = MM / MS / .S
+M = star_crystal
+S = stick
+result = star_crystal_axe
+
+[recipe star_crystal_shovel]
+shape = M / S / S
+M = star_crystal
+S = stick
+result = star_crystal_shovel
+
+[recipe star_crystal_hoe]
+shape = MM / .S / .S
+M = star_crystal
+S = stick
+result = star_crystal_hoe

@@ -22,6 +22,9 @@
 ;   inv_screen_close()                  the carried stack goes back
 ;   inv_screen_frame(ecx = w, edx = h)
 ;   inv_screen_typing() -> eax 1        the search field has the keyboard
+;   ui_wear_bar(ecx = x, edx = y, r8d = width, r9d = item, ARG5 = wear)
+;                                       a worn tool's durability bar (also the
+;                                       HUD's hotbar)
 ; The window shown is the client's g_cwin (client.asm). The recipe book lists
 ; the recipes the grid and station allow that can be made from what the
 ; player has (slots and grid); a click lays one out in the grid
@@ -35,6 +38,7 @@
 %include "save.inc"
 
 global inv_screen_open, inv_screen_close, inv_screen_frame, inv_screen_typing
+global ui_wear_bar
 
 extern ui_frame, ui_end, ui_button, ui_panel, ui_label, ui_rect, ui_glass
 extern ui_text, ui_text_width, ui_hover, ui_textfield, ui_focus, ui_focused
@@ -217,6 +221,63 @@ PROC build_list, 0, rbx, rsi
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; ui_wear_bar — see the header: nothing for an unworn item; else a dark
+; bar with the durability left, green when new to red when nearly broken.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC ui_wear_bar, 16, rbx, rsi, rdi, r12
+    mov ebx, ecx
+    mov esi, edx
+    mov edi, r8d
+    mov eax, [ARG(5)]
+    and eax, 0xFFFF
+    jz .done
+    lea rcx, [rel g_item_dur]
+    movzx r12d, word [rcx + r9 * 2]
+    test r12d, r12d
+    jz .done
+    ; left / durability
+    mov ecx, r12d
+    sub ecx, eax
+    jg .left
+    xor ecx, ecx
+.left:
+    cvtsi2ss xmm0, ecx
+    cvtsi2ss xmm1, r12d
+    divss xmm0, xmm1
+    movss [LOCAL(0)], xmm0              ; f = 0..1
+    mov dword [rsp + 32], 0xF0101010
+    mov qword [rsp + 40], 0
+    mov qword [rsp + 48], 2
+    mov qword [rsp + 56], 0
+    INVOKE ui_rect, rbx, rsi, rdi, 5
+    ; the part left, coloured by it
+    movss xmm0, [LOCAL(0)]
+    cvtsi2ss xmm1, edi
+    mulss xmm1, xmm0
+    cvttss2si r9d, xmm1
+    cmp r9d, 1
+    jge .w
+    mov r9d, 1
+.w:
+    movss xmm1, [rel c_255]
+    mulss xmm1, xmm0
+    cvttss2si eax, xmm1                 ; green
+    mov ecx, 255
+    sub ecx, eax                        ; red
+    shl eax, 8
+    or eax, ecx
+    or eax, 0xFF000000
+    mov [rsp + 32], eax
+    mov qword [rsp + 40], 0
+    mov qword [rsp + 48], 2
+    mov qword [rsp + 56], 0
+    INVOKE ui_rect, rbx, rsi, r9, 5
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 ; draw_slot — a slot with its item and count; the hovered one lights up.
 ;   in:  ecx = x, edx = y, r8d = item, r9d = count, ARG5 = 1 the slot in hand
 ;   out: eax = 1 if the mouse is over it
@@ -261,6 +322,15 @@ PROC draw_slot, 16, rbx, rsi, rdi, r12, r13
     mov ecx, edi
     mov r9d, ICON
     call ui_icon
+    ; a worn tool's bar
+    mov eax, [rel g_slot_wear]
+    mov dword [rel g_slot_wear], 0
+    mov [rsp + 32], rax
+    lea ecx, [ebx + 6]
+    lea edx, [esi + SLOT_PX - 9]
+    mov r8d, SLOT_PX - 12
+    mov r9d, edi
+    call ui_wear_bar
     cmp r12d, 1
     jbe .done
     lea rcx, [rel g_count]
@@ -346,6 +416,8 @@ PROC player_slots, 16, rbx, rsi, rdi, r12
     lea rax, [rel g_cinv]
     movzx r8d, word [rax + rbx * 8]
     movzx r9d, word [rax + rbx * 8 + 2]
+    movzx eax, word [rax + rbx * 8 + 4]
+    mov [rel g_slot_wear], eax
     mov qword [rsp + 32], 0
     call draw_slot
     test eax, eax
@@ -669,6 +741,8 @@ PROC slot_at, 0, rbx
     lea rax, [rel g_cinv]
     movzx r8d, word [rax + rbx * 8]
     movzx r9d, word [rax + rbx * 8 + 2]
+    movzx eax, word [rax + rbx * 8 + 4]
+    mov [rel g_slot_wear], eax
     mov qword [rsp + 32], 0
     call draw_slot
     test eax, eax
@@ -1199,8 +1273,12 @@ ENDPROC
 
 section .rdata
 s_empty:        db 0
+align 4
+c_255:          dd 255.0
 s_arrow:        db ">", 0
 section .bss
 alignb 8
 g_tip_text:     resq 1                  ; a tooltip that is not an item (tabs)
 g_close:        resb WIN_PKT_size
+alignb 4
+g_slot_wear:    resd 1                  ; draw_slot: the next slot's wear

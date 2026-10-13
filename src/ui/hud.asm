@@ -15,7 +15,7 @@
 global hud_draw
 
 extern ui_draw_begin, ui_draw_flush, ui_rect, ui_glass, ui_glow, ui_text
-extern ui_text_width, ui_icon, timer_elapsed_us
+extern ui_text_width, ui_icon, timer_elapsed_us, ui_wear_bar
 extern g_ui_vw, g_ui_vh, g_cinv, g_csel, g_item_titles
 
 %define CROSS_ARM       10              ; half length (units)
@@ -119,6 +119,15 @@ PROC hud_draw, 32, rbx, rsi, rdi, r12, r13, r14
     lea r8d, [r13d + (SLOT - ICON) / 2]
     mov r9d, ICON
     call ui_icon
+    ; a worn tool's durability bar
+    lea rax, [rel g_cinv]
+    movzx ecx, word [rax + rbx * 8 + 4]
+    mov [rsp + 32], rcx
+    movzx r9d, word [rax + rbx * 8]
+    lea ecx, [r14d + 6]
+    lea edx, [r13d + SLOT - 9]
+    mov r8d, SLOT - 12
+    call ui_wear_bar
     ; the count, when more than one
     lea rax, [rel g_cinv]
     movzx edx, word [rax + rbx * 8 + 2]

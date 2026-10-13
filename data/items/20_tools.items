@@ -1,0 +1,333 @@
+# Tools (milestone 18 part 4, design/items/items_inventory.md): the four
+# tool types in 8 tiers. `speed` divides the mining time of blocks that
+# want this tool; `tier` decides what drops (mining.cfg); `durability` is
+# the number of blocks a tool breaks before it breaks itself. Pictures:
+# assets/textures/items/<name>.png (tools/texgen/itemgen.py).
+
+# ---- wooden ----
+[item wooden_pickaxe]
+title = Wooden pickaxe
+texture = wooden_pickaxe
+tab = tools
+stack = 1
+tool = pickaxe
+tier = wood
+speed = 2
+durability = 60
+
+[item wooden_axe]
+title = Wooden axe
+texture = wooden_axe
+tab = tools
+stack = 1
+tool = axe
+tier = wood
+speed = 2
+durability = 60
+
+[item wooden_shovel]
+title = Wooden shovel
+texture = wooden_shovel
+tab = tools
+stack = 1
+tool = shovel
+tier = wood
+speed = 2
+durability = 60
+
+[item wooden_hoe]
+title = Wooden hoe
+texture = wooden_hoe
+tab = tools
+stack = 1
+tool = hoe
+tier = wood
+speed = 2
+durability = 60
+
+# ---- stone ----
+[item stone_pickaxe]
+title = Stone pickaxe
+texture = stone_pickaxe
+tab = tools
+stack = 1
+tool = pickaxe
+tier = stone
+speed = 4
+durability = 132
+
+[item stone_axe]
+title = Stone axe
+texture = stone_axe
+tab = tools
+stack = 1
+tool = axe
+tier = stone
+speed = 4
+durability = 132
+
+[item stone_shovel]
+title = Stone shovel
+texture = stone_shovel
+tab = tools
+stack = 1
+tool = shovel
+tier = stone
+speed = 4
+durability = 132
+
+[item stone_hoe]
+title = Stone hoe
+texture = stone_hoe
+tab = tools
+stack = 1
+tool = hoe
+tier = stone
+speed = 4
+durability = 132
+
+# ---- copper ----
+[item copper_pickaxe]
+title = Copper pickaxe
+texture = copper_pickaxe
+tab = tools
+stack = 1
+tool = pickaxe
+tier = copper
+speed = 5
+durability = 190
+
+[item copper_axe]
+title = Copper axe
+texture = copper_axe
+tab = tools
+stack = 1
+tool = axe
+tier = copper
+speed = 5
+durability = 190
+
+[item copper_shovel]
+title = Copper shovel
+texture = copper_shovel
+tab = tools
+stack = 1
+tool = shovel
+tier = copper
+speed = 5
+durability = 190
+
+[item copper_hoe]
+title = Copper hoe
+texture = copper_hoe
+tab = tools
+stack = 1
+tool = hoe
+tier = copper
+speed = 5
+durability = 190
+
+# ---- iron ----
+[item iron_pickaxe]
+title = Iron pickaxe
+texture = iron_pickaxe
+tab = tools
+stack = 1
+tool = pickaxe
+tier = iron
+speed = 6
+durability = 250
+
+[item iron_axe]
+title = Iron axe
+texture = iron_axe
+tab = tools
+stack = 1
+tool = axe
+tier = iron
+speed = 6
+durability = 250
+
+[item iron_shovel]
+title = Iron shovel
+texture = iron_shovel
+tab = tools
+stack = 1
+tool = shovel
+tier = iron
+speed = 6
+durability = 250
+
+[item iron_hoe]
+title = Iron hoe
+texture = iron_hoe
+tab = tools
+stack = 1
+tool = hoe
+tier = iron
+speed = 6
+durability = 250
+
+# ---- diamond ----
+[item diamond_pickaxe]
+title = Diamond pickaxe
+texture = diamond_pickaxe
+tab = tools
+stack = 1
+tool = pickaxe
+tier = diamond
+speed = 8
+durability = 1560
+
+[item diamond_axe]
+title = Diamond axe
+texture = diamond_axe
+tab = tools
+stack = 1
+tool = axe
+tier = diamond
+speed = 8
+durability = 1560
+
+[item diamond_shovel]
+title = Diamond shovel
+texture = diamond_shovel
+tab = tools
+stack = 1
+tool = shovel
+tier = diamond
+speed = 8
+durability = 1560
+
+[item diamond_hoe]
+title = Diamond hoe
+texture = diamond_hoe
+tab = tools
+stack = 1
+tool = hoe
+tier = diamond
+speed = 8
+durability = 1560
+
+# ---- mythril ----
+[item mythril_pickaxe]
+title = Mythril pickaxe
+texture = mythril_pickaxe
+tab = tools
+stack = 1
+tool = pickaxe
+tier = mythril
+speed = 10
+durability = 2400
+
+[item mythril_axe]
+title = Mythril axe
+texture = mythril_axe
+tab = tools
+stack = 1
+tool = axe
+tier = mythril
+speed = 10
+durability = 2400
+
+[item mythril_shovel]
+title = Mythril shovel
+texture = mythril_shovel
+tab = tools
+stack = 1
+tool = shovel
+tier = mythril
+speed = 10
+durability = 2400
+
+[item mythril_hoe]
+title = Mythril hoe
+texture = mythril_hoe
+tab = tools
+stack = 1
+tool = hoe
+tier = mythril
+speed = 10
+durability = 2400
+
+# ---- adamantite ----
+[item adamantite_pickaxe]
+title = Adamantite pickaxe
+texture = adamantite_pickaxe
+tab = tools
+stack = 1
+tool = pickaxe
+tier = adamantite
+speed = 12
+durability = 3600
+
+[item adamantite_axe]
+title = Adamantite axe
+texture = adamantite_axe
+tab = tools
+stack = 1
+tool = axe
+tier = adamantite
+speed = 12
+durability = 3600
+
+[item adamantite_shovel]
+title = Adamantite shovel
+texture = adamantite_shovel
+tab = tools
+stack = 1
+tool = shovel
+tier = adamantite
+speed = 12
+durability = 3600
+
+[item adamantite_hoe]
+title = Adamantite hoe
+texture = adamantite_hoe
+tab = tools
+stack = 1
+tool = hoe
+tier = adamantite
+speed = 12
+durability = 3600
+
+# ---- star crystal ----
+[item star_crystal_pickaxe]
+title = Star crystal pickaxe
+texture = star_crystal_pickaxe
+tab = tools
+stack = 1
+tool = pickaxe
+tier = star_crystal
+speed = 16
+durability = 5000
+
+[item star_crystal_axe]
+title = Star crystal axe
+texture = star_crystal_axe
+tab = tools
+stack = 1
+tool = axe
+tier = star_crystal
+speed = 16
+durability = 5000
+
+[item star_crystal_shovel]
+title = Star crystal shovel
+texture = star_crystal_shovel
+tab = tools
+stack = 1
+tool = shovel
+tier = star_crystal
+speed = 16
+durability = 5000
+
+[item star_crystal_hoe]
+title = Star crystal hoe
+texture = star_crystal_hoe
+tab = tools
+stack = 1
+tool = hoe
+tier = star_crystal
+speed = 16
+durability = 5000

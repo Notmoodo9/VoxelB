@@ -164,13 +164,114 @@ def stick():
     return outline(paint(shape_mask(["".join(r) for r in rows]), pal), (0.18, 0.1, 0.05))
 
 
+
+# ---- tools (milestone 18 part 4): a diagonal handle with a head per type,
+# coloured by tier. Polar shapes around the handle's foot keep the four
+# types consistent.
+TIER_COLOURS = {
+    "wooden": "b8864b", "stone": "8d939b", "copper": "e07a3a", "iron": "d0d6de",
+    "diamond": "4ae0e8", "mythril": "3a8aff", "adamantite": "e8343a",
+    "star_crystal": "f2c94c",
+}
+FOOT = (3.0, 12.0)                     # the handle's lower end (x, y down)
+
+
+def polar(x, y):
+    dx = x + 0.5 - FOOT[0]
+    dy = FOOT[1] - (y + 0.5)
+    r = (dx * dx + dy * dy) ** 0.5
+    a = np.degrees(np.arctan2(dy, dx))
+    return r, a
+
+
+def tool(kind, tier):
+    head = ramp(TIER_COLOURS[tier], n=6, spread=0.2)
+    wood = ramp("8a5a30", n=6, spread=0.18)
+    img = np.zeros((N, N, 4))
+    reach = {"pickaxe": 10.4, "axe": 10.6, "shovel": 7.0, "hoe": 10.8}[kind]
+    for y in range(N):
+        for x in range(N):
+            r, a = polar(x, y)
+            on_handle = abs(a - 45) * r / 57.3 < 0.75 and r <= reach
+            h = None
+            if kind == "pickaxe":
+                if 8.6 <= r <= 10.9 and 8 <= a <= 82:
+                    h = (r - 8.6) / 2.3
+                    if abs(a - 45) > 30 and r > 10.0:
+                        h = None             # tapered points
+            elif kind == "axe":
+                if 6.0 <= r <= 11.2 and 47 <= a <= 47 + (r - 4.0) * 5.2:
+                    h = (a - 47) / 40
+            elif kind == "shovel":
+                # a rounded blade on the handle's line
+                cx, cy = FOOT[0] + 7.6 * 0.7071, FOOT[1] - 7.6 * 0.7071
+                u = (x + 0.5 - cx) * 0.7071 - (y + 0.5 - cy) * 0.7071   # along
+                v = (x + 0.5 - cx) * 0.7071 + (y + 0.5 - cy) * 0.7071   # across
+                if abs(v) <= 2.7 and -1.2 <= u <= 4.4 and (u < 2.6 or abs(v) < 4.6 - u):
+                    h = (u + 1.2) / 5.6
+            elif kind == "hoe":
+                if 9.4 <= r <= 11.2 and 45 <= a <= 74:
+                    h = (a - 45) / 29
+                elif 7.6 <= r <= 9.4 and 68 <= a <= 76:
+                    h = 0.9                  # the blade's tip bends down
+            if h is not None:
+                k = int(np.clip(5 - h * 4.2, 0, 5))
+                img[y, x, :3] = head[k]
+                img[y, x, 3] = 1.0
+            elif on_handle and r >= 0.4:
+                d = (a - 45) * r / 57.3      # across the handle
+                img[y, x, :3] = wood[3 if d > 0 else 1]
+                img[y, x, 3] = 1.0
+    if tier == "star_crystal":
+        for y in range(N):
+            for x in range(N):
+                if img[y, x, 3] > 0 and (x + y) % 5 == 0 and polar(x, y)[0] > 7:
+                    img[y, x, :3] = (1.0, 0.98, 0.9)
+    return outline(img, (0.1, 0.07, 0.06))
+
+
+def bar(base):
+    # an ingot seen at an angle: a lit top face and a darker front
+    pal = ramp(base, n=6, spread=0.22)
+    m = shape_mask([
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        ".....55555555...",
+        "....5444444445..",
+        "...544444444452.",
+        "..3333333333322.",
+        "..3333333333321.",
+        "..2222222222221.",
+        "..111111111111..",
+        "................",
+        "................",
+        "................",
+        "................",
+    ])
+    img = paint(m, pal)
+    img[6, 6:9, :3] = np.minimum(1.0, pal[5] * 1.15)   # a glint
+    return outline(img)
+
+
 ITEMS = {
     "coal": coal,
     "diamond": lambda: gem("diamond", "37d6e0"),
     "emerald": lambda: gem("emerald", "2fcf6a"),
     "star_crystal": star_crystal,
     "stick": stick,
+    "copper_bar": lambda: bar("e07a3a"),
+    "iron_bar": lambda: bar("d0d6de"),
+    "silver_bar": lambda: bar("e8ecf4"),
+    "gold_bar": lambda: bar("ffd23a"),
+    "mythril_bar": lambda: bar("3a8aff"),
+    "adamantite_bar": lambda: bar("e8343a"),
 }
+for _tier in TIER_COLOURS:
+    for _kind in ("pickaxe", "axe", "shovel", "hoe"):
+        ITEMS[f"{_tier}_{_kind}"] = (lambda k=_kind, t=_tier: tool(k, t))
 
 
 def main(argv):
