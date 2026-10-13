@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 18, part 2: Mining, drops, Survival (without health yet): DONE** (v0.18.2, Windows CI: see below)
+**Milestone 18, part 2: Mining, drops, Survival (without health yet): DONE** (v0.18.2, Windows CI green: run #95)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
