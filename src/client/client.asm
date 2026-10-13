@@ -32,7 +32,7 @@
 
 global client_init, client_input, client_view, g_cl_player, g_cinv, g_csel
 global client_select, client_input_idle, g_dig_pos, g_dig_progress
-global g_cwin, g_cwin_event, g_cinv_ver, g_cfurnace
+global g_cwin, g_cwin_event, g_cinv_ver, g_cfurnace, g_off_block
 
 extern g_cam_yaw, g_cam_pitch, g_cam_pos, g_sim_alpha
 extern daycycle_set, timer_elapsed_us
@@ -61,6 +61,7 @@ g_cwin:         resb WIN_PKT_size
 g_cwin_event:   resd 1
 g_cinv_ver:     resd 1                  ; counts slot changes
 g_cfurnace:     resb FURNACE_PKT_size   ; the open furnace's progress
+g_off_block:    resd 1                  ; the off hand's block (0: none)
 g_csel:         resd 1
 g_dig_pos:      resd 3
 g_dig_progress: resd 1
@@ -117,8 +118,18 @@ PROC client_select, 0
     RETURN
 ENDPROC
 
-; held_follows — g_held_block = the block of the item in hand (0: none)
+; held_follows — g_held_block = the block of the item in hand, g_off_block
+; the off hand's (0: none)   clobbers: rax, rcx
 held_follows:
+    lea rcx, [rel g_cinv]
+    movzx ecx, word [rcx + INV_OFFHAND * 8]
+    xor eax, eax
+    test ecx, ecx
+    jz .off
+    lea rax, [rel g_item_block]
+    movzx eax, word [rax + rcx * 2]
+.off:
+    mov [rel g_off_block], eax
     mov eax, [rel g_csel]
     lea rcx, [rel g_cinv]
     movzx ecx, word [rcx + rax * 8]
@@ -131,8 +142,16 @@ held_follows:
     mov [rel g_held_block], eax
     ret
 
-; hotbar_input — the hotbar keys and the mouse wheel   clobbers: volatile
+; hotbar_input — the hotbar keys and the mouse wheel; swap_hands (F) trades
+; the main and the off hand's items   clobbers: volatile
 PROC hotbar_input, 0, rbx
+    mov ecx, ACT_SWAP_HANDS
+    call input_pressed
+    test eax, eax
+    jz .no_swap
+    lea rcx, [rel g_to_sim]
+    INVOKE pkt_send, rcx, PKT_C_SWAP_HANDS, 0, 0
+.no_swap:
     xor ebx, ebx
 .key:
     lea ecx, [ebx + ACT_HOTBAR_1]

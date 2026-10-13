@@ -84,6 +84,7 @@ s_furnace:      db "Furnace", 0
 s_recipes:      db "Recipes", 0
 s_show_all:     db "Show all", 0
 s_book_tip:     db "Recipe book", 0
+s_off_hand:     db "Off hand", 0
 s_no_recipes:   db "Nothing to make", 0
 s_no_recipes2:  db "with what you have", 0
 
@@ -141,6 +142,7 @@ ENDPROC
 ; inv_screen_open — a fresh look (the tab and search are kept)
 PROC inv_screen_open, 0
     mov dword [rel g_hover_item], 0
+    mov dword [rel g_drag_on], 0
     mov dword [rel g_book_ver], -1
     mov dword [rel g_book_scroll], 0
     xor ecx, ecx
@@ -429,20 +431,23 @@ PROC player_slots, 16, rbx, rsi, rdi, r12
     imul ecx, edx, STEP
     add ecx, esi
     mov edx, r8d
+    mov r10d, ecx
+    mov r11d, edx
+    mov ecx, ebx
+    call drag_has
+    mov ecx, r10d
+    mov edx, r11d
+    mov [rsp + 32], rax
     lea rax, [rel g_cinv]
     movzx r8d, word [rax + rbx * 8]
     movzx r9d, word [rax + rbx * 8 + 2]
     movzx eax, word [rax + rbx * 8 + 4]
     mov [rel g_slot_wear], eax
-    mov qword [rsp + 32], 0
     call draw_slot
     test eax, eax
     jz .next
-    call click_buttons
-    cmp eax, -1
-    je .next
-    mov [rsp + 32], rax
-    INVOKE send, PKT_C_INV_CLICK, rbx, 0, 0
+    mov ecx, ebx
+    call slot_input
 .next:
     inc ebx
     jmp .slot
@@ -763,20 +768,180 @@ ENDPROC
 ; simulation   clobbers: volatile registers
 PROC slot_at, 0, rbx
     mov ebx, r8d
+    mov r10d, ecx
+    mov r11d, edx
+    mov ecx, ebx
+    call drag_has                       ; (a slot being dragged over: bold)
+    mov ecx, r10d
+    mov edx, r11d
+    mov [rsp + 32], rax
     lea rax, [rel g_cinv]
     movzx r8d, word [rax + rbx * 8]
     movzx r9d, word [rax + rbx * 8 + 2]
     movzx eax, word [rax + rbx * 8 + 4]
     mov [rel g_slot_wear], eax
-    mov qword [rsp + 32], 0
     call draw_slot
     test eax, eax
     jz .done
+    mov ecx, ebx
+    call slot_input
+.done:
+    RETURN
+ENDPROC
+
+; off_hand_slot — the off hand's slot at ecx, edx with its caption above
+; (or beside it when there is no room above)   clobbers: volatile registers
+PROC off_hand_slot, 0, rbx, rsi
+    mov ebx, ecx
+    mov esi, edx
+    lea edx, [ebx + STEP + 2]
+    lea r8d, [esi + 15]
+    cmp dword [rel g_creative], 0
+    jne .beside                         ; (the catalog's page: no grid)
+    mov eax, [rel g_cwin + WIN_PKT.grid]
+    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_CRAFTING
+    je .caption
+    xor eax, eax
+    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_INVENTORY
+    jne .caption
+    mov eax, 2
+.caption:
+    cmp eax, 2
+    jb .beside
+    mov edx, ebx                        ; (above it: the grid row is free)
+    lea r8d, [esi - 22]
+.beside:
+    mov dword [rsp + 32], COL_TEXT_DIM
+    mov qword [rsp + 40], 0
+    lea rcx, [rel s_off_hand]
+    mov r9d, 16
+    call ui_label
+    mov ecx, ebx
+    mov edx, esi
+    mov r8d, INV_OFFHAND
+    call slot_at
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; slot_input — the mouse is over slot ecx: a click goes to the simulation,
+; or starts a drag (a stack in hand: Shift + left = split evenly, right =
+; one each); while dragging, the slot joins the drag.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC slot_input, 0, rbx
+    mov ebx, ecx
+    cmp dword [rel g_drag_on], 0
+    je .click
+    ; dragging: add it (once)
+    mov ecx, ebx
+    call drag_has
+    test eax, eax
+    jnz .done
+    mov eax, [rel g_drag_n]
+    cmp eax, DRAG_MAX
+    jae .done
+    lea rcx, [rel g_drag_slots]
+    mov [rcx + rax], bl
+    inc dword [rel g_drag_n]
+    RETURN
+.click:
     call click_buttons
     cmp eax, -1
     je .done
+    lea rcx, [rel g_cinv]
+    cmp word [rcx + INV_CURSOR * 8], 0
+    je .send                            ; (nothing in hand: a plain click)
+    cmp eax, INVB_SHIFT
+    je .drag_even
+    cmp eax, INVB_RIGHT
+    jne .send
+    mov dword [rel g_drag_mode], DRAG_ONE
+    mov dword [rel g_drag_button], VK_RBUTTON
+    jmp .drag_start
+.drag_even:
+    mov dword [rel g_drag_mode], DRAG_EVEN
+    mov dword [rel g_drag_button], VK_LBUTTON
+.drag_start:
+    mov dword [rel g_drag_on], 1
+    mov [rel g_drag_slots], bl
+    mov dword [rel g_drag_n], 1
+    RETURN
+.send:
     mov [rsp + 32], rax
     INVOKE send, PKT_C_INV_CLICK, rbx, 0, 0
+.done:
+    RETURN
+ENDPROC
+
+; drag_has — eax = 1 if slot ecx is in the drag   clobbers: rax, rdx
+drag_has:
+    xor eax, eax
+    cmp dword [rel g_drag_on], 0
+    je .no
+    xor edx, edx
+.s:
+    cmp edx, [rel g_drag_n]
+    jae .no
+    push rcx
+    lea rax, [rel g_drag_slots]
+    movzx eax, byte [rax + rdx]
+    pop rcx
+    cmp eax, ecx
+    je .yes
+    inc edx
+    jmp .s
+.yes:
+    mov eax, 1
+    ret
+.no:
+    xor eax, eax
+    ret
+
+; -----------------------------------------------------------------------------
+; drag_finish — the drag's button was let go: one slot is a plain click
+; (left: put the stack, right: put one); more go to the simulation as
+; PKT_C_INV_DRAG.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC drag_finish, 0
+    cmp dword [rel g_drag_on], 0
+    je .done
+    mov ecx, [rel g_drag_button]
+    call input_vk_down
+    test eax, eax
+    jnz .done                           ; (still held)
+    mov dword [rel g_drag_on], 0
+    cmp dword [rel g_drag_n], 1
+    ja .spread
+    movzx edx, byte [rel g_drag_slots]
+    xor eax, eax
+    cmp dword [rel g_drag_mode], DRAG_ONE
+    jne .one
+    mov eax, INVB_RIGHT
+.one:
+    mov [rsp + 32], rax
+    INVOKE send, PKT_C_INV_CLICK, rdx, 0, 0
+    RETURN
+.spread:
+    mov eax, [rel g_drag_mode]
+    mov [rel g_drag_pkt + DRAG_PKT.mode], eax
+    mov eax, [rel g_drag_n]
+    mov [rel g_drag_pkt + DRAG_PKT.count], eax
+    xor ecx, ecx
+.copy:
+    cmp ecx, [rel g_drag_n]
+    jae .send
+    lea rax, [rel g_drag_slots]
+    movzx edx, byte [rax + rcx]
+    lea rax, [rel g_drag_pkt + DRAG_PKT.slots]
+    mov [rax + rcx], dl
+    inc ecx
+    jmp .copy
+.send:
+    lea rcx, [rel g_to_sim]
+    lea r8, [rel g_drag_pkt]
+    INVOKE pkt_send, rcx, PKT_C_INV_DRAG, r8, DRAG_PKT_size
 .done:
     RETURN
 ENDPROC
@@ -1402,6 +1567,13 @@ PROC inv_screen_frame, 48, rbx, rsi, rdi, r12
     add edx, 52
     INVOKE craft_area, [LOCAL(F_IX)], rdx, [LOCAL(F_GRID)]
 .no_grid:
+    ; the off hand: the crafting area's bottom-left slot
+    mov ecx, [LOCAL(F_IX)]
+    mov edx, [LOCAL(F_PY)]
+    add edx, 52
+    add edx, [LOCAL(F_AREA)]
+    sub edx, STEP
+    call off_hand_slot
     ; ---- the left page ----
     mov eax, [LOCAL(F_LEFT)]
     cmp eax, LEFT_RECIPES
@@ -1563,6 +1735,7 @@ PROC inv_screen_frame, 48, rbx, rsi, rdi, r12
     mov rcx, rbx
     call ui_text
 .end:
+    call drag_finish
     mov ecx, [LOCAL(F_W)]
     mov edx, [LOCAL(F_H)]
     call ui_end
@@ -1580,5 +1753,12 @@ section .bss
 alignb 8
 g_tip_text:     resq 1                  ; a tooltip that is not an item (tabs)
 g_close:        resb WIN_PKT_size
+g_drag_pkt:     resb DRAG_PKT_size
+g_drag_slots:   resb DRAG_MAX
+alignb 4
+g_drag_on:      resd 1                  ; a drag is under way
+g_drag_mode:    resd 1                  ; DRAG_EVEN / DRAG_ONE
+g_drag_button:  resd 1                  ; VK_LBUTTON / VK_RBUTTON
+g_drag_n:       resd 1
 alignb 4
 g_slot_wear:    resd 1                  ; draw_slot: the next slot's wear

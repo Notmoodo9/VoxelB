@@ -18,7 +18,7 @@ global held_init, held_draw, held_swing
 
 extern shader_create, shader_program, block_textures_bind, icon_uv, icon_kind
 extern timer_elapsed_us, sincosf
-extern g_cinv, g_csel, g_item_block, g_icon_tex, g_daylight, g_held_on
+extern g_cinv, g_csel, g_item_block, g_icon_tex, g_daylight, g_held_on, hand_light
 extern g_cl_player
 
 %define SWING_US        250000
@@ -81,20 +81,46 @@ ENDPROC
 ;   in:  ecx = width, edx = height
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
+PROC held_draw, 0, rbx, rsi, rdi
+    mov esi, ecx
+    mov edi, edx
+    ; the main hand (lower right), then the off hand (mirrored, lower left)
+    mov eax, [rel g_csel]
+    lea rcx, [rel g_cinv]
+    movzx r8d, word [rcx + rax * 8]
+    mov ecx, esi
+    mov edx, edi
+    xor r9d, r9d
+    call held_item
+    lea rcx, [rel g_cinv]
+    movzx r8d, word [rcx + INV_OFFHAND * 8]
+    mov ecx, esi
+    mov edx, edi
+    mov r9d, 1
+    call held_item
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; held_item — one hand's item.
+;   in:  ecx = width, edx = height, r8d = item (0: none), r9d = 1 the off
+;        hand (mirrored, no swing)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
 %define D_W     0
 %define D_H     4
 %define D_ITEM  8
+%define D_MIRROR 32
 %define D_NOW   16
-PROC held_draw, 32, rbx, rsi
+PROC held_item, 48, rbx, rsi
     mov [LOCAL(D_W)], ecx
     mov [LOCAL(D_H)], edx
+    mov [LOCAL(D_MIRROR)], r9d
+    mov ebx, r8d
     cmp dword [rel g_prog], 0
     je .done
     test edx, edx
     jz .done
-    mov eax, [rel g_csel]
-    lea rcx, [rel g_cinv]
-    movzx ebx, word [rcx + rax * 8]
     test ebx, ebx
     jz .done                            ; (empty hand)
     call timer_elapsed_us
@@ -126,6 +152,7 @@ PROC held_draw, 32, rbx, rsi
     mov esi, 1
 .kind:
     GL glProgramUniform1i, [rel g_prog], 1, rsi
+    GL glProgramUniform1i, [rel g_prog], 7, [LOCAL(D_MIRROR)]
     lea rax, [rel g_item_block]
     movzx r9d, word [rax + rbx * 2]
     GL glProgramUniform1ui, [rel g_prog], 0, r9
@@ -134,8 +161,10 @@ PROC held_draw, 32, rbx, rsi
     call icon_uv
     lea r9, [rel g_uv]
     GL glProgramUniform4fv, [rel g_prog], 2, 1, r9
-    ; the swing: 0..1 over SWING_US
+    ; the swing: 0..1 over SWING_US (the main hand only)
     xorps xmm0, xmm0
+    cmp dword [LOCAL(D_MIRROR)], 0
+    jne .swing
     mov rax, [rel g_swing_t0]
     test rax, rax
     jz .swing
@@ -171,7 +200,10 @@ PROC held_draw, 32, rbx, rsi
     mulss xmm1, [rel c_bob_rate]
     mulss xmm1, xmm0
     addss xmm1, [rel g_bob_phase]
+    cmp dword [LOCAL(D_MIRROR)], 0
+    jne .phase_kept                     ; (the main hand steps the sway)
     movss [rel g_bob_phase], xmm1
+.phase_kept:
     movss xmm0, xmm1
     call sincosf                        ; xmm0 = sin, xmm1 = cos
     movss xmm2, [LOCAL(28)]
@@ -193,7 +225,13 @@ PROC held_draw, 32, rbx, rsi
     mulss xmm2, [rel c_light1]
     addss xmm2, [rel c_light0]
     cmp dword [rel g_held_on], 0
-    je .light
+    jne .lit
+    movss [LOCAL(40)], xmm2
+    call hand_light                     ; (a light block in a hand)
+    movss xmm2, [LOCAL(40)]
+    test eax, eax
+    jz .light
+.lit:
     maxss xmm2, [rel c_held_min]
 .light:
     GL glProgramUniform1f, [rel g_prog], 6

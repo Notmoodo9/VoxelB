@@ -14,6 +14,7 @@ layout(location = 2) uniform vec4 u_icon_uv;    // u0, v0 (top), u1, v1
 layout(location = 3) uniform float u_swing;     // 0..1 through a swing
 layout(location = 4) uniform vec2 u_bob;        // walking sway
 layout(location = 5) uniform float u_aspect;
+layout(location = 7) uniform int u_mirror;     // 1: the off hand (lower left, mirrored)
 
 out vec2 v_uv;
 flat out uint v_layer;
@@ -62,6 +63,7 @@ void main() {
         v_layer = tex_info[bf & 0xFFFFu].x;
         v_shade = SHADE[f];
     }
+    if (u_mirror == 1) p.x = -p.x;                // the off hand: lower left
     const float F = 1.428;                       // cot(35 deg): a fixed 70 deg view
     gl_Position = vec4(p.x * F / u_aspect, p.y * F, 0.0, -p.z);
 }

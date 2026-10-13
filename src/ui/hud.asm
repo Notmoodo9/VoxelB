@@ -92,7 +92,7 @@ PROC hud_draw, 32, rbx, rsi, rdi, r12, r13, r14
     xor ebx, ebx
 .slot:
     cmp ebx, INV_HOTBAR
-    jae .name
+    jae .name_pre
     imul r14d, ebx, SLOT + GAP
     add r14d, [LOCAL(H_X0)]
     add r14d, PAD                       ; slot left
@@ -156,6 +156,12 @@ PROC hud_draw, 32, rbx, rsi, rdi, r12, r13, r14
     inc ebx
     jmp .slot
 
+    ; ---- the off hand: its own pocket left of the strip ----
+.name_pre:
+    mov ecx, [LOCAL(H_X0)]
+    sub ecx, SLOT + 2 * PAD + 10
+    mov edx, [LOCAL(H_Y0)]
+    call off_pocket
     ; ---- the name of the item in hand, for a moment after it changes ----
 .name:
     call timer_elapsed_us
@@ -226,3 +232,61 @@ PROC hud_draw, 32, rbx, rsi, rdi, r12, r13, r14
 ENDPROC
 
 extern str_append_dec
+
+; -----------------------------------------------------------------------------
+; off_pocket — the off hand's slot on a small leather piece at ecx, edx
+; (the strip's height): its item, durability bar and count.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC off_pocket, 0, rbx, rsi, rdi
+    mov ebx, ecx
+    mov esi, edx
+    mov dword [rsp + 48], 0x60000000
+    mov qword [rsp + 40], 12
+    mov qword [rsp + 32], 6
+    lea edx, [esi + 4]
+    INVOKE ui_glow, rbx, rdx, SLOT + 2 * PAD, BAR_H
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov qword [rsp + 32], SKIN_STRIP
+    INVOKE ui_skin, rbx, rsi, SLOT + 2 * PAD, BAR_H
+    add ebx, PAD
+    add esi, PAD
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov qword [rsp + 32], SKIN_STRIP_SLOT
+    INVOKE ui_skin, rbx, rsi, SLOT, SLOT
+    lea rax, [rel g_cinv]
+    movzx ecx, word [rax + INV_OFFHAND * 8]
+    test ecx, ecx
+    jz .done
+    mov edi, ecx
+    mov dword [rsp + 32], 0xFFFFFFFF
+    lea edx, [ebx + (SLOT - ICON) / 2]
+    lea r8d, [esi + (SLOT - ICON) / 2]
+    mov r9d, ICON
+    call ui_icon
+    lea rax, [rel g_cinv]
+    movzx ecx, word [rax + INV_OFFHAND * 8 + 4]
+    mov [rsp + 32], rcx
+    mov r9d, edi
+    lea ecx, [ebx + 6]
+    lea edx, [esi + SLOT - 9]
+    mov r8d, SLOT - 12
+    call ui_wear_bar
+    lea rax, [rel g_cinv]
+    movzx edx, word [rax + INV_OFFHAND * 8 + 2]
+    cmp edx, 1
+    jbe .done
+    lea rcx, [rel g_count_text]
+    xor r8d, r8d
+    call str_append_dec
+    lea edx, [ebx + SLOT - 4]
+    lea r8d, [esi + SLOT - 22]
+    mov dword [rsp + 32], COL_LIGHT
+    mov dword [rsp + 40], COL_LIGHT
+    mov qword [rsp + 48], UI_RIGHT | UI_SHADOW | UI_BOLD
+    lea rcx, [rel g_count_text]
+    mov r9d, 17
+    call ui_text
+.done:
+    RETURN
+ENDPROC

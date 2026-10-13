@@ -17,6 +17,14 @@
 ;                                    C_CREATIVE_SET
 ;   inv_selected_block() -> eax      the block the item in hand places (0)
 ;   inv_used_selected()              one placed: Survival uses up one
+;   inv_place_block() -> eax block, edx slot   what a right click places:
+;                                    the main hand's block, else the off
+;                                    hand's (milestone 18 part 5)
+;   inv_used_slot(ecx = slot)        one placed from that slot
+;   inv_swap_hands()                 the main and the off hand trade items
+;   inv_drag(rcx = DRAG_PKT*)        the carried stack spread over slots:
+;                                    evenly (Shift+drag) or one each
+;                                    (right-drag); what is left stays carried
 ;   inv_wear_selected()              the tool in hand broke a block: Survival
 ;                                    wears it by one (slot durability field =
 ;                                    uses spent); worn out, it breaks
@@ -37,7 +45,8 @@
 %include "save.inc"
 
 global inv_init, inv_packet, inv_selected_block, inv_used_selected, inv_add
-global inv_wear_selected, inv_add_dur
+global inv_wear_selected, inv_add_dur, inv_place_block, inv_used_slot
+global inv_swap_hands, inv_drag
 global inv_flush, g_inv, g_inv_sel, inv_mark, inv_stack_of, inv_room
 global inv_cursor_back
 
@@ -60,6 +69,7 @@ g_inv_sel:      resd 1
 g_dirty:        resq 2                  ; bit per slot (INV_ALL bits)
 g_sel_dirty:    resd 1
 g_out:          resb INV_PKT_size
+g_drag:         resb DRAG_MAX           ; inv_drag: the slots it fills
 
 section .text
 
@@ -130,6 +140,8 @@ PROC inv_init, 0, rbx, rsi, rdi
     xor eax, eax
 .sel:
     mov [rel g_inv_sel], eax
+    mov rax, [rel g_save_inv + INV_SAVED * SLOT_SIZE]
+    mov [rel g_inv + INV_OFFHAND * SLOT_SIZE], rax
     ; a carried stack or a crafting grid saved full: back into the slots
     mov ebx, INV_SLOTS
 .back:
@@ -281,11 +293,46 @@ PROC inv_wear_selected, 0
     RETURN
 ENDPROC
 
+; inv_place_block — see the header   clobbers: rax, rcx, rdx
+inv_place_block:
+    call inv_selected_block
+    mov edx, [rel g_inv_sel]
+    test eax, eax
+    jnz .done
+    mov edx, INV_OFFHAND
+    lea rax, [rel g_inv + INV_OFFHAND * SLOT_SIZE]
+    movzx ecx, word [rax + SLOT_ITEM]
+    xor eax, eax
+    test ecx, ecx
+    jz .done
+    lea rax, [rel g_item_block]
+    movzx eax, word [rax + rcx * 2]
+.done:
+    ret
+
+; inv_swap_hands — see the header   clobbers: rax, rcx, rdx, r8
+inv_swap_hands:
+    mov ecx, [rel g_inv_sel]
+    SLOT_PTR rax, rcx
+    lea rdx, [rel g_inv + INV_OFFHAND * SLOT_SIZE]
+    mov r8, [rax]
+    xchg r8, [rdx]
+    mov [rax], r8
+    call mark
+    mov ecx, INV_OFFHAND
+    jmp mark
+
 ; inv_used_selected — one block was placed: Survival uses one up
+; (inv_used_slot: from slot ecx)
 PROC inv_used_selected, 0
+    mov ecx, [rel g_inv_sel]
+    call inv_used_slot
+    RETURN
+ENDPROC
+
+PROC inv_used_slot, 0
     cmp dword [rel g_world_mode], MODE_CREATIVE
     je .done
-    mov ecx, [rel g_inv_sel]
     SLOT_PTR rax, rcx
     cmp word [rax + SLOT_COUNT], 0
     je .done
@@ -334,6 +381,169 @@ PROC inv_cursor_back, 0
     mov ecx, INV_CURSOR
     xor edx, edx
     call click
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; slot_takes — eax = 1 if a drag may put items into slot ecx (a player slot,
+; the off hand, a grid cell of the open grid, a container slot; not the
+; crafting result nor a furnace's output)
+;   clobbers: rax, rcx, rdx
+; -----------------------------------------------------------------------------
+slot_takes:
+    cmp ecx, INV_SLOTS
+    jb .yes
+    cmp ecx, INV_OFFHAND
+    je .yes
+    cmp ecx, INV_CONTAINER
+    jae .container
+    cmp ecx, INV_GRID
+    jb .no
+    cmp ecx, INV_RESULT
+    jae .no
+    lea eax, [ecx - INV_GRID]
+    xor edx, edx
+    mov ecx, 3
+    div ecx
+    cmp eax, [rel g_win_grid]
+    jae .no
+    cmp edx, [rel g_win_grid]
+    jae .no
+.yes:
+    mov eax, 1
+    ret
+.container:
+    lea eax, [ecx - INV_CONTAINER]
+    cmp eax, [rel g_win_slots]
+    jae .no
+    cmp dword [rel g_win_kind], WIN_FURNACE
+    jne .yes
+    cmp eax, 2
+    jne .yes
+.no:
+    xor eax, eax
+    ret
+
+; -----------------------------------------------------------------------------
+; inv_drag — see the header.
+;   in:  rcx = DRAG_PKT*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define G_N     0                       ; slots that take it
+%define G_STACK 4
+%define G_PER   8
+PROC inv_drag, 16, rbx, rsi, rdi, r12, r13, r14
+    mov r14, rcx
+    lea rdi, [rel g_inv + INV_CURSOR * SLOT_SIZE]
+    movzx r12d, word [rdi + SLOT_ITEM]  ; the item
+    test r12d, r12d
+    jz .done
+    cmp word [rdi + SLOT_DUR], 0
+    jne .done                           ; (a worn tool doesn't spread)
+    mov ecx, r12d
+    call stack_of
+    mov [LOCAL(G_STACK)], eax
+    ; the slots that can take more of it (each once)
+    xor esi, esi                        ; index in the packet
+    xor ebx, ebx                        ; kept
+    mov ecx, [r14 + DRAG_PKT.count]
+    cmp ecx, DRAG_MAX
+    jbe .count
+    mov ecx, DRAG_MAX
+.count:
+    mov r13d, ecx
+.pick:
+    cmp esi, r13d
+    jae .picked
+    movzx ecx, byte [r14 + DRAG_PKT.slots + rsi]
+    mov r8d, ecx
+    call slot_takes
+    test eax, eax
+    jz .pick_next
+    SLOT_PTR rax, r8
+    movzx edx, word [rax + SLOT_ITEM]
+    test edx, edx
+    jz .keep
+    cmp edx, r12d
+    jne .pick_next
+    cmp word [rax + SLOT_DUR], 0
+    jne .pick_next
+    movzx edx, word [rax + SLOT_COUNT]
+    cmp edx, [LOCAL(G_STACK)]
+    jae .pick_next                      ; full
+.keep:
+    ; (not twice)
+    xor ecx, ecx
+.dup:
+    cmp ecx, ebx
+    jae .unique
+    lea rax, [rel g_drag]
+    cmp [rax + rcx], r8b
+    je .pick_next
+    inc ecx
+    jmp .dup
+.unique:
+    lea rax, [rel g_drag]
+    mov [rax + rbx], r8b
+    inc ebx
+.pick_next:
+    inc esi
+    jmp .pick
+.picked:
+    test ebx, ebx
+    jz .done
+    ; how many each: one, or an even share (at least one)
+    movzx eax, word [rdi + SLOT_COUNT]
+    mov ecx, 1
+    cmp dword [r14 + DRAG_PKT.mode], DRAG_ONE
+    je .per
+    xor edx, edx
+    div ebx
+    mov ecx, eax
+    test ecx, ecx
+    jnz .per
+    mov ecx, 1
+.per:
+    mov [LOCAL(G_PER)], ecx
+    xor esi, esi
+.give:
+    cmp esi, ebx
+    jae .given
+    cmp word [rdi + SLOT_COUNT], 0
+    je .given
+    lea rax, [rel g_drag]
+    movzx ecx, byte [rax + rsi]
+    SLOT_PTR rax, rcx
+    movzx edx, word [rax + SLOT_COUNT]
+    mov r8d, [LOCAL(G_STACK)]
+    sub r8d, edx                        ; room
+    jle .give_next
+    cmp r8d, [LOCAL(G_PER)]
+    jbe .room
+    mov r8d, [LOCAL(G_PER)]
+.room:
+    movzx edx, word [rdi + SLOT_COUNT]
+    cmp r8d, edx
+    jbe .amount
+    mov r8d, edx
+.amount:
+    mov [rax + SLOT_ITEM], r12w
+    add [rax + SLOT_COUNT], r8w
+    mov word [rax + SLOT_DUR], 0
+    sub [rdi + SLOT_COUNT], r8w
+    call mark                           ; (ecx = the slot)
+.give_next:
+    inc esi
+    jmp .give
+.given:
+    cmp word [rdi + SLOT_COUNT], 0
+    jne .cursor
+    mov qword [rdi], 0
+.cursor:
+    mov ecx, INV_CURSOR
+    call mark
+    call craft_update                   ; (a grid may have changed)
+.done:
     RETURN
 ENDPROC
 
@@ -429,6 +639,8 @@ PROC click, 0, rbx, rsi, rdi, r12, r13
     je .put_back
     cmp ebx, INV_SLOTS
     jb .valid
+    cmp ebx, INV_OFFHAND
+    je .valid
     ; the open window's slots
     cmp ebx, INV_RESULT
     je .result

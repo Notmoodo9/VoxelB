@@ -223,7 +223,8 @@ g_save_held:        resd 1
 g_save_inv_loaded:  resd 1
 g_save_inv_sel:     resd 1
 alignb 8
-g_save_inv:         resq INV_SAVED      ; player.dat's slots, for inv_init
+g_save_inv:         resq INV_SAVED + 1  ; player.dat's slots, for inv_init (the
+                                        ; off hand last)
 g_cur_cont:         resd 1              ; containers.dat: the entry being read
 g_save_columns:     resq 1              ; columns written
 g_save_bytes:       resq 1              ; compressed bytes written
@@ -629,7 +630,7 @@ PROC save_load_player, 0
     mov dword [rel g_save_inv_sel], 0
     lea rcx, [rel g_save_inv]
     xor eax, eax
-    mov edx, INV_SAVED
+    mov edx, INV_SAVED + 1
 .clear:
     mov [rcx], rax
     add rcx, 8
@@ -737,7 +738,7 @@ PROC player_pair, 0, rbx, rsi, rdi
     jz .done
     mov rcx, rsi
     lea rdx, [rel g_save_inv]
-    mov r8d, INV_SAVED
+    mov r8d, INV_SAVED + 1
     call parse_slot
     test eax, eax
     jz .done
@@ -766,6 +767,10 @@ PROC parse_slot, 16, rbx, rsi, rdi
     mov rsi, rdx
     mov rcx, rax
     call str_parse_u64
+    cmp rax, INV_OFFHAND
+    jne .index
+    mov eax, INV_SAVED                  ; (the off hand: after the others)
+.index:
     mov ecx, [LOCAL(PS_BOUND)]
     cmp rax, rcx
     jae .done
@@ -1547,8 +1552,13 @@ PROC write_player_dat, 16, rbx, rsi, rdi
     INVOKE str_append_dec, rax, rdx, 0
     xor esi, esi
 .slot:
-    cmp esi, INV_SAVED                  ; (with the carried stack and the grid)
-    jae .slots_done
+    cmp esi, INV_SAVED                  ; (with the carried stack and the grid,
+    jb .slot_go                         ; then the off hand)
+    cmp esi, INV_OFFHAND
+    je .slot_go
+    ja .slots_done
+    mov esi, INV_OFFHAND
+.slot_go:
     lea rcx, [rel g_inv]
     lea rdi, [rcx + rsi * 8]
     movzx ecx, word [rdi]

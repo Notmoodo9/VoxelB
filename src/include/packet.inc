@@ -39,6 +39,8 @@ endstruc
 %define PKT_C_CREATIVE_SET  8           ; INV_PKT .slot, .item, .count (Creative only)
 %define PKT_C_WINDOW        9           ; WIN_PKT: open (WIN_INVENTORY / WIN_USE a block) or close (WIN_NONE)
 %define PKT_C_RECIPE        10          ; INV_PKT .slot: recipe to lay out in the grid, .arg INVB_SHIFT: as many as possible
+%define PKT_C_SWAP_HANDS    11          ; the main and the off hand trade items (no payload)
+%define PKT_C_INV_DRAG      12          ; DRAG_PKT: a stack spread over slots (Shift+drag / right-drag)
 
 ; inventory (milestone 18): slots 0-8 are the hotbar, 9-35 the inventory
 struc INV_PKT
@@ -59,9 +61,20 @@ endstruc
 %define INV_RESULT          46
 %define INV_CONTAINER       47
 %define INV_CONTAINER_MAX   54
-%define INV_ALL             (INV_CONTAINER + INV_CONTAINER_MAX) ; 101
+%define INV_OFFHAND         (INV_CONTAINER + INV_CONTAINER_MAX) ; 101: the off hand (part 5)
+%define INV_ALL             (INV_OFFHAND + 1) ; 102
 %define INV_SAVED           46          ; player.dat keeps 0..45 (a grid left
                                         ; full when the game quits comes back)
+
+; PKT_C_INV_DRAG: the carried stack spread over slots
+struc DRAG_PKT
+    .mode       resd 1                  ; DRAG_EVEN: split evenly; DRAG_ONE: one each
+    .count      resd 1                  ; slots
+    .slots      resb 48                 ; slot numbers
+endstruc
+%define DRAG_EVEN           0
+%define DRAG_ONE            1
+%define DRAG_MAX            48
 
 ; windows: what the inventory screen shows besides the player's slots
 %define WIN_NONE            0           ; (C_WINDOW: close)

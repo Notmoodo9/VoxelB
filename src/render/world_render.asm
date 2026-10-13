@@ -53,6 +53,7 @@
 extern icons_init, held_init, drops_view_draw, g_dig_pos, g_dig_progress
 global world_render_init, world_render_draw, world_render_shutdown, tint_upload, shadow_apply
 global g_world_visible, g_world_drawn_quads, g_world_gpu_bytes, g_quad_buffer
+global hand_light
 global g_light_buffer, g_held_on, g_daylight, g_shadow_records, g_cam_in_water
 global g_world_draws, g_vis_visited, g_world_gpu_visible, g_world_occluded
 
@@ -67,6 +68,7 @@ extern g_sun_dir, g_sea_level, g_scene_fbo
 extern g_shadows, g_shadow_res, g_shadow_distance, g_water_quality
 extern world_block_at, g_block_water
 extern g_target_valid, g_target
+extern g_held_block, g_off_block, g_block_light
 
 global g_lod_tint_tex, g_lod_records
 
@@ -1024,7 +1026,19 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     call water_camera
     movss xmm2, [rel g_daylight]
     GL glProgramUniform1f, rbx, U_DAYLIGHT
+    ; the held light: a light block in either hand (milestone 18 part 5),
+    ; or the debug light (toggle_held_light)
+    call hand_light
+    test eax, eax
+    jnz .hand_lit
     mov eax, [rel g_held_light]
+    mov ecx, [rel g_held_on]
+    jmp .held_rgb
+.hand_lit:
+    mov ecx, 1
+.held_rgb:
+    cvtsi2ss xmm0, ecx
+    movss [LOCAL(12)], xmm0
     movzx ecx, al
     cvtsi2ss xmm0, ecx
     movss [LOCAL(0)], xmm0
@@ -1035,8 +1049,6 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     movzx ecx, al
     cvtsi2ss xmm0, ecx
     movss [LOCAL(8)], xmm0
-    cvtsi2ss xmm0, dword [rel g_held_on]
-    movss [LOCAL(12)], xmm0
     lea r9, [LOCAL(0)]
     GL glProgramUniform4fv, rbx, U_HELD, 1, r9
     GL glBindVertexArray, [rel g_world_vao]
@@ -2139,3 +2151,56 @@ align 8
 c_outline_pad:  dq 0.002
 align 4
 c_outline_size: dd 1.004, 1.004, 1.004
+
+section .text
+; -----------------------------------------------------------------------------
+; hand_light — the light of the blocks in the player's hands (main and off
+; hand; each channel the brighter one): eax = r | g << 8 | b << 16 (0..15),
+; 0 if neither gives light.
+;   clobbers: rax, rcx, rdx, r8
+; -----------------------------------------------------------------------------
+hand_light:
+    xor r8d, r8d
+    mov ecx, [rel g_held_block]
+    call .one
+    mov ecx, [rel g_off_block]
+    call .one
+    mov eax, r8d
+    ret
+.one:
+    ; block ecx's light (r | g << 4 | b << 8) into r8 by channel maximum
+    test ecx, ecx
+    jz .none
+    lea rax, [rel g_block_light]
+    movzx eax, word [rax + rcx * 2]
+    mov edx, eax
+    and edx, 15                         ; r
+    cmp dl, r8b
+    jbe .g
+    and r8d, 0xFFFF00
+    or r8d, edx
+.g:
+    mov edx, eax
+    shr edx, 4
+    and edx, 15
+    mov ecx, r8d
+    shr ecx, 8
+    and ecx, 0xFF
+    cmp edx, ecx
+    jbe .b
+    and r8d, 0xFF00FF
+    shl edx, 8
+    or r8d, edx
+.b:
+    mov edx, eax
+    shr edx, 8
+    and edx, 15
+    mov ecx, r8d
+    shr ecx, 16
+    cmp edx, ecx
+    jbe .none
+    and r8d, 0x00FFFF
+    shl edx, 16
+    or r8d, edx
+.none:
+    ret

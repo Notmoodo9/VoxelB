@@ -32,7 +32,7 @@ extern g_world_mode
 global g_target_valid, g_target, g_target_face, g_target_id, g_held_block
 
 extern g_cam_pos, g_cam_yaw, g_cam_pitch, g_mouse_captured, g_cl_player
-extern sincosf, timer_elapsed_us, g_block_station
+extern sincosf, timer_elapsed_us, g_block_station, g_off_block
 
 %define REPEAT_US       250000          ; holding a button: one action per this
 %define MAX_STEPS       64
@@ -360,11 +360,15 @@ PROC interact_update, 0, rbx
     INVOKE pkt_send, rcx, PKT_C_WINDOW, r8, WIN_PKT_size
     jmp .no_place
 .place:
-    cmp dword [rel g_held_block], 0
-    je .no_place                        ; (nothing placeable in hand)
+    mov r8d, [rel g_held_block]
+    test r8d, r8d
+    jnz .placeable
+    mov r8d, [rel g_off_block]          ; (else from the off hand)
+    test r8d, r8d
+    jz .no_place                        ; (nothing placeable in hand)
+.placeable:
     mov ecx, PKT_C_PLACE
     mov edx, 1
-    mov r8d, [rel g_held_block]
     call send_edit
     call held_swing
 .no_place:

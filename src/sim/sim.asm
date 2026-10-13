@@ -33,6 +33,7 @@ global g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us, g_sim_time
 extern player_load, player_spawn, player_tick, player_toggle_fly, player_fill
 extern edit_request, edit_tick, fluid_tick
 extern inv_init, inv_packet, inv_selected_block, inv_used_selected, inv_flush
+extern inv_place_block, inv_used_slot, inv_swap_hands, inv_drag
 extern dig_reset, dig_tick, drops_reset, drops_tick, g_world_mode
 extern craft_reset, craft_window, craft_recipe, craft_tick, furnace_tick
 extern cont_reset, save_load_containers, g_block_flags
@@ -67,6 +68,7 @@ g_stat_max:         resq 1
 g_sim_tps_x10:      resd 1
 g_sim_alpha:        resd 1
 g_pressed:          resd 1              ; buttons seen since the last tick
+g_place_slot:       resd 1              ; the slot a placed block came from
 alignb 16
 g_input:            resb INPUT_PKT_size ; latest input
 g_pkt:              resb PKT_SIZE
@@ -185,6 +187,17 @@ PROC sim_tick, 16, rbx, rsi, rdi
     call craft_recipe
     jmp .packet
 .not_recipe:
+    cmp eax, PKT_C_SWAP_HANDS
+    jne .not_swap
+    call inv_swap_hands                 ; (milestone 18 part 5)
+    jmp .packet
+.not_swap:
+    cmp eax, PKT_C_INV_DRAG
+    jne .not_drag
+    lea rcx, [rel g_pkt + PKT.data]
+    call inv_drag
+    jmp .packet
+.not_drag:
     cmp eax, PKT_C_TOGGLE_FLY
     jne .packet                         ; (unknown packets are ignored)
     call player_toggle_fly
@@ -197,10 +210,12 @@ PROC sim_tick, 16, rbx, rsi, rdi
     call edit_request
     jmp .packet
 .place:
-    ; the block of the item in hand (the client's id is not trusted)
-    call inv_selected_block
+    ; the block of the item in hand, else the off hand's (the client's id
+    ; is not trusted)
+    call inv_place_block
     test eax, eax
     jz .packet
+    mov [rel g_place_slot], edx
     call facing_state                   ; (a chest faces the player)
     mov [rel g_pkt + PKT.data + BLOCK_PKT.id], eax
     mov edx, 1
@@ -208,7 +223,8 @@ PROC sim_tick, 16, rbx, rsi, rdi
     call edit_request
     test eax, eax
     jz .packet
-    call inv_used_selected
+    mov ecx, [rel g_place_slot]
+    call inv_used_slot
     jmp .packet
 .packets_done:
     lea rcx, [rel g_input]
