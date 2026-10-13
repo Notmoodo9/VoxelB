@@ -1,0 +1,5 @@
+# Crafting stations and containers (milestone 18 part 3,
+# design/items/items_inventory.md). Right click uses them (data/recipes).
+
+[block workbench]
+textures = side: workbench_side, top: workbench_top, bottom: oak_planks

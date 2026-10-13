@@ -34,7 +34,7 @@ extern sim_init, sim_update, save_update, save_all, save_open, save_load_player
 extern stream_update, stream_reset, lod_update, lod_reset, fluid_reset, edit_reset
 extern thumb_update, thumb_reset, menu_screen, g_show_hud
 extern inv_screen_open, inv_screen_close, inv_screen_frame, inv_screen_typing
-extern client_input_idle, held_draw
+extern client_input_idle, held_draw, g_cwin, g_cwin_event
 extern g_world_mode, g_world_difficulty, g_world_hardcore
 extern g_new_mode, g_new_difficulty, g_new_hardcore
 extern renderer_frame, hud_draw, overlay_draw, menu_frame, menu_open, menu_back
@@ -587,6 +587,7 @@ PROC game_frame, 16, rbx, rsi, rdi
 .sim:
     call sim_update
     call client_view
+    call window_events
     call save_update
 .stream:
     call stream_update
@@ -634,6 +635,21 @@ ENDPROC
 
 ; open_inventory / close_inventory (milestone 18)
 PROC open_inventory, 0
+    ; E: the inventory with the 2 x 2 grid (the simulation is told)
+    xor eax, eax
+    mov [rel g_cwin + WIN_PKT.station], eax
+    mov [rel g_cwin + WIN_PKT.slots], eax
+    mov dword [rel g_cwin + WIN_PKT.kind], WIN_INVENTORY
+    mov dword [rel g_cwin + WIN_PKT.grid], 2
+    lea rcx, [rel g_to_sim]
+    lea r8, [rel g_cwin]
+    INVOKE pkt_send, rcx, PKT_C_WINDOW, r8, WIN_PKT_size
+    call show_window
+    RETURN
+ENDPROC
+
+; show_window — the screen for the window in g_cwin
+PROC show_window, 0
     mov dword [rel g_inv_open], 1
     xor ecx, ecx
     call input_set_capture
@@ -648,6 +664,26 @@ PROC close_inventory, 0
     je .done
     mov ecx, 1
     call input_set_capture
+.done:
+    RETURN
+ENDPROC
+
+; window_events — the simulation opened a window (a workbench was used) or
+; closed one (walked away)   clobbers: volatile registers
+PROC window_events, 0
+    cmp dword [rel g_cwin_event], 0
+    je .done
+    mov dword [rel g_cwin_event], 0
+    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_NONE
+    je .closed
+    cmp dword [rel g_inv_open], 0
+    jne .done
+    call show_window
+    RETURN
+.closed:
+    cmp dword [rel g_inv_open], 0
+    je .done
+    call close_inventory
 .done:
     RETURN
 ENDPROC

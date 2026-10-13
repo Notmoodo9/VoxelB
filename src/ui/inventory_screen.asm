@@ -2,7 +2,10 @@
 ; inventory_screen.asm — the inventory screen (milestone 18, design/items/
 ; items_inventory.md): E in a world. The world keeps running behind it.
 ;
-;   Survival: the 27 inventory slots and the hotbar.
+;   Survival: the 27 inventory slots and the hotbar, the 2 x 2 crafting
+;   grid with its result, and the recipe book.
+;   A crafting station (a workbench, right click; part 3): its 3 x 3 grid,
+;   the result and the recipe book, in either mode.
 ;   Creative: above them a catalog of every block and item in tabs (icon
 ;   buttons; data/items/00_tabs.items) with a search field; the wheel
 ;   scrolls. Left click on the catalog takes a full stack, right click one;
@@ -19,6 +22,10 @@
 ;   inv_screen_close()                  the carried stack goes back
 ;   inv_screen_frame(ecx = w, edx = h)
 ;   inv_screen_typing() -> eax 1        the search field has the keyboard
+; The window shown is the client's g_cwin (client.asm). The recipe book lists
+; the recipes the grid and station allow that can be made from what the
+; player has (slots and grid); a click lays one out in the grid
+; (PKT_C_RECIPE), shift-click as many as possible.
 ; =============================================================================
 %include "macros.inc"
 %include "input.inc"
@@ -33,7 +40,9 @@ extern ui_frame, ui_end, ui_button, ui_panel, ui_label, ui_rect, ui_glass
 extern ui_text, ui_text_width, ui_hover, ui_textfield, ui_focus, ui_focused
 extern ui_icon, str_append_dec, pkt_send, g_to_sim
 extern g_ui_vw, g_ui_vh, g_ui_mx, g_ui_my, g_ui_click, g_ui_rclick
-extern g_cinv, g_world_mode
+extern g_cinv, g_world_mode, g_cwin, g_cinv_ver
+extern recipe_cell_ok, g_recipe_count, g_rec_result, g_rec_amount
+extern g_rec_station, g_rec_w, g_rec_h, g_rec_n, g_rec_ok, g_rec_cells
 
 %define SLOT_PX         48              ; a slot (units)
 %define STEP            52              ; slot + gap
@@ -44,12 +53,20 @@ extern g_cinv, g_world_mode
 %define SEARCH_CAP      24
 %define SEARCH_ID       60              ; text field id
 %define TAB_ID0         120             ; tab button ids
+%define BOOK_COLS       4               ; the recipe book
+%define BOOK_W          (BOOK_COLS * STEP - 4)
+%define BOOK_GAP        28
+%define MAX_BOOK        512
 
 section .rdata
 s_inventory:    db "Inventory", 0
 s_search:       db "Search", 0
 s_found:        db "Search results", 0
 s_none:         db "Nothing found", 0
+s_crafting:     db "Crafting", 0
+s_recipes:      db "Recipes", 0
+s_no_recipes:   db "Nothing to make", 0
+s_no_recipes2:  db "with what you have", 0
 
 section .bss
 alignb 4
@@ -67,6 +84,14 @@ g_search:       resb SEARCH_CAP
 g_count:        resb 16
 alignb 2
 g_list:         resw MAX_ITEMS          ; the catalog as shown (tab / search)
+g_book:         resw MAX_BOOK           ; the recipe book's recipes
+g_avail_item:   resw INV_SLOTS + 9      ; what the player has (slots, grid)
+g_avail_n:      resw INV_SLOTS + 9
+alignb 4
+g_book_n:       resd 1
+g_book_ver:     resd 1                  ; g_cinv_ver it was built for
+g_book_scroll:  resd 1
+g_book_win:     resd 1                  ; the window kind it was built for
 
 section .text
 
@@ -89,15 +114,20 @@ ENDPROC
 ; inv_screen_open — a fresh look (the tab and search are kept)
 PROC inv_screen_open, 0
     mov dword [rel g_hover_item], 0
+    mov dword [rel g_book_ver], -1
+    mov dword [rel g_book_scroll], 0
     xor ecx, ecx
     call ui_focus
     RETURN
 ENDPROC
 
-; inv_screen_close — the carried stack back into the inventory
+; inv_screen_close — the window closes: the simulation puts the carried
+; stack and the grid back into the inventory
 PROC inv_screen_close, 0
-    mov qword [rsp + 32], 0
-    INVOKE send, PKT_C_INV_CLICK, INV_CURSOR, 0, 0
+    mov dword [rel g_close + WIN_PKT.kind], WIN_NONE
+    lea rcx, [rel g_to_sim]
+    lea r8, [rel g_close]
+    INVOKE pkt_send, rcx, PKT_C_WINDOW, r8, WIN_PKT_size
     xor ecx, ecx
     call ui_focus
     RETURN
@@ -560,6 +590,370 @@ PROC catalog_click, 0, rbx
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; craft_area — the crafting grid, an arrow and the result slot.
+;   in:  ecx = left, edx = top, r8d = grid width (2 / 3)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define A_X     0
+%define A_Y     4
+%define A_G     8
+%define A_GX    12                      ; the grid's left
+PROC craft_area, 16, rbx, rsi, rdi
+    mov [LOCAL(A_X)], ecx
+    mov [LOCAL(A_Y)], edx
+    mov [LOCAL(A_G)], r8d
+    ; the grid one slot in (3 x 3) or two (2 x 2), the result at column 6
+    mov eax, 3
+    sub eax, r8d
+    inc eax
+    imul eax, eax, STEP
+    add eax, ecx
+    mov [LOCAL(A_GX)], eax
+    xor ebx, ebx                        ; cell
+.cell:
+    cmp ebx, 9
+    jae .arrow
+    mov eax, ebx
+    xor edx, edx
+    mov ecx, 3
+    div ecx                             ; eax = row, edx = column
+    cmp eax, [LOCAL(A_G)]
+    jae .next
+    cmp edx, [LOCAL(A_G)]
+    jae .next
+    imul ecx, edx, STEP
+    add ecx, [LOCAL(A_GX)]
+    imul edx, eax, STEP
+    add edx, [LOCAL(A_Y)]
+    lea r8d, [ebx + INV_GRID]
+    call slot_at
+.next:
+    inc ebx
+    jmp .cell
+.arrow:
+    ; centred on the grid's height
+    imul esi, [LOCAL(A_G)], STEP
+    sub esi, 4
+    shr esi, 1
+    add esi, [LOCAL(A_Y)]               ; middle
+    mov edi, [LOCAL(A_X)]
+    add edi, 4 * STEP + 6
+    mov dword [rsp + 32], 0xB0FFFFFF
+    mov qword [rsp + 40], 0
+    mov qword [rsp + 48], 3
+    mov qword [rsp + 56], 0
+    lea edx, [esi - 4]
+    INVOKE ui_rect, rdi, rdx, 50, 8
+    lea edx, [edi + 40]
+    lea r8d, [esi - 22]
+    mov dword [rsp + 32], 0xB0FFFFFF
+    mov qword [rsp + 40], UI_BOLD
+    lea rcx, [rel s_arrow]
+    mov r9d, 36
+    call ui_label
+    ; the result
+    mov ecx, [LOCAL(A_X)]
+    add ecx, 6 * STEP
+    lea edx, [esi - (SLOT_PX / 2)]
+    mov r8d, INV_RESULT
+    call slot_at
+    RETURN
+ENDPROC
+
+; slot_at — draw inventory slot r8d at ecx, edx; a click on it goes to the
+; simulation   clobbers: volatile registers
+PROC slot_at, 0, rbx
+    mov ebx, r8d
+    lea rax, [rel g_cinv]
+    movzx r8d, word [rax + rbx * 8]
+    movzx r9d, word [rax + rbx * 8 + 2]
+    mov qword [rsp + 32], 0
+    call draw_slot
+    test eax, eax
+    jz .done
+    call click_buttons
+    cmp eax, -1
+    je .done
+    mov [rsp + 32], rax
+    INVOKE send, PKT_C_INV_CLICK, rbx, 0, 0
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; can_make — eax = 1 if recipe ebx can be made from g_avail_* (each cell
+; takes one item from the first stack that fits; the counts are used up).
+;   clobbers: volatile registers (keeps rbx)
+; -----------------------------------------------------------------------------
+PROC can_make, 0, rsi, rdi, r12, r13
+    lea rax, [rel g_rec_w]
+    movzx eax, byte [rax + rbx]
+    mov r13d, 9
+    test eax, eax
+    jnz .cells
+    lea rax, [rel g_rec_n]
+    movzx r13d, byte [rax + rbx]
+.cells:
+    xor r12d, r12d
+.cell:
+    cmp r12d, r13d
+    jae .yes
+    imul eax, ebx, 9
+    add eax, r12d
+    lea rcx, [rel g_rec_cells]
+    mov rdi, [rcx + rax * 8]
+    test rdi, rdi
+    jz .next
+    xor esi, esi
+.slot:
+    cmp esi, INV_SLOTS + 9
+    jae .no
+    lea rax, [rel g_avail_n]
+    cmp word [rax + rsi * 2], 0
+    je .slot_next
+    lea rax, [rel g_avail_item]
+    movzx edx, word [rax + rsi * 2]
+    mov rcx, rdi
+    call recipe_cell_ok
+    test eax, eax
+    jnz .take
+.slot_next:
+    inc esi
+    jmp .slot
+.take:
+    lea rax, [rel g_avail_n]
+    dec word [rax + rsi * 2]
+.next:
+    inc r12d
+    jmp .cell
+.yes:
+    mov eax, 1
+    RETURN
+.no:
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; book_build — the recipes this window allows that can be made now.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC book_build, 0, rbx, rsi, rdi
+    mov eax, [rel g_cinv_ver]
+    mov [rel g_book_ver], eax
+    xor edi, edi                        ; listed
+    xor ebx, ebx
+.recipe:
+    cmp ebx, [rel g_recipe_count]
+    jae .done
+    cmp edi, MAX_BOOK
+    jae .done
+    lea rax, [rel g_rec_ok]
+    cmp byte [rax + rbx], 0
+    je .next
+    lea rax, [rel g_rec_station]
+    movzx eax, byte [rax + rbx]
+    test eax, eax
+    jz .fits
+    cmp eax, [rel g_cwin + WIN_PKT.station]
+    jne .next
+.fits:
+    mov ecx, [rel g_cwin + WIN_PKT.grid]
+    lea rax, [rel g_rec_w]
+    movzx eax, byte [rax + rbx]
+    test eax, eax
+    jz .shapeless
+    cmp eax, ecx
+    ja .next
+    lea rax, [rel g_rec_h]
+    movzx eax, byte [rax + rbx]
+    cmp eax, ecx
+    ja .next
+    jmp .have
+.shapeless:
+    lea rax, [rel g_rec_n]
+    movzx eax, byte [rax + rbx]
+    imul ecx, ecx
+    cmp eax, ecx
+    ja .next
+.have:
+    ; what the player has: the slots and the grid
+    xor esi, esi
+.copy:
+    mov eax, esi
+    cmp eax, INV_SLOTS
+    jb .from
+    add eax, INV_GRID - INV_SLOTS
+.from:
+    lea rcx, [rel g_cinv]
+    mov edx, [rcx + rax * 8]
+    lea rcx, [rel g_avail_item]
+    mov [rcx + rsi * 2], dx
+    shr edx, 16
+    lea rcx, [rel g_avail_n]
+    mov [rcx + rsi * 2], dx
+    inc esi
+    cmp esi, INV_SLOTS + 9
+    jb .copy
+    call can_make
+    test eax, eax
+    jz .next
+    lea rax, [rel g_book]
+    mov [rax + rdi * 2], bx
+    inc edi
+.next:
+    inc ebx
+    jmp .recipe
+.done:
+    mov [rel g_book_n], edi
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; recipe_book — the recipe book column: what can be made, as result slots.
+;   in:  ecx = left, edx = top, r8d = height
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define B_X     0
+%define B_Y     4
+%define B_ROWS  8
+PROC recipe_book, 16, rbx, rsi, rdi, r12
+    mov [LOCAL(B_X)], ecx
+    mov [LOCAL(B_Y)], edx
+    sub r8d, 34
+    mov eax, r8d
+    xor edx, edx
+    mov ecx, STEP
+    div ecx
+    mov [LOCAL(B_ROWS)], eax
+    mov eax, [rel g_cwin + WIN_PKT.kind]
+    cmp eax, [rel g_book_win]
+    jne .build
+    mov eax, [rel g_cinv_ver]
+    cmp eax, [rel g_book_ver]
+    je .built
+.build:
+    mov eax, [rel g_cwin + WIN_PKT.kind]
+    mov [rel g_book_win], eax
+    call book_build
+.built:
+    ; a faint backing, the heading
+    mov dword [rsp + 32], 0x30000000
+    mov qword [rsp + 40], 0
+    mov qword [rsp + 48], 10
+    mov qword [rsp + 56], 0
+    mov ecx, [LOCAL(B_X)]
+    sub ecx, 8
+    mov edx, [LOCAL(B_Y)]
+    sub edx, 6
+    imul r9d, [LOCAL(B_ROWS)], STEP
+    add r9d, 34 + 12
+    INVOKE ui_rect, rcx, rdx, BOOK_W + 16, r9
+    mov dword [rsp + 32], COL_TEXT_DIM
+    mov qword [rsp + 40], UI_BOLD
+    lea rcx, [rel s_recipes]
+    INVOKE ui_label, rcx, [LOCAL(B_X)], [LOCAL(B_Y)], 20
+    add dword [LOCAL(B_Y)], 34
+    cmp dword [rel g_book_n], 0
+    jne .scroll
+    mov edx, [LOCAL(B_X)]
+    add edx, BOOK_W / 2
+    mov r8d, [LOCAL(B_Y)]
+    add r8d, 20
+    mov dword [rsp + 32], COL_TEXT_OFF
+    mov qword [rsp + 40], UI_CENTER
+    lea rcx, [rel s_no_recipes]
+    INVOKE ui_label, rcx, rdx, r8, 16
+    mov edx, [LOCAL(B_X)]
+    add edx, BOOK_W / 2
+    mov r8d, [LOCAL(B_Y)]
+    add r8d, 40
+    mov dword [rsp + 32], COL_TEXT_OFF
+    mov qword [rsp + 40], UI_CENTER
+    lea rcx, [rel s_no_recipes2]
+    INVOKE ui_label, rcx, rdx, r8, 16
+    jmp .done
+.scroll:
+    ; the wheel over the book scrolls it
+    mov eax, [rel g_mouse_wheel]
+    test eax, eax
+    jz .scrolled
+    imul r9d, [LOCAL(B_ROWS)], STEP
+    INVOKE ui_hover, [LOCAL(B_X)], [LOCAL(B_Y)], BOOK_W, r9
+    test eax, eax
+    jz .scrolled
+    mov ecx, [rel g_book_scroll]
+    cmp dword [rel g_mouse_wheel], 0
+    jg .up
+    inc ecx
+    jmp .clamp
+.up:
+    dec ecx
+.clamp:
+    mov eax, [rel g_book_n]
+    add eax, BOOK_COLS - 1
+    xor edx, edx
+    mov r8d, BOOK_COLS
+    div r8d
+    sub eax, [LOCAL(B_ROWS)]
+    cmp ecx, eax
+    jle .c1
+    mov ecx, eax
+.c1:
+    test ecx, ecx
+    jns .c2
+    xor ecx, ecx
+.c2:
+    mov [rel g_book_scroll], ecx
+.scrolled:
+    ; (the list may have shrunk under the scroll)
+    mov eax, [rel g_book_scroll]
+    imul eax, eax, BOOK_COLS
+    cmp eax, [rel g_book_n]
+    jb .list
+    mov dword [rel g_book_scroll], 0
+.list:
+    imul ebx, [rel g_book_scroll], BOOK_COLS
+    xor r12d, r12d                      ; cell
+.cell:
+    imul eax, [LOCAL(B_ROWS)], BOOK_COLS
+    cmp r12d, eax
+    jae .done
+    cmp ebx, [rel g_book_n]
+    jae .done
+    lea rax, [rel g_book]
+    movzx esi, word [rax + rbx * 2]     ; recipe
+    mov eax, r12d
+    xor edx, edx
+    mov ecx, BOOK_COLS
+    div ecx
+    imul ecx, edx, STEP
+    add ecx, [LOCAL(B_X)]
+    imul edx, eax, STEP
+    add edx, [LOCAL(B_Y)]
+    lea rax, [rel g_rec_result]
+    movzx r8d, word [rax + rsi * 2]
+    lea rax, [rel g_rec_amount]
+    movzx r9d, byte [rax + rsi]
+    mov qword [rsp + 32], 0
+    call draw_slot
+    test eax, eax
+    jz .cell_next
+    call click_buttons
+    cmp eax, -1
+    je .cell_next
+    and eax, INVB_SHIFT
+    mov [rsp + 32], rax
+    INVOKE send, PKT_C_RECIPE, rsi, 0, 0
+.cell_next:
+    inc ebx
+    inc r12d
+    jmp .cell
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 ; inv_screen_frame — draw the screen and handle it.
 ;   in:  ecx = width, edx = height (pixels)
 ;   clobbers: volatile registers
@@ -568,7 +962,8 @@ ENDPROC
 %define F_H     4
 %define F_IX    8                       ; player slots left / top
 %define F_IY    12
-PROC inv_screen_frame, 16, rbx, rsi, rdi, r12
+%define F_GRID  16
+PROC inv_screen_frame, 24, rbx, rsi, rdi, r12
     mov [LOCAL(F_W)], ecx
     mov [LOCAL(F_H)], edx
     call ui_frame
@@ -588,11 +983,27 @@ PROC inv_screen_frame, 16, rbx, rsi, rdi, r12
     mov r9d, [rel g_ui_vh]
     add r9d, 16
     INVOKE ui_rect, -8, -8, r8, r9
-    ; the panel
-    mov eax, INV_HOTBAR * STEP - 4 + 2 * PAD
-    mov ecx, 18 + 34 + 3 * STEP + 10 + STEP - 4 + PAD
+    ; what the panel holds: the Creative catalog (E in Creative), or a
+    ; crafting grid (2 x 2 by hand, a station's) with the recipe book
+    mov eax, [rel g_cwin + WIN_PKT.grid]
+    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_CRAFTING
+    je .grid
     cmp dword [rel g_creative], 0
-    je .size
+    je .grid
+    xor eax, eax                        ; (the catalog instead)
+.grid:
+    mov [LOCAL(F_GRID)], eax
+    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_INVENTORY
+    jne .not_catalog
+    cmp dword [rel g_creative], 0
+    jne .size_catalog
+.not_catalog:
+    mov dword [rel g_creative], 0       ; (from here: "the catalog is shown")
+    mov eax, INV_HOTBAR * STEP - 4 + 2 * PAD + BOOK_W + BOOK_GAP
+    imul ecx, [LOCAL(F_GRID)], STEP
+    add ecx, 18 + 34 + 16 + 3 * STEP + 10 + STEP - 4 + PAD
+    jmp .size
+.size_catalog:
     mov eax, CAT_COLS * STEP - 4 + 2 * PAD
     mov ecx, 18 + 80 + CAT_ROWS * STEP + 16 + 3 * STEP + 10 + STEP - 4 + PAD
 .size:
@@ -607,11 +1018,17 @@ PROC inv_screen_frame, 16, rbx, rsi, rdi, r12
     sar edx, 1
     mov [rel g_py], edx
     INVOKE ui_panel, [rel g_px], [rel g_py], [rel g_pw], [rel g_ph]
-    ; the player's slots, centred at the bottom of the panel
+    ; the player's slots at the bottom: centred (catalog), or right of the
+    ; recipe book
     mov eax, [rel g_pw]
     sub eax, INV_HOTBAR * STEP - 4
     sar eax, 1
     add eax, [rel g_px]
+    cmp dword [rel g_creative], 0
+    jne .ix
+    mov eax, [rel g_px]
+    add eax, PAD + BOOK_W + BOOK_GAP
+.ix:
     mov [LOCAL(F_IX)], eax
     mov eax, [rel g_py]
     add eax, [rel g_ph]
@@ -619,15 +1036,27 @@ PROC inv_screen_frame, 16, rbx, rsi, rdi, r12
     mov [LOCAL(F_IY)], eax
     cmp dword [rel g_creative], 0
     jne .creative
-    ; Survival: a title
+    ; the title, the grid and its result, the recipe book
+    lea rcx, [rel s_inventory]
+    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_CRAFTING
+    jne .title
+    lea rcx, [rel s_crafting]
+.title:
     mov r8d, [rel g_py]
     add r8d, 18
-    mov edx, [rel g_px]
-    add edx, PAD
     mov dword [rsp + 32], COL_TEXT
     mov qword [rsp + 40], UI_BOLD
-    lea rcx, [rel s_inventory]
-    INVOKE ui_label, rcx, rdx, r8, 24
+    INVOKE ui_label, rcx, [LOCAL(F_IX)], r8, 24
+    mov edx, [rel g_py]
+    add edx, 18 + 34
+    INVOKE craft_area, [LOCAL(F_IX)], rdx, [LOCAL(F_GRID)]
+    mov ecx, [rel g_px]
+    add ecx, PAD
+    mov edx, [rel g_py]
+    add edx, 18
+    mov r8d, [rel g_ph]
+    sub r8d, 18 + PAD
+    call recipe_book
     jmp .slots
 .creative:
     mov ecx, [rel g_px]
@@ -718,6 +1147,8 @@ ENDPROC
 
 section .rdata
 s_empty:        db 0
+s_arrow:        db ">", 0
 section .bss
 alignb 8
 g_tip_text:     resq 1                  ; a tooltip that is not an item (tabs)
+g_close:        resb WIN_PKT_size

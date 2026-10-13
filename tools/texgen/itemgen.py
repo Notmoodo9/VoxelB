@@ -150,11 +150,26 @@ def star_crystal():
     return outline(paint(m, pal), (0.25, 0.14, 0.05))
 
 
+def stick():
+    # a diagonal twig, light wood with a darker underside
+    rows = ["................"] * N
+    rows = [list(r) for r in rows]
+    for i in range(10):
+        x, y = 3 + i, 12 - i
+        rows[y][x] = "4"
+        rows[y + 1][x] = "2"
+        if i % 4 == 1:
+            rows[y][x] = "5"
+    pal = ramp("a8794a", n=6, spread=0.16)
+    return outline(paint(shape_mask(["".join(r) for r in rows]), pal), (0.18, 0.1, 0.05))
+
+
 ITEMS = {
     "coal": coal,
     "diamond": lambda: gem("diamond", "37d6e0"),
     "emerald": lambda: gem("emerald", "2fcf6a"),
     "star_crystal": star_crystal,
+    "stick": stick,
 }
 
 

@@ -33,6 +33,7 @@ extern player_load, player_spawn, player_tick, player_toggle_fly, player_fill
 extern edit_request, edit_tick, fluid_tick
 extern inv_init, inv_packet, inv_selected_block, inv_used_selected, inv_flush
 extern dig_reset, dig_tick, drops_reset, drops_tick, g_world_mode
+extern craft_reset, craft_window, craft_recipe, craft_tick
 extern timer_elapsed_us, g_frame_us, g_time_of_day, g_day_length
 
 %define TICK_US             50000       ; 20 TPS
@@ -83,7 +84,8 @@ PROC sim_init, 16, rbx, rsi
     mov rcx, rbx
     mov edx, esi
     call player_spawn
-    call inv_init                       ; (milestone 18)
+    call craft_reset                    ; (milestone 18)
+    call inv_init
     call dig_reset
     call drops_reset
     cvtss2sd xmm0, [rel g_time_of_day]
@@ -166,6 +168,18 @@ PROC sim_tick, 16, rbx, rsi, rdi
     call inv_packet
     jmp .packet
 .not_inv:
+    cmp eax, PKT_C_WINDOW
+    jne .not_window
+    lea rcx, [rel g_pkt + PKT.data]     ; windows and crafting (milestone 18)
+    call craft_window
+    jmp .packet
+.not_window:
+    cmp eax, PKT_C_RECIPE
+    jne .not_recipe
+    lea rcx, [rel g_pkt + PKT.data]
+    call craft_recipe
+    jmp .packet
+.not_recipe:
     cmp eax, PKT_C_TOGGLE_FLY
     jne .packet                         ; (unknown packets are ignored)
     call player_toggle_fly
@@ -197,6 +211,7 @@ PROC sim_tick, 16, rbx, rsi, rdi
     lea rcx, [rel g_input]
     call dig_tick                       ; Survival mining (milestone 18)
     call drops_tick                     ; dropped items
+    call craft_tick                     ; a station's window closes far away
     call edit_tick                      ; block changes (they wait for busy columns)
     call inv_flush                      ; changed inventory slots to the client
     mov rcx, [rel g_sim_tick]

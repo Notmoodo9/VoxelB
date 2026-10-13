@@ -1,0 +1,50 @@
+# Stone, sand, glass (milestone 18 part 3). Smooth stone, bricks and glass
+# come from the furnace (part 4).
+
+[recipe stone_bricks]
+shape = SS / SS
+S = stone
+result = stone_bricks 4
+
+[recipe sandstone]
+shape = SS / SS
+S = sand
+result = sandstone
+
+[recipe mossy_cobblestone]
+ingredients = cobblestone, vine
+result = mossy_cobblestone
+
+# ---- shapes: "{}" is the material ----
+[recipe stone_slab]
+each = *_slab
+only = stone, cobblestone, mossy_cobblestone, smooth_stone, stone_bricks, deep_stone, sandstone, bricks, *_terracotta
+shape = XXX
+X = {}
+result = {}_slab 6
+
+[recipe stone_stairs]
+each = *_stairs
+only = stone, cobblestone, mossy_cobblestone, smooth_stone, stone_bricks, deep_stone, sandstone, bricks, *_terracotta
+shape = X.. / XX. / XXX
+X = {}
+result = {}_stairs 4
+
+[recipe stone_wall]
+each = *_wall
+only = stone, cobblestone, mossy_cobblestone, smooth_stone, stone_bricks, deep_stone, sandstone, bricks
+shape = XXX / XXX
+X = {}
+result = {}_wall 6
+
+[recipe pillar]
+each = *_pillar
+shape = X / X
+X = {}
+result = {}_pillar 2
+
+[recipe pane]
+each = *_pane
+shape = GGG / GGG
+G = {}
+result = {}_pane 16

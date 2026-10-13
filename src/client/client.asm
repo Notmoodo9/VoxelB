@@ -21,7 +21,10 @@
 ;   hotbar 0-8, the inventory 9-35, the carried stack 36), g_csel (the
 ;   hotbar slot in hand): the client's copy of the simulation's inventory
 ;   (milestone 18). The hotbar keys and the mouse wheel select; the held
-;   block (g_held_block) follows the item in hand.
+;   block (g_held_block) follows the item in hand. g_cinv holds the open
+;   window's slots too (INV_GRID ... INV_ALL - 1).
+;   g_cwin (WIN_PKT): the open window; g_cwin_event = 1 when the simulation
+;   opened or closed one (game.asm opens / closes the screen).
 ; =============================================================================
 %include "macros.inc"
 %include "input.inc"
@@ -29,6 +32,7 @@
 
 global client_init, client_input, client_view, g_cl_player, g_cinv, g_csel
 global client_select, client_input_idle, g_dig_pos, g_dig_progress
+global g_cwin, g_cwin_event, g_cinv_ver
 
 extern g_cam_yaw, g_cam_pitch, g_cam_pos, g_sim_alpha
 extern daycycle_set, timer_elapsed_us
@@ -52,7 +56,10 @@ g_cl_flytest:   resd 1
 g_cl_seq:       resd 1
 alignb 8
 g_cl_last_jump: resq 1                  ; time of the last move_up press (us)
-g_cinv:         resq INV_SLOTS + 1
+g_cinv:         resq INV_ALL
+g_cwin:         resb WIN_PKT_size
+g_cwin_event:   resd 1
+g_cinv_ver:     resd 1                  ; counts slot changes
 g_csel:         resd 1
 g_dig_pos:      resd 3
 g_dig_progress: resd 1
@@ -81,8 +88,10 @@ PROC client_init, 0
     mov dword [rel g_dig_progress], 0xBF800000   ; -1: not mining
     call drops_view_reset
     xor eax, eax
+    mov [rel g_cwin + WIN_PKT.kind], eax
+    mov [rel g_cwin_event], eax
     lea rcx, [rel g_cinv]
-    mov edx, INV_SLOTS + 1
+    mov edx, INV_ALL
 .clear:
     mov [rcx], rax
     add rcx, 8
@@ -308,8 +317,8 @@ PROC client_view, 0, rsi, rdi
     cmp eax, PKT_S_SLOT
     jne .not_slot
     mov ecx, [rel g_cl_pkt + PKT.data + INV_PKT.slot]
-    cmp ecx, INV_SLOTS
-    ja .packet
+    cmp ecx, INV_ALL
+    jae .packet
     lea rdx, [rel g_cinv]
     lea rdx, [rdx + rcx * 8]
     mov eax, [rel g_cl_pkt + PKT.data + INV_PKT.item]
@@ -318,6 +327,7 @@ PROC client_view, 0, rsi, rdi
     mov [rdx + 2], ax
     mov eax, [rel g_cl_pkt + PKT.data + INV_PKT.arg]
     mov [rdx + 4], ax
+    inc dword [rel g_cinv_ver]          ; (the recipe book looks again)
     call held_follows
     jmp .packet
 .not_slot:
@@ -340,6 +350,15 @@ PROC client_view, 0, rsi, rdi
     mov [rel g_dig_progress], eax
     jmp .packet
 .not_dig:
+    cmp eax, PKT_S_WINDOW
+    jne .not_window
+    lea rsi, [rel g_cl_pkt + PKT.data]
+    lea rdi, [rel g_cwin]
+    mov ecx, WIN_PKT_size
+    rep movsb
+    mov dword [rel g_cwin_event], 1
+    jmp .packet
+.not_window:
     cmp eax, PKT_S_DROP
     je .drop
     cmp eax, PKT_S_DROP_GONE

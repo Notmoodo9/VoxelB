@@ -16,3 +16,8 @@ tab = items
 [item star_crystal]
 texture = star_crystal
 tab = items
+
+# crafting (milestone 18 part 3)
+[item stick]
+texture = stick
+tab = items

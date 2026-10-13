@@ -2329,6 +2329,61 @@ def make_savanna(out):
     out["termite_mound"] = rgba(img)
 
 
+# ---------------------------------------------------------------------------
+# crafting stations and containers (milestone 18 part 3)
+# ---------------------------------------------------------------------------
+
+
+def make_stations(out):
+    oak = WOODS["oak"][1]
+    pal = ramp(oak, 6, spread=0.13)
+    iron = ramp("aab3bd", 6, spread=0.2, sat_boost=0.5)
+    # workbench top: a 3 x 3 grid of inlaid squares in a dark frame
+    top = planks(oak, rng("workbench_top")).copy()
+    for i in range(N):
+        for j in (0, N - 1):
+            top[i, j, :3] = pal[0]
+            top[j, i, :3] = pal[0]
+    for k in (5, 10):
+        top[1:N - 1, k, :3] = pal[1]
+        top[k, 1:N - 1, :3] = pal[1]
+    for y in (1, 6, 11):
+        top[y, 1:N - 1, :3] = np.minimum(1.0, top[y, 1:N - 1, :3] * 1.1)
+    out["workbench_top"] = top
+    # workbench side: planks with a saw and a hammer hanging on it
+    side = planks(oak, rng("workbench_side")).copy()
+    side[0, :, :3] = pal[0]
+    side[1, :, :3] = pal[5]
+    for x in range(2, 8):                     # saw blade
+        for y in range(4, 7 + (x - 2) // 3):
+            side[y, x, :3] = iron[3 + (y == 4)]
+    side[4:7, 8, :3] = pal[0]
+    side[4:7, 9, :3] = pal[1]                 # handle
+    for y in range(4, 12):                    # hammer
+        side[y, 12, :3] = pal[1]
+    side[4, 10:15, :3] = iron[2]
+    side[5, 10:15, :3] = iron[4]
+    side[N - 1, :, :3] = pal[0]
+    out["workbench_side"] = side
+    # chest: dark planks with a band and a latch
+    cpal = ramp("9a6a3c", 6, spread=0.14)
+    for name in ("chest_top", "chest_side", "chest_front"):
+        img = planks("9a6a3c", rng(name)).copy()
+        for i in range(N):
+            img[0, i, :3] = cpal[0]
+            img[N - 1, i, :3] = cpal[0]
+            img[i, 0, :3] = cpal[0]
+            img[i, N - 1, :3] = cpal[0]
+        if name != "chest_top":
+            img[5, 1:N - 1, :3] = cpal[1]     # where the lid meets the box
+            img[6, 1:N - 1, :3] = cpal[4]
+        if name == "chest_front":
+            img[4:9, 6:10, :3] = iron[1]
+            img[5:8, 7:9, :3] = iron[4]
+            img[7, 7:9, :3] = iron[2]
+        out[name] = img
+
+
 def build_all():
     out = {}
     make_terrain(out)
@@ -2357,6 +2412,7 @@ def build_all():
     make_meadow(out)
     make_crystal_caves(out)
     make_river(out)
+    make_stations(out)
     return out
 
 

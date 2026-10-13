@@ -3,7 +3,9 @@
 ; (milestone 18, design/items/items_inventory.md).
 ;
 ; 36 slots: 0-8 the hotbar, 9-35 the inventory, plus the stack carried by
-; the mouse in the inventory screen (INV_CURSOR). A slot is {u16 item,
+; the mouse in the inventory screen (INV_CURSOR), and the open window's
+; slots (packet.inc: the crafting grid, its result, a container; part 3,
+; crafting.asm). A slot is {u16 item,
 ; u16 count, u16 durability, u16 spare}. The client asks with packets
 ; (select, pick, click, Creative set); every changed slot goes back as
 ; PKT_S_SLOT at the end of the tick, so the client's copy is only a view.
@@ -17,7 +19,11 @@
 ;   inv_used_selected()              one placed: Survival uses up one
 ;   inv_add(ecx = item, edx = count) -> eax count that did not fit
 ;   inv_flush()                      send the changed slots (end of tick)
-;   g_inv (SLOT[37], the cursor last), g_inv_sel
+;   inv_mark(ecx = slot)             a slot changed (clobbers rax)
+;   inv_stack_of(ecx = item) -> eax  its stack size (clobbers rax)
+;   inv_room(ecx = item) -> eax      how many more fit in slots 0-35
+;   inv_cursor_back()                the carried stack back into the slots
+;   g_inv (SLOT[INV_ALL]), g_inv_sel
 ; =============================================================================
 %include "macros.inc"
 %include "log.inc"
@@ -26,7 +32,10 @@
 %include "save.inc"
 
 global inv_init, inv_packet, inv_selected_block, inv_used_selected, inv_add
-global inv_flush, g_inv, g_inv_sel
+global inv_flush, g_inv, g_inv_sel, inv_mark, inv_stack_of, inv_room
+global inv_cursor_back
+
+extern craft_update, craft_take, g_win_grid, g_win_slots, g_win_kind
 
 extern pkt_send, g_world_mode, g_held_block
 extern g_save_inv, g_save_inv_loaded, g_save_inv_sel
@@ -35,13 +44,13 @@ extern g_save_inv, g_save_inv_loaded, g_save_inv_sel
 %define SLOT_COUNT      2
 %define SLOT_DUR        4
 %define SLOT_SIZE       8
-%define ALL_SLOTS       (INV_SLOTS + 1) ; with the cursor
+%define ALL_SLOTS       INV_ALL         ; with the cursor and the window
 
 section .bss
 alignb 8
 g_inv:          resb ALL_SLOTS * SLOT_SIZE
 g_inv_sel:      resd 1
-g_dirty:        resq 1                  ; bit per slot (37 bits)
+g_dirty:        resq 2                  ; bit per slot (INV_ALL bits)
 g_sel_dirty:    resd 1
 g_out:          resb INV_PKT_size
 
@@ -53,14 +62,15 @@ section .text
     lea %1, [%1 + %2 * SLOT_SIZE]
 %endmacro
 
-; mark — slot ecx changed   clobbers: rax
+; mark (inv_mark) — slot ecx changed   clobbers: rax
+inv_mark:
 mark:
-    mov eax, 1
-    shl rax, cl
-    or [rel g_dirty], rax
+    mov eax, ecx
+    bts [rel g_dirty], rax
     ret
 
-; stack_of — eax = the stack size of item ecx (1..64)
+; stack_of (inv_stack_of) — eax = the stack size of item ecx (1..64)
+inv_stack_of:
 stack_of:
     lea rax, [rel g_item_stack]
     movzx eax, byte [rax + rcx]
@@ -113,7 +123,20 @@ PROC inv_init, 0, rbx, rsi, rdi
     xor eax, eax
 .sel:
     mov [rel g_inv_sel], eax
-    jmp .done
+    ; a carried stack or a crafting grid saved full: back into the slots
+    mov ebx, INV_SLOTS
+.back:
+    cmp ebx, INV_SAVED
+    jae .done
+    lea rax, [rel g_save_inv]
+    movzx ecx, word [rax + rbx * 8]
+    movzx edx, word [rax + rbx * 8 + 2]
+    test ecx, ecx
+    jz .back_next
+    call inv_add
+.back_next:
+    inc ebx
+    jmp .back
 .held:
     ; an older save or a new Creative world: the held block in slot 0
     ; (Survival starts empty-handed)
@@ -132,8 +155,9 @@ PROC inv_init, 0, rbx, rsi, rdi
     mov [rcx + SLOT_ITEM], bx
     mov [rcx + SLOT_COUNT], ax
 .done:
-    mov rax, (1 << ALL_SLOTS) - 1
-    mov [rel g_dirty], rax              ; the client gets everything
+    mov qword [rel g_dirty], -1         ; the client gets everything
+    mov rax, (1 << (ALL_SLOTS - 64)) - 1
+    mov [rel g_dirty + 8], rax
     mov dword [rel g_sel_dirty], 1
     RETURN
 ENDPROC
@@ -235,6 +259,45 @@ PROC inv_used_selected, 0
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; inv_room — how many of item ecx still fit in slots 0-35.
+;   out: eax
+;   clobbers: rax, rcx, rdx, r8, r9
+; -----------------------------------------------------------------------------
+inv_room:
+    mov r8d, ecx
+    call stack_of
+    mov r9d, eax
+    xor eax, eax
+    xor ecx, ecx
+.slot:
+    lea rdx, [rel g_inv]
+    lea rdx, [rdx + rcx * SLOT_SIZE]
+    cmp word [rdx + SLOT_ITEM], 0
+    je .empty
+    cmp [rdx + SLOT_ITEM], r8w
+    jne .next
+    add eax, r9d
+    movzx edx, word [rdx + SLOT_COUNT]
+    sub eax, edx
+    jmp .next
+.empty:
+    add eax, r9d
+.next:
+    inc ecx
+    cmp ecx, INV_SLOTS
+    jb .slot
+    ret
+
+; inv_cursor_back — the carried stack back into the slots (what does not fit
+; stays carried)   clobbers: volatile registers
+PROC inv_cursor_back, 0
+    mov ecx, INV_CURSOR
+    xor edx, edx
+    call click
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 ; pick — bring a block's item to hand (middle click). In the hotbar: select
 ; it. In the inventory: swap it into the selected slot. Creative: otherwise
 ; a full stack into an empty hotbar slot (or the selected one).
@@ -325,7 +388,28 @@ PROC click, 0, rbx, rsi, rdi, r12, r13
     cmp ebx, INV_CURSOR
     je .put_back
     cmp ebx, INV_SLOTS
+    jb .valid
+    ; the open window's slots
+    cmp ebx, INV_RESULT
+    je .result
+    cmp ebx, INV_CONTAINER
+    jae .container
+    cmp ebx, INV_GRID
+    jb .done
+    lea eax, [ebx - INV_GRID]           ; a grid cell: inside the grid?
+    xor edx, edx
+    mov ecx, 3
+    div ecx                             ; eax = row, edx = column
+    cmp eax, [rel g_win_grid]
     jae .done
+    cmp edx, [rel g_win_grid]
+    jae .done
+    jmp .valid
+.container:
+    lea eax, [ebx - INV_CONTAINER]
+    cmp eax, [rel g_win_slots]
+    jae .done
+.valid:
     SLOT_PTR rsi, rbx                   ; the slot
     lea rdi, [rel g_inv + INV_CURSOR * SLOT_SIZE]   ; the cursor
     test r12d, INVB_SHIFT
@@ -412,7 +496,19 @@ PROC click, 0, rbx, rsi, rdi, r12, r13
     mov qword [rsi], 0
     mov ecx, ebx
     call mark
-    ; target range: hotbar -> 9..35, inventory -> 0..8
+    ; target range: hotbar -> 9..35, inventory -> 0..8; a window's slot ->
+    ; the player's slots; with a container open: the player's slots -> it
+    xor r8d, r8d
+    mov r9d, INV_SLOTS
+    cmp ebx, INV_SLOTS
+    jae .range
+    cmp dword [rel g_win_slots], 0
+    je .halves
+    mov r8d, INV_CONTAINER
+    mov r9d, [rel g_win_slots]
+    add r9d, INV_CONTAINER
+    jmp .range
+.halves:
     xor r8d, r8d
     mov r9d, INV_HOTBAR
     cmp ebx, INV_HOTBAR
@@ -426,6 +522,10 @@ PROC click, 0, rbx, rsi, rdi, r12, r13
     test r13w, r13w
     jz .done
     mov [rsi], r13                      ; what did not fit stays
+    jmp .done
+.result:
+    mov ecx, r12d
+    call craft_take
     jmp .done
 .put_back:
     lea rdi, [rel g_inv + INV_CURSOR * SLOT_SIZE]
@@ -547,6 +647,7 @@ PROC inv_packet, 0, rbx
     mov ecx, [rbx + INV_PKT.slot]
     mov edx, [rbx + INV_PKT.arg]
     call click
+    call craft_update                   ; (the grid may have changed)
     RETURN
 .not_click:
     cmp ecx, PKT_C_CREATIVE_SET
@@ -577,15 +678,15 @@ ENDPROC
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC inv_flush, 0, rbx, rsi
-    mov rsi, [rel g_dirty]
-    mov qword [rel g_dirty], 0
+    mov rax, [rel g_dirty]
+    or rax, [rel g_dirty + 8]
+    jz .sel
     xor ebx, ebx
 .slot:
-    test rsi, rsi
-    jz .sel
-    bt rsi, rbx
+    cmp ebx, ALL_SLOTS
+    jae .sel
+    btr [rel g_dirty], rbx
     jnc .next
-    btr rsi, rbx
     SLOT_PTR rax, rbx
     mov [rel g_out + INV_PKT.slot], ebx
     movzx ecx, word [rax + SLOT_ITEM]

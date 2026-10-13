@@ -539,6 +539,37 @@ A block takes the first material whose `shapes` or `blocks` match it (all
 its states alike); unmatched blocks are hardness 1, any tool, no tier. The
 first matching `[drops]` line counts; otherwise a block drops its own item.
 
+## Recipe files (`data/recipes/*.recipes`, Milestone 18)
+
+Read in file-name order after the items. Stations first (a recipe can
+only name a station defined before it).
+
+| Record | Key | Meaning |
+|---|---|---|
+| `[station <name>]` | `block` | the block that opens this station's crafting grid on right click (sneak + right click places a block against it) |
+| | `grid` | 2 or 3 (default 3) |
+| `[recipe <name>]` | `shape` | rows split by `/`, up to 3 × 3; one character per cell: a key letter, or `.` for an empty cell. A shape matches anywhere in the grid, mirrored too |
+| | `A` … `Z` | a key: item name patterns (`*` = anything; a comma list = any of them) |
+| | `ingredients` | instead of a shape: up to 9 patterns, one item each, in any cells (shapeless) |
+| | `result` | `<item> [count]` (count 1–64, default 1) |
+| | `station` | made only at this station (default: by hand, which also works at any station whose grid is big enough) |
+| | `each` | a pattern with one `*`: the record becomes one recipe per item whose name fits, and `{}` in every value is what `*` stood for. A copy whose result or an ingredient names no item is left out without a warning |
+| | `only` | with `each`: only where what `*` stood for fits these patterns |
+
+Example: every kind of planks gives its own slab:
+
+```
+[recipe wood_slab]
+each = *_planks
+shape = PPP
+P = {}_planks
+result = {}_slab 6
+```
+
+A recipe bigger than 2 × 2 needs a 3 × 3 grid, so it is made at a
+workbench. Debug builds check a few known grids at start and log
+`recipes: self-check PASS`.
+
 ## Saved worlds (`saves/<name>/`, Milestone 17)
 
 Written by the game; `--world <name>` picks the world (default `world`,
@@ -555,7 +586,7 @@ Text in the format above (the game rewrites them on every save, via a
 |---|---|---|
 | world.dat | `format_version` | 1 (a newer version is logged as a warning) |
 | | `name`, `seed`, `generator` | the world; `seed` and `generator` override world.cfg and `--seed` |
-| | `game_mode` | `creative`, `survival`, `adventure` or `spectator` (only creative is playable so far) |
+| | `game_mode` | `creative`, `survival`, `adventure` or `spectator` (creative and survival are playable so far) |
 | | `difficulty` | `peaceful`, `normal`, `hard`, `extreme` or `ultra` (default `normal`) |
 | | `hardcore` | `0`/`1` |
 | | `last_played` | local date and time of the last save, `YYYY-MM-DD HH:MM` (the world list sorts by it) |
@@ -564,7 +595,7 @@ Text in the format above (the game rewrites them on every save, via a
 | | `look` | yaw, pitch in radians |
 | | `flying` | `0`/`1` |
 | | `selected` | the hotbar slot in hand, 0–8 (Milestone 18) |
-| | `slot` | one line per used slot: `index, item, count, durability` (0–8 the hotbar, 9–35 the inventory); unknown items are skipped |
+| | `slot` | one line per used slot: `index, item, count, durability` (0–8 the hotbar, 9–35 the inventory; 36 the stack carried by the mouse and 37–45 the crafting grid when the game quit with the inventory open: they go back into the slots on load); unknown items are skipped |
 | | `held_block` | (saves from before Milestone 18) a block name: put in hotbar slot 0 |
 
 `thumb.png` (256 × 144 RGB) in the world folder is the picture shown in

@@ -1,0 +1,9 @@
+# Crafting stations (milestone 18 part 3; format: DATA_FORMAT.md "Recipe
+# files"). Right-clicking a station's block opens its crafting grid
+# (sneak + right click places a block against it instead). Recipes without
+# a `station` work by hand (2 x 2 in the inventory) and on any station
+# whose grid is big enough; recipes with one need that station.
+
+[station workbench]
+block = workbench
+grid = 3

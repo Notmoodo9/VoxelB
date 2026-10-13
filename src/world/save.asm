@@ -208,7 +208,7 @@ g_save_held:        resd 1
 g_save_inv_loaded:  resd 1
 g_save_inv_sel:     resd 1
 alignb 8
-g_save_inv:         resq INV_SLOTS      ; player.dat's slots, for inv_init
+g_save_inv:         resq INV_SAVED      ; player.dat's slots, for inv_init
 g_save_columns:     resq 1              ; columns written
 g_save_bytes:       resq 1              ; compressed bytes written
 g_save_loaded:      resq 1              ; columns loaded from regions
@@ -613,7 +613,7 @@ PROC save_load_player, 0
     mov dword [rel g_save_inv_sel], 0
     lea rcx, [rel g_save_inv]
     xor eax, eax
-    mov edx, INV_SLOTS
+    mov edx, INV_SAVED
 .clear:
     mov [rcx], rax
     add rcx, 8
@@ -738,7 +738,7 @@ PROC parse_slot, 16, rbx, rsi, rdi
     mov rsi, rdx
     mov rcx, rax
     call str_parse_u64
-    cmp rax, INV_SLOTS
+    cmp rax, INV_SAVED
     jae .done
     lea rbx, [rel g_save_inv]
     lea rbx, [rbx + rax * 8]
@@ -1517,7 +1517,7 @@ PROC write_player_dat, 16, rbx, rsi, rdi
     INVOKE str_append_dec, rax, rdx, 0
     xor esi, esi
 .slot:
-    cmp esi, INV_SLOTS
+    cmp esi, INV_SAVED                  ; (with the carried stack and the grid)
     jae .slots_done
     lea rcx, [rel g_inv]
     lea rdi, [rcx + rsi * 8]

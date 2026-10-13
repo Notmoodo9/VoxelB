@@ -32,7 +32,7 @@ extern g_world_mode
 global g_target_valid, g_target, g_target_face, g_target_id, g_held_block
 
 extern g_cam_pos, g_cam_yaw, g_cam_pitch, g_mouse_captured, g_cl_player
-extern sincosf, timer_elapsed_us
+extern sincosf, timer_elapsed_us, g_block_station
 
 %define REPEAT_US       250000          ; holding a button: one action per this
 %define MAX_STEPS       64
@@ -68,6 +68,7 @@ g_step:         resd 3
 g_req:          resb BLOCK_PKT_size
 g_pick:         resb INV_PKT_size
 g_dig_want:     resd 1                  ; Survival: break held on the target
+g_use:          resb WIN_PKT_size
 
 section .text
 
@@ -338,6 +339,27 @@ PROC interact_update, 0, rbx
     call action_due
     test eax, eax
     jz .no_place
+    ; a crafting station (or later a chest): use it; sneaking places
+    mov eax, [rel g_target_id]
+    lea rcx, [rel g_block_station]
+    cmp byte [rcx + rax], 0
+    je .place
+    mov ecx, ACT_MOVE_DOWN
+    call input_down
+    test eax, eax
+    jnz .place
+    mov dword [rel g_use + WIN_PKT.kind], WIN_USE
+    mov eax, [rel g_target]
+    mov [rel g_use + WIN_PKT.pos], eax
+    mov eax, [rel g_target + 4]
+    mov [rel g_use + WIN_PKT.pos + 4], eax
+    mov eax, [rel g_target + 8]
+    mov [rel g_use + WIN_PKT.pos + 8], eax
+    lea rcx, [rel g_to_sim]
+    lea r8, [rel g_use]
+    INVOKE pkt_send, rcx, PKT_C_WINDOW, r8, WIN_PKT_size
+    jmp .no_place
+.place:
     cmp dword [rel g_held_block], 0
     je .no_place                        ; (nothing placeable in hand)
     mov ecx, PKT_C_PLACE

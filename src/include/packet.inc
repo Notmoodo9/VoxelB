@@ -37,6 +37,8 @@ endstruc
 %define PKT_C_PICK          6           ; INV_PKT .item: a block id: bring its item to hand
 %define PKT_C_INV_CLICK     7           ; INV_PKT .slot (INV_CURSOR..), .arg INVB_*
 %define PKT_C_CREATIVE_SET  8           ; INV_PKT .slot, .item, .count (Creative only)
+%define PKT_C_WINDOW        9           ; WIN_PKT: open (WIN_INVENTORY / WIN_USE a block) or close (WIN_NONE)
+%define PKT_C_RECIPE        10          ; INV_PKT .slot: recipe to lay out in the grid, .arg INVB_SHIFT: as many as possible
 
 ; inventory (milestone 18): slots 0-8 are the hotbar, 9-35 the inventory
 struc INV_PKT
@@ -50,6 +52,30 @@ endstruc
 %define INV_CURSOR          36          ; the stack carried by the mouse
 %define INVB_RIGHT          1           ; right button: half / one
 %define INVB_SHIFT          2           ; shift-click: move to the other part
+; the open window's slots (milestone 18 part 3): the crafting grid (3 x 3,
+; row by row; a 2 x 2 grid uses its top-left cells), the crafting result,
+; then a container (a chest: 27, a double chest 54)
+%define INV_GRID            37
+%define INV_RESULT          46
+%define INV_CONTAINER       47
+%define INV_CONTAINER_MAX   54
+%define INV_ALL             (INV_CONTAINER + INV_CONTAINER_MAX) ; 101
+%define INV_SAVED           46          ; player.dat keeps 0..45 (a grid left
+                                        ; full when the game quits comes back)
+
+; windows: what the inventory screen shows besides the player's slots
+%define WIN_NONE            0           ; (C_WINDOW: close)
+%define WIN_INVENTORY       1           ; E: 2 x 2 crafting by hand
+%define WIN_CRAFTING        2           ; a crafting station (S_WINDOW .grid 3)
+%define WIN_CHEST           3           ; a container (S_WINDOW .slots)
+%define WIN_USE             15          ; C_WINDOW: use the block at .pos
+struc WIN_PKT
+    .kind       resd 1                  ; WIN_*
+    .pos        resd 3                  ; i32 the block (WIN_USE, S_WINDOW)
+    .grid       resd 1                  ; S_WINDOW: grid width 0 / 2 / 3
+    .slots      resd 1                  ; S_WINDOW: container slots
+    .station    resd 1                  ; S_WINDOW: station (recipes; 0 by hand)
+endstruc
 
 struc BLOCK_PKT
     .x          resd 1                  ; i32 world block position
@@ -77,11 +103,12 @@ endstruc
 %define PKT_S_PLAYER        64          ; PLAYER_PKT, every tick
 %define PKT_S_TIME          65          ; TIME_PKT, every tick
 %define PKT_S_BLOCK         66          ; BLOCK_PKT: a block changed
-%define PKT_S_SLOT          67          ; INV_PKT: a slot's contents (0-35, INV_CURSOR)
+%define PKT_S_SLOT          67          ; INV_PKT: a slot's contents (0 .. INV_ALL - 1)
 %define PKT_S_SELECT        68          ; INV_PKT .slot: the hotbar slot in hand
 %define PKT_S_DIG           69          ; DIG_PKT: how far a block is mined
 %define PKT_S_DROP          70          ; DROP_PKT: a dropped item appeared / moved
 %define PKT_S_DROP_GONE     71          ; DROP_PKT .id: picked up or gone
+%define PKT_S_WINDOW        72          ; WIN_PKT: the window opened / closed (WIN_NONE)
 
 struc DIG_PKT
     .pos        resd 3                  ; i32 block

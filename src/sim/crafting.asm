@@ -1,0 +1,662 @@
+; =============================================================================
+; crafting.asm — windows and crafting in the simulation (milestone 18 part 3,
+; design/items/items_inventory.md).
+;
+; A window is what the inventory screen shows besides the player's slots:
+; the 2 x 2 crafting grid by hand (E), a crafting station's grid (a block
+; with a [station] in data/recipes: right click), later a chest. Its slots
+; are part of the inventory (packet.inc: INV_GRID, INV_RESULT,
+; INV_CONTAINER), so clicks work as on any slot (inventory.asm). The result
+; slot shows what the grid makes (recipes.asm); taking it uses up one of
+; each grid item; shift takes as many as fit. Closing the window puts the
+; grid and the carried stack back into the slots (what does not fit is
+; dropped at the player's feet). A station window closes by itself when
+; the player walks away or the block is gone.
+;
+; Public API:
+;   craft_reset()
+;   craft_window(rcx = WIN_PKT*)         PKT_C_WINDOW
+;   craft_recipe(rcx = INV_PKT*)         PKT_C_RECIPE (the recipe book)
+;   craft_update()                       the grid may have changed
+;   craft_take(ecx = INVB_*)             a click on the result
+;   craft_tick()                         once per tick
+;   g_win_kind (WIN_*), g_win_grid (0 / 2 / 3), g_win_slots (container),
+;   g_win_station (0 by hand)
+; =============================================================================
+%include "macros.inc"
+%include "packet.inc"
+%include "items.inc"
+
+global craft_reset, craft_window, craft_recipe, craft_update, craft_take
+global craft_tick, g_win_kind, g_win_grid, g_win_slots, g_win_station
+
+extern g_inv, inv_mark, inv_stack_of, inv_room, inv_add, inv_cursor_back
+extern recipe_match, recipe_cell_ok, g_recipe_count, g_rec_result
+extern g_rec_amount, g_rec_station, g_rec_w, g_rec_h, g_rec_n, g_rec_ok
+extern g_rec_cells, g_block_station, g_station_grid
+extern phys_block, drops_spawn, pkt_send, g_to_client
+extern g_pl_pos, g_pl_eye
+
+%define SLOT_SIZE       8
+%define MAX_REACH_SQ    64.0            ; a station's window closes beyond 8 blocks
+%define MAX_REPEAT      64              ; shift: crafts at most this many at once
+
+section .rdata
+align 8
+c_half:         dq 0.5
+c_reach_sq:     dq MAX_REACH_SQ
+
+section .bss
+alignb 8
+g_win_kind:     resd 1
+g_win_grid:     resd 1
+g_win_slots:    resd 1
+g_win_station:  resd 1
+g_win_pos:      resd 3
+g_recipe:       resd 1                  ; what the grid makes, -1 nothing
+g_items:        resw 9                  ; recipe_match's grid
+alignb 8
+g_at:           resq 3
+g_out:          resb WIN_PKT_size
+alignb 4
+g_take:         resd 9                  ; craft_recipe: the slot each cell takes from
+g_left:         resw INV_SLOTS          ; craft_recipe: counts while planning
+
+section .text
+
+; slot_ptr — %1 = &g_inv[%2]
+%macro SLOT_PTR 2
+    lea %1, [rel g_inv]
+    lea %1, [%1 + %2 * SLOT_SIZE]
+%endmacro
+
+; craft_reset — no window
+craft_reset:
+    xor eax, eax
+    mov [rel g_win_kind], eax
+    mov [rel g_win_grid], eax
+    mov [rel g_win_slots], eax
+    mov [rel g_win_station], eax
+    mov dword [rel g_recipe], -1
+    ret
+
+; cell_slot — eax = the inventory slot of grid cell ecx (0..8), or -1 if the
+; open grid has no such cell
+cell_slot:
+    mov eax, ecx
+    push rdx                            ; (not a PROC: no locals here)
+    xor edx, edx
+    push rcx
+    mov ecx, 3
+    div ecx
+    pop rcx
+    cmp eax, [rel g_win_grid]
+    jae .none
+    cmp edx, [rel g_win_grid]
+    jae .none
+    lea eax, [ecx + INV_GRID]
+    pop rdx
+    ret
+.none:
+    mov eax, -1
+    pop rdx
+    ret
+
+; feet — g_at = the player's eyes   clobbers: xmm0
+feet:
+    movsd xmm0, [rel g_pl_pos]
+    movsd [rel g_at], xmm0
+    cvtss2sd xmm0, [rel g_pl_eye]
+    addsd xmm0, [rel g_pl_pos + 8]
+    movsd [rel g_at + 8], xmm0
+    movsd xmm0, [rel g_pl_pos + 16]
+    movsd [rel g_at + 16], xmm0
+    ret
+
+; -----------------------------------------------------------------------------
+; give — item ecx x edx into the player's slots; what does not fit is
+; dropped at the player.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC give, 0, rbx
+    mov ebx, ecx
+    call inv_add
+    test eax, eax
+    jz .done
+    mov edx, eax
+    mov ecx, ebx
+    call feet
+    lea r8, [rel g_at]
+    call drops_spawn
+.done:
+    RETURN
+ENDPROC
+
+; send_window — tell the client which window is open   clobbers: volatile
+PROC send_window, 0
+    mov eax, [rel g_win_kind]
+    mov [rel g_out + WIN_PKT.kind], eax
+    mov eax, [rel g_win_pos]
+    mov [rel g_out + WIN_PKT.pos], eax
+    mov eax, [rel g_win_pos + 4]
+    mov [rel g_out + WIN_PKT.pos + 4], eax
+    mov eax, [rel g_win_pos + 8]
+    mov [rel g_out + WIN_PKT.pos + 8], eax
+    mov eax, [rel g_win_grid]
+    mov [rel g_out + WIN_PKT.grid], eax
+    mov eax, [rel g_win_slots]
+    mov [rel g_out + WIN_PKT.slots], eax
+    mov eax, [rel g_win_station]
+    mov [rel g_out + WIN_PKT.station], eax
+    lea rcx, [rel g_to_client]
+    lea r8, [rel g_out]
+    INVOKE pkt_send, rcx, PKT_S_WINDOW, r8, WIN_PKT_size
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; close_window — the carried stack and the grid back to the player.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC close_window, 0, rbx, rsi
+    call inv_cursor_back
+    ; (a full inventory: the carried stack is dropped)
+    lea rsi, [rel g_inv + INV_CURSOR * SLOT_SIZE]
+    movzx ecx, word [rsi]
+    test ecx, ecx
+    jz .grid
+    movzx edx, word [rsi + 2]
+    mov qword [rsi], 0
+    call give
+    mov ecx, INV_CURSOR
+    call inv_mark
+.grid:
+    mov ebx, INV_GRID
+.cell:
+    cmp ebx, INV_RESULT
+    ja .closed
+    SLOT_PTR rsi, rbx
+    movzx ecx, word [rsi]
+    test ecx, ecx
+    jz .next
+    movzx edx, word [rsi + 2]
+    mov qword [rsi], 0
+    cmp ebx, INV_RESULT
+    je .marked                          ; (the result is only a preview)
+    call give
+.marked:
+    mov ecx, ebx
+    call inv_mark
+.next:
+    inc ebx
+    jmp .cell
+.closed:
+    call craft_reset
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; craft_window — open or close a window (PKT_C_WINDOW).
+;   in:  rcx = WIN_PKT*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC craft_window, 16, rbx, rsi, rdi
+    mov rbx, rcx
+    mov eax, [rbx + WIN_PKT.kind]
+    cmp eax, WIN_INVENTORY
+    je .inventory
+    cmp eax, WIN_USE
+    je .use
+    ; WIN_NONE (and anything else): close
+    call close_window
+    RETURN
+.inventory:
+    call close_window
+    mov dword [rel g_win_kind], WIN_INVENTORY
+    mov dword [rel g_win_grid], 2
+    RETURN
+.use:
+    ; a station block, within reach
+    mov esi, [rbx + WIN_PKT.pos]
+    mov edi, [rbx + WIN_PKT.pos + 4]
+    mov eax, [rbx + WIN_PKT.pos + 8]
+    mov [LOCAL(0)], eax
+    mov ecx, esi
+    mov edx, edi
+    mov r8d, eax
+    call station_at
+    test eax, eax
+    jz .done
+    mov [LOCAL(4)], eax
+    call close_window
+    mov [rel g_win_pos], esi
+    mov [rel g_win_pos + 4], edi
+    mov eax, [LOCAL(0)]
+    mov [rel g_win_pos + 8], eax
+    call near_enough
+    test eax, eax
+    jz .done
+    mov eax, [LOCAL(4)]
+    mov [rel g_win_station], eax
+    lea rcx, [rel g_station_grid]
+    movzx ecx, byte [rcx + rax - 1]
+    mov [rel g_win_grid], ecx
+    mov dword [rel g_win_kind], WIN_CRAFTING
+    call send_window
+.done:
+    RETURN
+ENDPROC
+
+; station_at — eax = the station of the block at ecx, edx, r8d (0 none)
+;   clobbers: volatile registers
+PROC station_at, 0
+    call phys_block
+    cmp eax, 0
+    jle .none
+    cmp eax, 0xFFFF
+    ja .none
+    lea rcx, [rel g_block_station]
+    movzx eax, byte [rcx + rax]
+    RETURN
+.none:
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; near_enough — eax = 1 if the player's eyes are near g_win_pos
+;   clobbers: rax, rcx, xmm0-xmm2
+near_enough:
+    call feet
+    xorpd xmm2, xmm2
+    xor ecx, ecx
+.axis:
+    lea rax, [rel g_win_pos]
+    cvtsi2sd xmm0, dword [rax + rcx * 4]
+    addsd xmm0, [rel c_half]
+    lea rax, [rel g_at]
+    subsd xmm0, [rax + rcx * 8]
+    mulsd xmm0, xmm0
+    addsd xmm2, xmm0
+    inc ecx
+    cmp ecx, 3
+    jb .axis
+    xor eax, eax
+    comisd xmm2, [rel c_reach_sq]
+    setbe al
+    ret
+
+; -----------------------------------------------------------------------------
+; craft_tick — a station's window closes when the player walks away or the
+; block is gone.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC craft_tick, 0
+    cmp dword [rel g_win_kind], WIN_CRAFTING
+    jne .done
+    call near_enough
+    test eax, eax
+    jz .close
+    mov ecx, [rel g_win_pos]
+    mov edx, [rel g_win_pos + 4]
+    mov r8d, [rel g_win_pos + 8]
+    call station_at
+    cmp eax, [rel g_win_station]
+    je .done
+.close:
+    call close_window
+    call send_window                    ; (WIN_NONE: the screen closes)
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; craft_update — the result slot shows what the grid makes.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC craft_update, 0, rbx
+    mov ebx, -1
+    cmp dword [rel g_win_grid], 0
+    je .show
+    ; the grid as recipe_match wants it (cells outside the open grid: empty)
+    xor ecx, ecx
+.cell:
+    call cell_slot
+    xor edx, edx
+    cmp eax, -1
+    je .put
+    lea rdx, [rel g_inv]
+    movzx edx, word [rdx + rax * SLOT_SIZE]
+.put:
+    lea rax, [rel g_items]
+    mov [rax + rcx * 2], dx
+    inc ecx
+    cmp ecx, 9
+    jb .cell
+    lea rcx, [rel g_items]
+    mov edx, [rel g_win_station]
+    call recipe_match
+    mov ebx, eax
+.show:
+    mov [rel g_recipe], ebx
+    lea rcx, [rel g_inv + INV_RESULT * SLOT_SIZE]
+    xor eax, eax                        ; the new contents
+    cmp ebx, -1
+    je .compare
+    lea rdx, [rel g_rec_result]
+    movzx eax, word [rdx + rbx * 2]
+    lea rdx, [rel g_rec_amount]
+    movzx edx, byte [rdx + rbx]
+    shl edx, 16
+    or eax, edx
+.compare:
+    cmp [rcx], rax
+    je .done
+    mov [rcx], rax
+    mov ecx, INV_RESULT
+    call inv_mark
+.done:
+    RETURN
+ENDPROC
+
+; use_grid — one of every grid item is used up   clobbers: volatile registers
+PROC use_grid, 0, rbx
+    xor ebx, ebx
+.cell:
+    mov ecx, ebx
+    call cell_slot
+    cmp eax, -1
+    je .next
+    SLOT_PTR rdx, rax
+    cmp word [rdx + 2], 0
+    je .next
+    dec word [rdx + 2]
+    jnz .mark
+    mov qword [rdx], 0
+.mark:
+    mov ecx, eax
+    call inv_mark
+.next:
+    inc ebx
+    cmp ebx, 9
+    jb .cell
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; craft_take — a click on the result: craft once into the carried stack
+; (left or right), or with shift as many times as fit into the slots.
+;   in:  ecx = INVB_*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC craft_take, 0, rbx, rsi, rdi, r12
+    mov r12d, ecx
+    mov ebx, [rel g_recipe]
+    cmp ebx, -1
+    je .done
+    lea rax, [rel g_rec_result]
+    movzx esi, word [rax + rbx * 2]     ; item
+    lea rax, [rel g_rec_amount]
+    movzx edi, byte [rax + rbx]         ; amount
+    test r12d, INVB_SHIFT
+    jnz .shift
+    ; into the carried stack
+    lea rdx, [rel g_inv + INV_CURSOR * SLOT_SIZE]
+    movzx eax, word [rdx]
+    test eax, eax
+    jz .new
+    cmp eax, esi
+    jne .done                           ; carrying something else
+    mov ecx, esi
+    call inv_stack_of
+    lea rdx, [rel g_inv + INV_CURSOR * SLOT_SIZE]
+    movzx ecx, word [rdx + 2]
+    add ecx, edi
+    cmp ecx, eax
+    ja .done                            ; would not fit
+    mov [rdx + 2], cx
+    jmp .used
+.new:
+    mov [rdx], si
+    mov [rdx + 2], di
+    mov word [rdx + 4], 0
+.used:
+    mov ecx, INV_CURSOR
+    call inv_mark
+    call use_grid
+    call craft_update
+    jmp .done
+.shift:
+    mov r12d, MAX_REPEAT
+.again:
+    mov ecx, esi
+    call inv_room
+    cmp eax, edi
+    jb .done
+    mov ecx, esi
+    mov edx, edi
+    call inv_add
+    call use_grid
+    call craft_update
+    cmp [rel g_recipe], ebx
+    jne .done                           ; the grid ran out (or makes something else)
+    dec r12d
+    jnz .again
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; craft_recipe — the recipe book: lay a recipe's ingredients out in the grid
+; from the player's slots (what was in the grid goes back first). Once, or
+; with INVB_SHIFT as many times as the slots and stacks allow.
+;   in:  rcx = INV_PKT* (.slot = recipe, .arg = INVB_*)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define R_TIMES     0
+%define R_CELLS     4                   ; cells the recipe needs (grid cells)
+PROC craft_recipe, 16, rbx, rsi, rdi, r12, r13, r14
+    mov eax, [rcx + INV_PKT.arg]
+    mov edx, 1
+    test eax, INVB_SHIFT
+    jz .times
+    mov edx, MAX_REPEAT
+.times:
+    mov [LOCAL(R_TIMES)], edx
+    mov ebx, [rcx + INV_PKT.slot]
+    cmp ebx, [rel g_recipe_count]
+    jae .done
+    cmp dword [rel g_win_grid], 0
+    je .done
+    lea rax, [rel g_rec_ok]
+    cmp byte [rax + rbx], 0
+    je .done
+    lea rax, [rel g_rec_station]
+    movzx eax, byte [rax + rbx]
+    test eax, eax
+    jz .fits
+    cmp eax, [rel g_win_station]
+    jne .done
+.fits:
+    ; does it fit the grid?
+    mov ecx, [rel g_win_grid]
+    lea rax, [rel g_rec_w]
+    movzx eax, byte [rax + rbx]
+    test eax, eax
+    jz .shapeless
+    cmp eax, ecx
+    ja .done
+    lea rax, [rel g_rec_h]
+    movzx eax, byte [rax + rbx]
+    cmp eax, ecx
+    ja .done
+    jmp .clear
+.shapeless:
+    lea rax, [rel g_rec_n]
+    movzx eax, byte [rax + rbx]
+    imul ecx, ecx
+    cmp eax, ecx
+    ja .done
+.clear:
+    ; the grid back to the player first
+    mov r12d, INV_GRID
+.back:
+    cmp r12d, INV_RESULT
+    jae .laid
+    SLOT_PTR rsi, r12
+    movzx ecx, word [rsi]
+    test ecx, ecx
+    jz .back_next
+    movzx edx, word [rsi + 2]
+    mov qword [rsi], 0
+    call give
+    mov ecx, r12d
+    call inv_mark
+.back_next:
+    inc r12d
+    jmp .back
+.laid:
+    ; one set at a time: plan it on a copy of the counts, then move it
+.set:
+    lea rdi, [rel g_left]
+    xor ecx, ecx
+.copy:
+    SLOT_PTR rax, rcx
+    mov ax, [rax + 2]
+    mov [rdi + rcx * 2], ax
+    inc ecx
+    cmp ecx, INV_SLOTS
+    jb .copy
+    xor r12d, r12d                      ; recipe cell
+.plan:
+    cmp r12d, 9
+    jae .move
+    lea rax, [rel g_take]
+    mov dword [rax + r12 * 4], -1
+    call cell_pattern                   ; rcx = pattern, eax = grid cell
+    test rcx, rcx
+    jz .plan_next
+    mov r14, rcx
+    mov r13d, eax
+    ; the grid cell's item (a stack being added to must stay the same item,
+    ; and not grow past its stack size)
+    lea ecx, [r13d + INV_GRID]
+    SLOT_PTR rax, rcx
+    movzx edi, word [rax]
+    test edi, edi
+    jz .find
+    mov ecx, edi
+    call inv_stack_of
+    lea ecx, [r13d + INV_GRID]
+    SLOT_PTR rdx, rcx
+    movzx ecx, word [rdx + 2]
+    cmp ecx, eax
+    jae .move_none
+.find:
+    xor esi, esi
+.slot:
+    cmp esi, INV_SLOTS
+    jae .move_none                      ; nothing left for this cell
+    lea rax, [rel g_left]
+    cmp word [rax + rsi * 2], 0
+    je .slot_next
+    SLOT_PTR rax, rsi
+    movzx edx, word [rax]
+    test edi, edi
+    jz .any
+    cmp edx, edi
+    jne .slot_next
+.any:
+    mov rcx, r14
+    call recipe_cell_ok
+    test eax, eax
+    jnz .take
+.slot_next:
+    inc esi
+    jmp .slot
+.take:
+    lea rax, [rel g_left]
+    dec word [rax + rsi * 2]
+    lea rax, [rel g_take]
+    mov [rax + r12 * 4], esi
+.plan_next:
+    inc r12d
+    jmp .plan
+.move:
+    ; the plan worked: move one item per cell
+    xor r12d, r12d
+.mv:
+    cmp r12d, 9
+    jae .moved
+    lea rax, [rel g_take]
+    mov esi, [rax + r12 * 4]
+    cmp esi, -1
+    je .mv_next
+    call cell_pattern
+    lea r13d, [eax + INV_GRID]
+    SLOT_PTR rdx, rsi
+    SLOT_PTR r8, r13
+    mov ax, [rdx]
+    mov [r8], ax
+    inc word [r8 + 2]
+    mov ax, [rdx + 4]
+    mov [r8 + 4], ax
+    dec word [rdx + 2]
+    jnz .mv_mark
+    mov qword [rdx], 0
+.mv_mark:
+    mov ecx, esi
+    call inv_mark
+    mov ecx, r13d
+    call inv_mark
+.mv_next:
+    inc r12d
+    jmp .mv
+.moved:
+    dec dword [LOCAL(R_TIMES)]
+    jnz .set
+.move_none:
+    call craft_update
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; cell_pattern — recipe ebx's cell r12d: rcx = its item pattern (0 none),
+; eax = the grid cell it goes to (shaped: same row and column; shapeless:
+; the cells of the open grid in order).
+;   clobbers: rax, rcx, rdx
+; -----------------------------------------------------------------------------
+cell_pattern:
+    lea rax, [rel g_rec_w]
+    movzx eax, byte [rax + rbx]
+    test eax, eax
+    jz .shapeless
+    imul ecx, ebx, 9
+    add ecx, r12d
+    lea rax, [rel g_rec_cells]
+    mov rcx, [rax + rcx * 8]
+    mov eax, r12d
+    ret
+.shapeless:
+    lea rax, [rel g_rec_n]
+    movzx eax, byte [rax + rbx]
+    xor ecx, ecx
+    cmp r12d, eax
+    jae .none
+    imul ecx, ebx, 9
+    add ecx, r12d
+    lea rax, [rel g_rec_cells]
+    mov rcx, [rax + rcx * 8]
+    ; the r12d-th cell of the open grid
+    mov eax, r12d
+    xor edx, edx
+    push rcx
+    mov ecx, [rel g_win_grid]
+    div ecx                             ; eax = row, edx = column
+    pop rcx
+    imul eax, eax, 3
+    add eax, edx
+    ret
+.none:
+    xor eax, eax
+    ret

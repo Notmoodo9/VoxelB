@@ -1,0 +1,90 @@
+# Wood (milestone 18 part 3). `each = *_planks` makes one recipe per kind
+# of planks; "{}" is the wood (oak, birch ... red_mushroom ...). A copy
+# that names a block a wood does not have is left out by itself.
+
+# logs, bark, stems -> 4 planks (by hand)
+[recipe planks]
+each = *_planks
+shape = L
+L = {}_log, {}_bark, stripped_{}_log, {}_stem, stripped_{}_stem
+result = {}_planks 4
+
+[recipe sticks]
+shape = P / P
+P = *_planks
+result = stick 4
+
+[recipe workbench]
+shape = PP / PP
+P = *_planks
+result = workbench
+
+# ---- shapes from planks (a 3-wide one needs a workbench's grid) ----
+[recipe wood_slab]
+each = *_planks
+shape = PPP
+P = {}_planks
+result = {}_slab 6
+
+[recipe wood_stairs]
+each = *_planks
+shape = P.. / PP. / PPP
+P = {}_planks
+result = {}_stairs 4
+
+[recipe fence]
+each = *_planks
+shape = PSP / PSP
+P = {}_planks
+S = stick
+result = {}_fence 3
+
+[recipe fence_gate]
+each = *_planks
+shape = SPS / SPS
+P = {}_planks
+S = stick
+result = {}_fence_gate
+
+[recipe door]
+each = *_planks
+shape = PP / PP / PP
+P = {}_planks
+result = {}_door 3
+
+[recipe trapdoor]
+each = *_planks
+shape = PPP / PPP
+P = {}_planks
+result = {}_trapdoor 2
+
+[recipe ladder]
+each = *_planks
+shape = S.S / SPS / S.S
+P = {}_planks
+S = stick
+result = {}_ladder 4
+
+[recipe sign]
+each = *_planks
+shape = PPP / PPP / .S.
+P = {}_planks
+S = stick
+result = {}_sign 3
+
+[recipe pressure_plate]
+each = *_planks
+shape = PP
+P = {}_planks
+result = {}_pressure_plate
+
+[recipe carved_planks]
+each = *_planks
+shape = S / S
+S = {}_slab
+result = carved_{}_planks
+
+[recipe mossy_planks]
+each = *_planks
+ingredients = {}_planks, vine
+result = mossy_{}_planks
