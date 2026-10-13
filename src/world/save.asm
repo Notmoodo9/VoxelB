@@ -74,7 +74,7 @@ extern block_find, timer_elapsed_us, thumb_write
 extern g_seed_override, g_seed_override_set, g_force_flat, g_generator
 extern g_world_seed, g_time_override, g_sim_time
 extern g_cam_pos, g_cam_yaw, g_cam_pitch, g_held_block, g_block_names
-extern g_inv, g_inv_sel, craft_sync
+extern g_inv, g_inv_sel, craft_sync, station_find, g_station_names
 extern g_pl_pos, g_pl_eye, g_pl_flags, g_loaded, g_loaded_count
 
 IMPORT CreateFileA, ReadFile, WriteFile, CloseHandle, SetFilePointerEx
@@ -127,6 +127,12 @@ t_head_cont:    db "# VoxelB chests (written by the game; DATA_FORMAT.md)", 10, 
 t_container:    db 10, 10, "[container ", 0
 t_space:        db " ", 0
 t_bracket:      db "]", 0
+t_station:      db 10, "station = ", 0
+t_burn:         db 10, "burn = ", 0
+t_cook:         db 10, "cook = ", 0
+k_station_c:    db "station", 0
+k_burn:         db "burn", 0
+k_cook:         db "cook", 0
 str_tmp:        db ".tmp", 0
 str_r:          db "r.", 0
 str_dot:        db ".", 0
@@ -1618,6 +1624,14 @@ PROC save_load_containers, 0
     RETURN
 ENDPROC
 
+; cur_entry — rax = &g_conts[g_cur_cont]   clobbers: rax, rdx
+cur_entry:
+    mov eax, [rel g_cur_cont]
+    imul eax, eax, CONT_size
+    lea rdx, [rel g_conts]
+    add rax, rdx
+    ret
+
 ; parse_int — eax = the signed number at rcx (spaces skipped), rdx = past it
 parse_int:
     xor eax, eax
@@ -1685,6 +1699,46 @@ PROC cont_pair, 16, rbx, rsi
 .setting:
     cmp dword [rel g_cur_cont], -1
     je .done
+    lea rdx, [rel k_station_c]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_station
+    mov rcx, rsi
+    call station_find
+    cmp eax, 0
+    jle .done
+    mov ecx, eax
+    call cur_entry
+    mov [rax + CONT.station], cl
+    RETURN
+.not_station:
+    lea rdx, [rel k_burn]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_burn
+    mov rcx, rsi
+    call parse_int
+    mov [LOCAL(0)], eax
+    lea rcx, [rdx + 1]                  ; past ','
+    call parse_int
+    mov ecx, eax
+    call cur_entry
+    mov [rax + CONT.burn_max], ecx
+    mov ecx, [LOCAL(0)]
+    mov [rax + CONT.burn], ecx
+    RETURN
+.not_burn:
+    lea rdx, [rel k_cook]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_cook
+    mov rcx, rsi
+    call parse_int
+    mov ecx, eax
+    call cur_entry
+    mov [rax + CONT.cook], ecx
+    RETURN
+.not_cook:
     lea rdx, [rel k_slot]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
@@ -1731,6 +1785,8 @@ PROC write_containers, 16, rbx, rsi, rdi, r12
     cmp dword [rdi + CONT.used], 0
     je .cont_next
     ; anything in it?
+    cmp dword [rdi + CONT.burn], 0
+    jne .header
     xor ecx, ecx
 .any:
     cmp ecx, CONT_SLOTS
@@ -1758,6 +1814,36 @@ PROC write_containers, 16, rbx, rsi, rdi, r12
     lea rdx, [rel t_bracket]
     mov rcx, rax
     call str_copy
+    ; a furnace: its station and fire
+    movzx edx, byte [rdi + CONT.station]
+    test edx, edx
+    jz .slots
+    lea rcx, [rel g_station_names]
+    mov rsi, [rcx + rdx * 8 - 8]
+    lea rdx, [rel t_station]
+    mov rcx, rax
+    call str_copy
+    mov rdx, rsi
+    mov rcx, rax
+    call str_copy
+    cmp dword [rdi + CONT.burn_max], 0
+    je .slots
+    lea rdx, [rel t_burn]
+    mov rcx, rax
+    call str_copy
+    mov edx, [rdi + CONT.burn]
+    INVOKE str_append_dec, rax, rdx, 0
+    lea rdx, [rel t_comma]
+    mov rcx, rax
+    call str_copy
+    mov edx, [rdi + CONT.burn_max]
+    INVOKE str_append_dec, rax, rdx, 0
+    lea rdx, [rel t_cook]
+    mov rcx, rax
+    call str_copy
+    mov edx, [rdi + CONT.cook]
+    INVOKE str_append_dec, rax, rdx, 0
+.slots:
     xor esi, esi
 .slot:
     cmp esi, CONT_SLOTS

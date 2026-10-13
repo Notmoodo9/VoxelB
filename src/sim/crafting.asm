@@ -38,7 +38,7 @@
 
 global craft_reset, craft_window, craft_recipe, craft_update, craft_take
 global craft_tick, g_win_kind, g_win_grid, g_win_slots, g_win_station
-global craft_block_broken, craft_sync
+global craft_block_broken, craft_sync, g_win_cont
 
 extern g_inv, inv_mark, inv_stack_of, inv_room, inv_add, inv_cursor_back
 extern recipe_match, recipe_cell_ok, g_recipe_count, g_rec_result
@@ -46,7 +46,7 @@ extern g_rec_amount, g_rec_station, g_rec_w, g_rec_h, g_rec_n, g_rec_ok
 extern g_rec_cells, g_block_station, g_station_grid
 extern phys_block, drops_spawn, pkt_send, g_to_client
 extern g_pl_pos, g_pl_eye, g_station_slots, g_station_joins
-extern g_block_state, g_block_flags
+extern g_block_state, g_block_flags, g_station_kind
 
 %define SLOT_SIZE       8
 %define MAX_REACH_SQ    64.0            ; a station's window closes beyond 8 blocks
@@ -178,7 +178,7 @@ ENDPROC
 PROC close_window, 0, rbx, rsi
     ; a container: its slots go back into its store and leave the window
     cmp dword [rel g_win_kind], WIN_CHEST
-    jne .not_chest
+    jb .not_chest                       ; (a chest or a furnace)
     call craft_sync
     mov ebx, INV_CONTAINER
 .clear:
@@ -340,7 +340,7 @@ near_enough:
 ; -----------------------------------------------------------------------------
 PROC craft_tick, 0
     cmp dword [rel g_win_kind], WIN_CHEST
-    je .check
+    jae .check
     cmp dword [rel g_win_kind], WIN_CRAFTING
     jne .done
 .check:
@@ -402,6 +402,10 @@ PROC open_container, 16, rbx, rsi, rdi, r12
     je .done
     mov [rel g_win_cont], eax
     mov dword [rel g_win_cont + 4], -1
+    imul eax, eax, CONT_size
+    lea rcx, [rel g_conts]
+    mov edx, [LOCAL(O_ST)]
+    mov [rcx + rax + CONT.station], dl  ; (the furnace tick needs it)
     mov eax, [LOCAL(O_ST)]
     lea rcx, [rel g_station_slots]
     movzx ecx, byte [rcx + rax - 1]
@@ -500,6 +504,11 @@ PROC open_container, 16, rbx, rsi, rdi, r12
     mov eax, [LOCAL(O_ST)]
     mov [rel g_win_station], eax
     mov dword [rel g_win_kind], WIN_CHEST
+    lea rcx, [rel g_station_kind]
+    cmp byte [rcx + rax - 1], STATION_FURNACE
+    jne .kind
+    mov dword [rel g_win_kind], WIN_FURNACE
+.kind:
     mov dword [rel g_win_grid], 0
     call send_window
 .done:
@@ -512,7 +521,7 @@ ENDPROC
 ; -----------------------------------------------------------------------------
 PROC craft_sync, 0, rbx, rsi
     cmp dword [rel g_win_kind], WIN_CHEST
-    jne .done
+    jb .done
     xor esi, esi                        ; half
 .half:
     cmp esi, 2

@@ -47,3 +47,10 @@ tab = items
 [item adamantite_bar]
 texture = adamantite_bar
 tab = items
+
+# a burning furnace shows as its plain self (titles in the furnace window)
+[item furnace_lit]
+title = Furnace
+
+[item blast_furnace_lit]
+title = Blast furnace

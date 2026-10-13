@@ -42,9 +42,9 @@ global ui_wear_bar
 
 extern ui_frame, ui_end, ui_button, ui_panel, ui_label, ui_rect, ui_glass
 extern ui_text, ui_text_width, ui_hover, ui_textfield, ui_focus, ui_focused
-extern ui_icon, str_append_dec, pkt_send, g_to_sim
+extern ui_icon, str_append_dec, pkt_send, g_to_sim, world_block_at
 extern g_ui_vw, g_ui_vh, g_ui_mx, g_ui_my, g_ui_click, g_ui_rclick
-extern g_cinv, g_world_mode, g_cwin, g_cinv_ver
+extern g_cinv, g_world_mode, g_cwin, g_cinv_ver, g_cfurnace
 extern recipe_cell_ok, g_recipe_count, g_rec_result, g_rec_amount
 extern g_rec_station, g_rec_w, g_rec_h, g_rec_n, g_rec_ok, g_rec_cells
 
@@ -70,6 +70,7 @@ s_none:         db "Nothing found", 0
 s_crafting:     db "Crafting", 0
 s_chest:        db "Chest", 0
 s_large_chest:  db "Large chest", 0
+s_furnace:      db "Furnace", 0
 s_recipes:      db "Recipes", 0
 s_no_recipes:   db "Nothing to make", 0
 s_no_recipes2:  db "with what you have", 0
@@ -757,6 +758,91 @@ PROC slot_at, 0, rbx
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; furnace_area — input over the flame over the fuel, an arrow that fills
+; with the smelting, the output (g_cfurnace: the progress).
+;   in:  ecx = left, edx = top
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC furnace_area, 0, rbx, rsi, rdi
+    lea ebx, [ecx + 2 * STEP]           ; input / fuel column
+    mov esi, edx
+    mov ecx, ebx
+    mov edx, esi
+    mov r8d, INV_CONTAINER + 0
+    call slot_at
+    mov ecx, ebx
+    lea edx, [esi + 2 * STEP]
+    mov r8d, INV_CONTAINER + 1
+    call slot_at
+    ; the flame: a dark well, filled from the bottom by the fuel left
+    lea edi, [esi + STEP + 6]
+    mov dword [rsp + 32], 0x60000000
+    mov qword [rsp + 40], 0
+    mov qword [rsp + 48], 6
+    mov qword [rsp + 56], 0
+    lea ecx, [ebx + 14]
+    INVOKE ui_rect, rcx, rdi, 20, 28
+    movss xmm0, [rel g_cfurnace + FURNACE_PKT.burn]
+    mulss xmm0, [rel c_28]
+    cvttss2si r9d, xmm0
+    test r9d, r9d
+    jle .arrow
+    lea edx, [edi + 28]
+    sub edx, r9d
+    mov dword [rsp + 32], 0xFF1E8CFF    ; warm orange
+    mov qword [rsp + 40], 0
+    mov qword [rsp + 48], 6
+    mov qword [rsp + 56], 0
+    lea ecx, [ebx + 14]
+    INVOKE ui_rect, rcx, rdx, 20, r9
+.arrow:
+    ; the arrow: a bar that fills left to right
+    lea ecx, [ebx + STEP + 14]
+    lea edx, [esi + STEP + 18]
+    mov dword [rsp + 32], 0x60000000
+    mov qword [rsp + 40], 0
+    mov qword [rsp + 48], 4
+    mov qword [rsp + 56], 0
+    INVOKE ui_rect, rcx, rdx, 2 * STEP - 28, 12
+    movss xmm0, [rel g_cfurnace + FURNACE_PKT.cook]
+    mulss xmm0, [rel c_arrow]
+    cvttss2si r9d, xmm0
+    test r9d, r9d
+    jle .out
+    lea ecx, [ebx + STEP + 14]
+    lea edx, [esi + STEP + 18]
+    mov dword [rsp + 32], 0xF0F0F0F0
+    mov qword [rsp + 40], 0
+    mov qword [rsp + 48], 4
+    mov qword [rsp + 56], 0
+    INVOKE ui_rect, rcx, rdx, r9, 12
+.out:
+    lea ecx, [ebx + 3 * STEP]
+    lea edx, [esi + STEP]
+    mov r8d, INV_CONTAINER + 2
+    call slot_at
+    RETURN
+ENDPROC
+
+; furnace_title — rax = the title of the furnace block being used
+furnace_title:
+    sub rsp, 40
+    mov ecx, [rel g_cwin + WIN_PKT.pos]
+    mov edx, [rel g_cwin + WIN_PKT.pos + 4]
+    mov r8d, [rel g_cwin + WIN_PKT.pos + 8]
+    call world_block_at
+    lea rcx, [rel g_block_item]
+    movzx eax, word [rcx + rax * 2]
+    lea rcx, [rel g_item_titles]
+    mov rax, [rcx + rax * 8]
+    test rax, rax
+    jnz .done
+    lea rax, [rel s_furnace]
+.done:
+    add rsp, 40
+    ret
+
+; -----------------------------------------------------------------------------
 ; can_make — eax = 1 if recipe ebx can be made from g_avail_* (each cell
 ; takes one item from the first stack that fits; the counts are used up).
 ;   clobbers: volatile registers (keeps rbx)
@@ -1072,13 +1158,18 @@ PROC inv_screen_frame, 24, rbx, rsi, rdi, r12
     mov [LOCAL(F_GRID)], eax
     mov dword [LOCAL(F_ROWS)], 0
     cmp dword [rel g_cwin + WIN_PKT.kind], WIN_CHEST
-    jne .not_chest
-    ; a chest: its rows of 9 above the player's slots
+    jb .not_chest
+    ; a chest: its rows of 9 above the player's slots (a furnace: 3 rows'
+    ; room for its slots)
     mov eax, [rel g_cwin + WIN_PKT.slots]
     add eax, INV_HOTBAR - 1
     xor edx, edx
     mov ecx, INV_HOTBAR
     div ecx
+    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_FURNACE
+    jne .rows
+    mov eax, 3
+.rows:
     mov [LOCAL(F_ROWS)], eax
     mov dword [LOCAL(F_GRID)], 0
     mov dword [rel g_creative], 0
@@ -1140,6 +1231,13 @@ PROC inv_screen_frame, 24, rbx, rsi, rdi, r12
 .title_chest:
     cmp dword [LOCAL(F_ROWS)], 0
     je .title
+    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_FURNACE
+    jne .chest_title
+    ; a furnace: the name of its block
+    call furnace_title
+    mov rcx, rax
+    jmp .title
+.chest_title:
     lea rcx, [rel s_chest]
     cmp dword [LOCAL(F_ROWS)], 3
     jbe .title
@@ -1152,6 +1250,13 @@ PROC inv_screen_frame, 24, rbx, rsi, rdi, r12
     INVOKE ui_label, rcx, [LOCAL(F_IX)], r8, 24
     cmp dword [LOCAL(F_ROWS)], 0
     je .crafting
+    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_FURNACE
+    jne .chest_slots
+    mov edx, [rel g_py]
+    add edx, 18 + 34
+    INVOKE furnace_area, [LOCAL(F_IX)], rdx
+    jmp .slots
+.chest_slots:
     ; the container's slots
     xor ebx, ebx
 .cslot:
@@ -1275,6 +1380,8 @@ section .rdata
 s_empty:        db 0
 align 4
 c_255:          dd 255.0
+c_28:           dd 28.0
+c_arrow:        dd 76.0                 ; 2 * STEP - 28
 s_arrow:        db ">", 0
 section .bss
 alignb 8

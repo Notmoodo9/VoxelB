@@ -68,6 +68,7 @@ endstruc
 %define WIN_INVENTORY       1           ; E: 2 x 2 crafting by hand
 %define WIN_CRAFTING        2           ; a crafting station (S_WINDOW .grid 3)
 %define WIN_CHEST           3           ; a container (S_WINDOW .slots)
+%define WIN_FURNACE         4           ; a furnace: input, fuel, output (container slots 0-2)
 %define WIN_USE             15          ; C_WINDOW: use the block at .pos
 struc WIN_PKT
     .kind       resd 1                  ; WIN_*
@@ -109,6 +110,12 @@ endstruc
 %define PKT_S_DROP          70          ; DROP_PKT: a dropped item appeared / moved
 %define PKT_S_DROP_GONE     71          ; DROP_PKT .id: picked up or gone
 %define PKT_S_WINDOW        72          ; WIN_PKT: the window opened / closed (WIN_NONE)
+%define PKT_S_FURNACE       73          ; FURNACE_PKT: the open furnace's progress (every tick)
+
+struc FURNACE_PKT
+    .cook       resd 1                  ; f32 0..1: the item being smelted
+    .burn       resd 1                  ; f32 0..1: fuel left (0: not burning)
+endstruc
 
 struc DIG_PKT
     .pos        resd 3                  ; i32 block

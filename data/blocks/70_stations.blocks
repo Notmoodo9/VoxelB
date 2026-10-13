@@ -9,3 +9,23 @@ textures = side: workbench_side, top: workbench_top, bottom: oak_planks
 [block chest]
 shape    = facing
 textures = side: chest_side, top: chest_top, bottom: chest_top, north: chest_front
+
+# furnaces (milestone 18 part 4): the `_lit` block is shown while the fire
+# burns (data/recipes: [furnace]); it glows warm and lights its corner
+[block furnace]
+shape    = facing
+textures = side: furnace_side, top: furnace_top, bottom: furnace_top, north: furnace_front
+
+[block furnace_lit]
+shape    = facing
+textures = side: furnace_side, top: furnace_top, bottom: furnace_top, north: furnace_front_lit
+light    = 13, 8, 3
+
+[block blast_furnace]
+shape    = facing
+textures = side: blast_furnace_side, top: blast_furnace_top, bottom: blast_furnace_top, north: blast_furnace_front
+
+[block blast_furnace_lit]
+shape    = facing
+textures = side: blast_furnace_side, top: blast_furnace_top, bottom: blast_furnace_top, north: blast_furnace_front_lit
+light    = 14, 9, 4

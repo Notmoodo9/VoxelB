@@ -4,6 +4,12 @@
 ;
 ; data/recipes/*.recipes (file-name order):
 ;   [station <name>]   block = workbench   grid = 3
+;   [furnace <name>]   block = furnace  lit = furnace_lit  speed = 1
+;                      blast = 1 (can smelt `blast` recipes): input, fuel,
+;                      output; the block becomes `lit` while it burns
+;   [smelt <name>]     input = *iron_ore  result = iron_bar [n]  seconds = 10
+;                      blast = 1 (only in a furnace with blast = 1)
+;   [fuel]             <item pattern> = seconds   (one line per fuel)
 ;   [container <name>] block = chest  slots = 27  joins = 1  (a container:
 ;                      right click opens its slots; joins: two side by side
 ;                      with the same facing make one of twice the slots)
@@ -32,7 +38,13 @@
 ;   g_rec_cells (9 patterns per recipe, row by row; shapeless: the list)
 ;   g_block_station (u8 per block id: its station, 0 none), g_station_grid,
 ;   g_station_slots (u8: a container's slots, 0 = a crafting station),
-;   g_station_joins (u8)
+;   g_station_joins (u8), g_station_kind (u8 STATION_*), g_station_speed (u8),
+;   g_station_blast (u8), g_station_lit (u16 base block id, 0 none),
+;   g_station_unlit (u16 base block id of `block`)
+;   station_find(rcx = name) -> eax station + 1, -1 none
+;   smelt_find(ecx = item, edx = 1 in a blast furnace) -> eax smelt, -1
+;   g_smelt_result (u16), g_smelt_amount (u8), g_smelt_ticks (u32)
+;   fuel_ticks(ecx = item) -> eax ticks it burns (0: not a fuel)
 ; =============================================================================
 %include "macros.inc"
 %include "log.inc"
@@ -46,9 +58,11 @@ global recipes_load, recipe_match
 global g_recipe_count, g_rec_result, g_rec_amount, g_rec_station, g_rec_w
 global g_rec_h, g_rec_cells, g_block_station, g_station_grid, g_station_count
 global g_rec_n, g_rec_ok, g_rec_names, g_station_names, recipe_cell_ok
-global g_station_slots, g_station_joins
+global g_station_slots, g_station_joins, g_station_kind, g_station_speed
+global g_station_blast, g_station_lit, g_station_unlit, station_find
+global smelt_find, fuel_ticks, g_smelt_result, g_smelt_amount, g_smelt_ticks
 
-extern str_ieq, str_len, str_parse_u64, str_dup, str_copy
+extern str_ieq, str_len, str_parse_u64, str_dup, str_copy, str_parse_float
 
 IMPORT FindFirstFileA, FindNextFileA, FindClose
 
@@ -61,6 +75,10 @@ IMPORT FindFirstFileA, FindNextFileA, FindClose
 %define REC_NONE        0
 %define REC_RECIPE      1
 %define REC_STATION     2
+%define REC_SMELT       3
+%define REC_FUEL        4
+%define MAX_SMELTS      256
+%define MAX_FUELS       64
 
 section .rdata
 str_pattern:    db "data\recipes\*.recipes", 0
@@ -70,6 +88,14 @@ k_station:      db "station", 0
 k_container:    db "container", 0
 k_slots:        db "slots", 0
 k_joins:        db "joins", 0
+k_furnace:      db "furnace", 0
+k_smelt:        db "smelt", 0
+k_fuel:         db "fuel", 0
+k_lit:          db "lit", 0
+k_speed:        db "speed", 0
+k_blast:        db "blast", 0
+k_input:        db "input", 0
+k_seconds:      db "seconds", 0
 k_block:        db "block", 0
 k_grid:         db "grid", 0
 k_shape:        db "shape", 0
@@ -125,6 +151,10 @@ str_check_bad:  db "recipes: self-check FAIL case ", 0
 k_each:         db "each", 0
 k_only:         db "only", 0
 str_usable:     db " usable of ", 0
+str_smelts:     db ", smelting ", 0
+str_fuels:      db ", fuels ", 0
+align 4
+c_20:           dd 20.0
 
 section .bss
 alignb 8
@@ -143,6 +173,23 @@ g_rec_ok:       resb MAX_RECIPES
 g_station_grid: resb MAX_STATIONS
 g_station_slots: resb MAX_STATIONS
 g_station_joins: resb MAX_STATIONS
+g_station_kind: resb MAX_STATIONS
+g_station_speed: resb MAX_STATIONS
+g_station_blast: resb MAX_STATIONS
+alignb 2
+g_station_lit:  resw MAX_STATIONS
+g_station_unlit: resw MAX_STATIONS
+g_smelt_result: resw MAX_SMELTS
+g_smelt_amount: resb MAX_SMELTS
+g_smelt_blast:  resb MAX_SMELTS
+alignb 8
+g_smelt_input:  resq MAX_SMELTS         ; item patterns
+g_fuel_pat:     resq MAX_FUELS
+alignb 4
+g_smelt_ticks:  resd MAX_SMELTS
+g_fuel_tick:    resd MAX_FUELS
+g_smelt_count:  resd 1
+g_fuel_count:   resd 1
 g_block_station: resb 65536
 alignb 4
 g_recipe_count: resd 1
@@ -183,7 +230,7 @@ PROC warn, 0
     RETURN
 ENDPROC
 
-; station_find — eax = station index of name rcx, -1   clobbers: volatile
+; station_find — eax = station index + 1 of name rcx, -1   clobbers: volatile
 PROC station_find, 0, rbx, rsi
     mov rsi, rcx
     xor ebx, ebx
@@ -216,6 +263,13 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     jnz .setting
     call flush_record
     mov dword [rel g_kind], REC_NONE
+    lea rdx, [rel k_fuel]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .named
+    mov dword [rel g_kind], REC_FUEL
+    RETURN
+.named:
     mov rdi, rbx
 .word:
     mov al, [rdi]
@@ -243,6 +297,14 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     INVOKE str_ieq, rbx, rdx
     test eax, eax
     jnz .container
+    lea rdx, [rel k_furnace]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jnz .furnace
+    lea rdx, [rel k_smelt]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jnz .smelt
 .bad_header:
     lea rcx, [rel str_unknown]
     mov rdx, rbx
@@ -256,13 +318,32 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     mov dword [rel g_npairs], 0
     mov dword [rel g_kind], REC_RECIPE
     RETURN
+.smelt:
+    mov eax, [rel g_smelt_count]
+    cmp eax, MAX_SMELTS
+    jae .full
+    inc dword [rel g_smelt_count]
+    mov [rel g_cur], eax
+    lea rcx, [rel g_smelt_amount]
+    mov byte [rcx + rax], 1
+    lea rcx, [rel g_smelt_ticks]
+    mov dword [rcx + rax * 4], 200      ; 10 s
+    mov dword [rel g_kind], REC_SMELT
+    RETURN
 .station:
     mov ecx, 3                          ; a crafting grid
     xor edx, edx
+    mov r9d, STATION_CRAFTING
     jmp .usable
 .container:
     xor ecx, ecx                        ; slots, no grid
     mov edx, 27
+    mov r9d, STATION_CONTAINER
+    jmp .usable
+.furnace:
+    xor ecx, ecx
+    mov edx, 3                          ; input, fuel, output
+    mov r9d, STATION_FURNACE
 .usable:
     mov eax, [rel g_station_count]
     cmp eax, MAX_STATIONS
@@ -275,6 +356,10 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     mov [r8 + rax], cl
     lea r8, [rel g_station_slots]
     mov [r8 + rax], dl
+    lea r8, [rel g_station_kind]
+    mov [r8 + rax], r9b
+    lea r8, [rel g_station_speed]
+    mov byte [r8 + rax], 1
     mov dword [rel g_kind], REC_STATION
     RETURN
 .full:
@@ -287,6 +372,10 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     mov edi, [rel g_cur]
     cmp dword [rel g_kind], REC_STATION
     je .station_setting
+    cmp dword [rel g_kind], REC_SMELT
+    je .smelt_setting
+    cmp dword [rel g_kind], REC_FUEL
+    je .fuel_setting
     cmp dword [rel g_kind], REC_RECIPE
     jne .done
     cmp dword [rel g_applying], 0
@@ -431,6 +520,96 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     call warn
     RETURN
 
+.fuel_setting:
+    ; <item pattern> = seconds
+    mov eax, [rel g_fuel_count]
+    cmp eax, MAX_FUELS
+    jae .full_fuel
+    mov rcx, rsi
+    call str_parse_float
+    mulss xmm0, [rel c_20]
+    cvtss2si ecx, xmm0
+    cmp ecx, 0
+    jle .bad
+    mov eax, [rel g_fuel_count]
+    lea rdx, [rel g_fuel_tick]
+    mov [rdx + rax * 4], ecx
+    lea rdx, [rel g_fuel_pat]
+    mov [rdx + rax * 8], rbx
+    inc dword [rel g_fuel_count]
+    RETURN
+.full_fuel:
+    lea rcx, [rel str_full]
+    mov rdx, rbx
+    call warn
+    RETURN
+.smelt_setting:
+    lea rdx, [rel k_input]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_input
+    lea rax, [rel g_smelt_input]
+    mov [rax + rdi * 8], rsi
+    RETURN
+.not_input:
+    lea rdx, [rel k_seconds]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_seconds
+    mov rcx, rsi
+    call str_parse_float
+    mulss xmm0, [rel c_20]
+    cvtss2si ecx, xmm0
+    cmp ecx, 1
+    jl .bad
+    lea rax, [rel g_smelt_ticks]
+    mov [rax + rdi * 4], ecx
+    RETURN
+.not_seconds:
+    lea rdx, [rel k_blast]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_smelt_blast
+    mov rcx, rsi
+    call str_parse_u64
+    test rax, rax
+    setnz al
+    lea rcx, [rel g_smelt_blast]
+    mov [rcx + rdi], al
+    RETURN
+.not_smelt_blast:
+    lea rdx, [rel k_result]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .unknown
+    ; "<item> [count]"
+    mov rbx, rsi
+.s_end:
+    mov al, [rbx]
+    test al, al
+    jz .s_name
+    cmp al, ' '
+    je .s_count
+    inc rbx
+    jmp .s_end
+.s_count:
+    mov byte [rbx], 0
+    lea rcx, [rbx + 1]
+    call str_parse_u64
+    test rax, rax
+    jz .s_name
+    cmp rax, 64
+    ja .bad
+    lea rcx, [rel g_smelt_amount]
+    mov [rcx + rdi], al
+.s_name:
+    mov rcx, rsi
+    call item_find
+    cmp eax, 0
+    jle .no_item
+    lea rcx, [rel g_smelt_result]
+    mov [rcx + rdi * 2], ax
+    RETURN
 .station_setting:
     lea rdx, [rel k_block]
     INVOKE str_ieq, rbx, rdx
@@ -440,6 +619,9 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     call block_find
     cmp eax, 0
     jle .no_block
+    lea rcx, [rel g_station_unlit]
+    mov [rcx + rdi * 2], ax
+.map_states:
     ; every state of the block (a facing ...)
     lea rcx, [rel g_block_nstates]
     movzx r8d, word [rcx + rax * 2]
@@ -462,6 +644,44 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     call warn
     RETURN
 .not_block:
+    lea rdx, [rel k_lit]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_lit
+    mov rcx, rsi
+    call block_find
+    cmp eax, 0
+    jle .no_block
+    lea rcx, [rel g_station_lit]
+    mov [rcx + rdi * 2], ax
+    jmp .map_states                     ; (the lit block is the station too)
+.not_lit:
+    lea rdx, [rel k_speed]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_speed
+    mov rcx, rsi
+    call str_parse_u64
+    cmp rax, 1
+    jb .bad
+    cmp rax, 8
+    ja .bad
+    lea rcx, [rel g_station_speed]
+    mov [rcx + rdi], al
+    RETURN
+.not_speed:
+    lea rdx, [rel k_blast]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_station_blast
+    mov rcx, rsi
+    call str_parse_u64
+    test rax, rax
+    setnz al
+    lea rcx, [rel g_station_blast]
+    mov [rcx + rdi], al
+    RETURN
+.not_station_blast:
     lea rdx, [rel k_slots]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
@@ -1044,6 +1264,14 @@ PROC recipes_load, 16, rbx, rsi
     call log_append_str
     mov ecx, [rel g_station_count]
     call log_append_dec
+    lea rcx, [rel str_smelts]
+    call log_append_str
+    mov ecx, [rel g_smelt_count]
+    call log_append_dec
+    lea rcx, [rel str_fuels]
+    call log_append_str
+    mov ecx, [rel g_fuel_count]
+    call log_append_dec
     call log_end
 %if BUILD_DEBUG
     call recipes_selfcheck
@@ -1128,6 +1356,78 @@ PROC recipes_selfcheck, 32, rbx, rsi, rdi
     RETURN
 ENDPROC
 %endif
+
+; -----------------------------------------------------------------------------
+; smelt_find — the smelting of item ecx (edx = 1: in a blast furnace, which
+; also does the `blast` ones).
+;   out: eax = smelt index, -1 none
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC smelt_find, 0, rbx, rsi, rdi
+    test ecx, ecx
+    jz .none
+    mov edi, edx
+    lea rax, [rel g_item_names]
+    mov rsi, [rax + rcx * 8]
+    xor ebx, ebx
+.s:
+    cmp ebx, [rel g_smelt_count]
+    jae .none
+    lea rax, [rel g_smelt_result]
+    cmp word [rax + rbx * 2], 0
+    je .next
+    lea rax, [rel g_smelt_blast]
+    cmp byte [rax + rbx], 0
+    je .any
+    test edi, edi
+    jz .next
+.any:
+    lea rax, [rel g_smelt_input]
+    mov rcx, [rax + rbx * 8]
+    test rcx, rcx
+    jz .next
+    mov rdx, rsi
+    call items_match_list
+    test eax, eax
+    jnz .found
+.next:
+    inc ebx
+    jmp .s
+.found:
+    mov eax, ebx
+    RETURN
+.none:
+    mov eax, -1
+    RETURN
+ENDPROC
+
+; fuel_ticks — eax = how long item ecx burns (ticks), 0 if it is no fuel
+;   clobbers: volatile registers
+PROC fuel_ticks, 0, rbx, rsi
+    xor eax, eax
+    test ecx, ecx
+    jz .done
+    lea rax, [rel g_item_names]
+    mov rsi, [rax + rcx * 8]
+    xor ebx, ebx
+.f:
+    xor eax, eax
+    cmp ebx, [rel g_fuel_count]
+    jae .done
+    lea rax, [rel g_fuel_pat]
+    mov rcx, [rax + rbx * 8]
+    mov rdx, rsi
+    call items_match_list
+    test eax, eax
+    jnz .found
+    inc ebx
+    jmp .f
+.found:
+    lea rax, [rel g_fuel_tick]
+    mov eax, [rax + rbx * 4]
+.done:
+    RETURN
+ENDPROC
 
 ; cell_ok (recipe_cell_ok) — eax = 1 if item edx fits pattern rcx (no
 ; pattern: the cell must be empty)   clobbers: volatile registers

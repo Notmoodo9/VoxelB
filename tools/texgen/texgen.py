@@ -2384,6 +2384,62 @@ def make_stations(out):
         out[name] = img
 
 
+def make_furnaces(out):
+    """Furnace and blast furnace (milestone 18 part 4): stone / iron-banded
+    bodies, a dark mouth in front that glows with fire when lit."""
+    for name, base, band in (("furnace", "8a8f96", None), ("blast_furnace", "5f636b", "aab3bd")):
+        r = rng(name)
+        pal = ramp(base, 6, spread=0.18, hue_shift=0.01)
+        body = rgba(stone(r, base))
+        # a frame of dressed stone
+        for i in range(N):
+            for j in (0, N - 1):
+                body[i, j, :3] = pal[1]
+                body[j, i, :3] = pal[1] if j else pal[4]
+        if band:
+            bp = ramp(band, 6, spread=0.2, sat_boost=0.5)
+            for y in (3, 12):
+                body[y, 1:N - 1, :3] = bp[3]
+                body[y + 1, 1:N - 1, :3] = bp[1]
+            for x in (3, 12):
+                for y in (3, 12):
+                    body[y, x, :3] = bp[5]       # rivets
+        top = body.copy()
+        if name == "furnace":
+            top[5:11, 5:11, :3] = pal[0]         # the flue
+            top[6:10, 6:10, :3] = (0.08, 0.07, 0.07)
+        else:
+            for x in range(4, 12, 2):
+                top[4:12, x, :3] = (0.1, 0.09, 0.09)   # vents
+        out[f"{name}_side"] = body
+        out[f"{name}_top"] = top
+        for lit in (False, True):
+            front = body.copy()
+            mx0, mx1, my0, my1 = 4, 12, 8, 14
+            front[my0 - 1, mx0 - 1:mx1 + 1, :3] = pal[5]       # lintel
+            glow = np.zeros((N, N))
+            for y in range(my0, my1):
+                for x in range(mx0, mx1):
+                    if lit:
+                        h = (my1 - 1 - y) / (my1 - my0)
+                        flick = 0.15 * np.sin(x * 2.1 + y)
+                        t = np.clip(h + flick, 0, 1)
+                        front[y, x, :3] = (1.0, 0.85 - 0.55 * t, 0.25 - 0.2 * t) if (x + y) % 3 else (1.0, 0.95, 0.5)
+                        glow[y, x] = 1.0 - 0.4 * t
+                    else:
+                        front[y, x, :3] = (0.07, 0.06, 0.06)
+            for x in range(mx0, mx1, 2):
+                front[my1 - 1, x, :3] = pal[0]                # grate
+            # vents above the mouth
+            for x in (5, 7, 9):
+                front[4, x, :3] = (0.1, 0.09, 0.09)
+                front[5, x, :3] = (0.1, 0.09, 0.09)
+            key = f"{name}_front_lit" if lit else f"{name}_front"
+            out[key] = front
+            if lit:
+                out[key + "_glow"] = glow_layer(glow, "ff8a2a", 1.0)
+
+
 def build_all():
     out = {}
     make_terrain(out)
@@ -2413,6 +2469,7 @@ def build_all():
     make_crystal_caves(out)
     make_river(out)
     make_stations(out)
+    make_furnaces(out)
     return out
 
 

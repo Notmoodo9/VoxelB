@@ -48,3 +48,16 @@ each = *_pane
 shape = GGG / GGG
 G = {}
 result = {}_pane 16
+
+# ---- furnaces (milestone 18 part 4) ----
+[recipe furnace]
+shape = CCC / C.C / CCC
+C = cobblestone, mossy_cobblestone
+result = furnace
+
+[recipe blast_furnace]
+shape = III / IFI / SSS
+I = iron_bar
+F = furnace
+S = smooth_stone
+result = blast_furnace

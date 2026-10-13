@@ -32,7 +32,7 @@
 
 global client_init, client_input, client_view, g_cl_player, g_cinv, g_csel
 global client_select, client_input_idle, g_dig_pos, g_dig_progress
-global g_cwin, g_cwin_event, g_cinv_ver
+global g_cwin, g_cwin_event, g_cinv_ver, g_cfurnace
 
 extern g_cam_yaw, g_cam_pitch, g_cam_pos, g_sim_alpha
 extern daycycle_set, timer_elapsed_us
@@ -60,6 +60,7 @@ g_cinv:         resq INV_ALL
 g_cwin:         resb WIN_PKT_size
 g_cwin_event:   resd 1
 g_cinv_ver:     resd 1                  ; counts slot changes
+g_cfurnace:     resb FURNACE_PKT_size   ; the open furnace's progress
 g_csel:         resd 1
 g_dig_pos:      resd 3
 g_dig_progress: resd 1
@@ -359,6 +360,12 @@ PROC client_view, 0, rsi, rdi
     mov dword [rel g_cwin_event], 1
     jmp .packet
 .not_window:
+    cmp eax, PKT_S_FURNACE
+    jne .not_furnace
+    mov rax, [rel g_cl_pkt + PKT.data]
+    mov [rel g_cfurnace], rax
+    jmp .packet
+.not_furnace:
     cmp eax, PKT_S_DROP
     je .drop
     cmp eax, PKT_S_DROP_GONE

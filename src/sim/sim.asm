@@ -34,7 +34,7 @@ extern player_load, player_spawn, player_tick, player_toggle_fly, player_fill
 extern edit_request, edit_tick, fluid_tick
 extern inv_init, inv_packet, inv_selected_block, inv_used_selected, inv_flush
 extern dig_reset, dig_tick, drops_reset, drops_tick, g_world_mode
-extern craft_reset, craft_window, craft_recipe, craft_tick
+extern craft_reset, craft_window, craft_recipe, craft_tick, furnace_tick
 extern cont_reset, save_load_containers, g_block_flags
 extern timer_elapsed_us, g_frame_us, g_time_of_day, g_day_length
 
@@ -218,6 +218,7 @@ PROC sim_tick, 16, rbx, rsi, rdi
     call dig_tick                       ; Survival mining (milestone 18)
     call drops_tick                     ; dropped items
     call craft_tick                     ; a station's window closes far away
+    call furnace_tick                   ; furnaces burn and smelt
     call edit_tick                      ; block changes (they wait for busy columns)
     call inv_flush                      ; changed inventory slots to the client
     mov rcx, [rel g_sim_tick]

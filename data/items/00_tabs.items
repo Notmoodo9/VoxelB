@@ -7,7 +7,7 @@
 [tab building]
 title = Building
 icon = stone_bricks
-blocks = workbench, chest, *_planks, *bricks, *_bookshelf, stone, cobblestone, mossy_cobblestone, smooth_stone, sandstone, *_log, *_bark, stripped_*, *_stem, *_cap, *_gills
+blocks = workbench, chest, furnace, blast_furnace, *_planks, *bricks, *_bookshelf, stone, cobblestone, mossy_cobblestone, smooth_stone, sandstone, *_log, *_bark, stripped_*, *_stem, *_cap, *_gills
 
 [tab shapes]
 title = Shapes
@@ -43,4 +43,4 @@ icon = grass_block
 
 # Placed by the game (a sign against a wall), not picked from the inventory.
 [hidden]
-blocks = *_wall_sign
+blocks = *_wall_sign, furnace_lit, blast_furnace_lit

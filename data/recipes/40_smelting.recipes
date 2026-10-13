@@ -1,0 +1,56 @@
+# Smelting (milestone 18 part 4, design/items/items_inventory.md).
+# [smelt <name>]  input = item patterns, result = item [count],
+# seconds = time in a furnace of speed 1 (default 10), blast = 1: only in a
+# blast furnace. Diamond, emerald and star crystal ores drop the gem ready.
+
+[smelt copper_bar]
+input = copper_ore, deep_copper_ore
+result = copper_bar
+
+[smelt iron_bar]
+input = iron_ore, deep_iron_ore
+result = iron_bar
+
+[smelt silver_bar]
+input = silver_ore, deep_silver_ore
+result = silver_bar
+
+[smelt gold_bar]
+input = gold_ore, deep_gold_ore
+result = gold_bar
+
+[smelt mythril_bar]
+input = mythril_ore
+result = mythril_bar
+seconds = 16
+blast = 1
+
+[smelt adamantite_bar]
+input = adamantite_ore
+result = adamantite_bar
+seconds = 20
+blast = 1
+
+[smelt glass]
+input = sand, red_sand
+result = glass
+
+[smelt stone]
+input = cobblestone
+result = stone
+
+[smelt smooth_stone]
+input = stone
+result = smooth_stone
+
+[smelt bricks]
+input = clay
+result = bricks
+
+# Fuels: <item pattern> = seconds it burns (one item smelts in 10 s).
+[fuel]
+coal = 80
+*_log, *_bark, stripped_*_log = 15
+*_planks = 15
+*_stem, stripped_*_stem = 15
+stick = 5

@@ -40,6 +40,7 @@ global inv_flush, g_inv, g_inv_sel, inv_mark, inv_stack_of, inv_room
 global inv_cursor_back
 
 extern craft_update, craft_take, g_win_grid, g_win_slots, g_win_kind
+extern smelt_find, fuel_ticks, g_station_blast, g_win_station
 
 extern pkt_send, g_world_mode, g_held_block
 extern g_save_inv, g_save_inv_loaded, g_save_inv_sel
@@ -437,6 +438,35 @@ PROC click, 0, rbx, rsi, rdi, r12, r13
     lea eax, [ebx - INV_CONTAINER]
     cmp eax, [rel g_win_slots]
     jae .done
+    ; a furnace's output: only taken from
+    cmp dword [rel g_win_kind], WIN_FURNACE
+    jne .valid
+    cmp eax, 2
+    jne .valid
+    test r12d, INVB_SHIFT
+    jnz .valid                          ; (shift: into the slots)
+    SLOT_PTR rsi, rbx
+    lea rdi, [rel g_inv + INV_CURSOR * SLOT_SIZE]
+    movzx ecx, word [rsi + SLOT_ITEM]
+    test ecx, ecx
+    jz .done
+    movzx edx, word [rdi + SLOT_ITEM]
+    test edx, edx
+    jz .swap                            ; empty hand: take it all
+    cmp edx, ecx
+    jne .done
+    call stack_of                       ; (ecx = the item)
+    movzx ecx, word [rdi + SLOT_COUNT]
+    sub eax, ecx                        ; room in the hand
+    jle .done
+    movzx ecx, word [rsi + SLOT_COUNT]
+    cmp eax, ecx
+    cmova eax, ecx
+    add [rdi + SLOT_COUNT], ax
+    sub [rsi + SLOT_COUNT], ax
+    jnz .marks
+    mov qword [rsi], 0
+    jmp .marks
 .valid:
     SLOT_PTR rsi, rbx                   ; the slot
     lea rdi, [rel g_inv + INV_CURSOR * SLOT_SIZE]   ; the cursor
@@ -532,10 +562,29 @@ PROC click, 0, rbx, rsi, rdi, r12, r13
     jae .range
     cmp dword [rel g_win_slots], 0
     je .halves
+    cmp dword [rel g_win_kind], WIN_FURNACE
+    je .to_furnace
     mov r8d, INV_CONTAINER
     mov r9d, [rel g_win_slots]
     add r9d, INV_CONTAINER
     jmp .range
+.to_furnace:
+    ; something it smelts: the input; a fuel: the fuel slot; else as usual
+    movzx ecx, r13w
+    mov eax, [rel g_win_station]
+    lea rdx, [rel g_station_blast]
+    movzx edx, byte [rdx + rax - 1]
+    call smelt_find
+    mov r8d, INV_CONTAINER + 0
+    mov r9d, INV_CONTAINER + 1
+    cmp eax, -1
+    jne .range
+    movzx ecx, r13w
+    call fuel_ticks
+    mov r8d, INV_CONTAINER + 1
+    mov r9d, INV_CONTAINER + 2
+    test eax, eax
+    jnz .range
 .halves:
     xor r8d, r8d
     mov r9d, INV_HOTBAR

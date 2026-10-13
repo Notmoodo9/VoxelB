@@ -94,6 +94,10 @@ PROC cont_get, 0
     mov [r9 + CONT.y], edx
     mov [r9 + CONT.z], r8d
     mov dword [r9 + CONT.used], 1
+    mov dword [r9 + CONT.station], 0    ; (station, lit, pad)
+    mov dword [r9 + CONT.burn], 0
+    mov dword [r9 + CONT.burn_max], 0
+    mov dword [r9 + CONT.cook], 0
     lea r10, [r9 + CONT.slots]
     mov r11d, CONT_SLOTS
 .clear:

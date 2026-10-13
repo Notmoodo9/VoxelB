@@ -15,3 +15,17 @@ grid = 3
 block = chest
 slots = 27
 joins = 1
+
+# Furnaces: input, fuel, output; the block becomes `lit` while it burns.
+# `speed` smelts (and burns fuel) that many times faster; `blast = 1` also
+# smelts the [smelt] recipes marked blast (data/recipes/40_smelting.recipes).
+[furnace furnace]
+block = furnace
+lit = furnace_lit
+speed = 1
+
+[furnace blast_furnace]
+block = blast_furnace
+lit = blast_furnace_lit
+speed = 2
+blast = 1

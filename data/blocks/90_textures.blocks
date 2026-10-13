@@ -167,3 +167,9 @@ glow        = pink_glow_pool_glow
 frame_ms    = 160
 interpolate = 1
 glow        = amber_glow_pool_glow
+
+# furnaces: the fire in the mouth glows (milestone 18 part 4)
+[texture furnace_front_lit]
+glow = furnace_front_lit_glow
+[texture blast_furnace_front_lit]
+glow = blast_furnace_front_lit_glow

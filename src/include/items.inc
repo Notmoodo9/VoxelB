@@ -14,7 +14,11 @@
 %define TOOL_HOE        4
 %define TOOL_COUNT      5
 %define TIER_HAND       0               ; wood 1, stone 2, copper 3, iron 4,
-%define TIER_COUNT      9               ; diamond 5, mythril 6, adamantite 7, star_crystal 8
+%define TIER_COUNT      9
+; usable blocks (data/recipes: [station], [container], [furnace])
+%define STATION_CRAFTING    0
+%define STATION_CONTAINER   1
+%define STATION_FURNACE     2               ; diamond 5, mythril 6, adamantite 7, star_crystal 8
 %ifndef ITEMS_IMPL
 extern items_load, item_find
 extern g_item_count, g_item_names, g_item_titles, g_item_block, g_item_stack
