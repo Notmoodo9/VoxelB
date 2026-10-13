@@ -415,8 +415,8 @@ PROC catalog, 16, rbx, rsi, rdi, r12, r13
     lea rax, [rel s_search]
     mov [rsp + 56], rax
     mov edx, [LOCAL(C_X)]
-    add edx, CAT_COLS * STEP - 4 - 230
-    INVOKE ui_textfield, SEARCH_ID, rdx, [LOCAL(C_Y)], 230
+    add edx, CAT_COLS * STEP - 4 - 214
+    INVOKE ui_textfield, SEARCH_ID, rdx, [LOCAL(C_Y)], 214
     test eax, eax
     jz .heading
     mov dword [rel g_scroll], 0

@@ -49,6 +49,7 @@ warnings, as above.
 | `data/world/flat_test.cfg` | `src/world/world.asm` | **debug** test world: layers, block gallery, test structures |
 | `assets/textures/blocks/*.png` | `src/render/block_textures.asm` | block textures (16×16, animated strips, glow layers) |
 | `data/items/*.items` | `src/world/items.asm` | items beyond the blocks, item settings, the Creative inventory's tabs |
+| `data/items/mining.cfg` | `src/world/mining.asm` | how blocks are mined (hardness, tool, tier) and what they drop |
 | `assets/textures/items/*.png` | `src/render/item_icons.asm` | item pictures (16×16), for items that are not blocks |
 | `data/ui/menu.cfg` | `src/core/game.asm` | the main menu's background: world seed, time, the camera's path |
 | `data/version.cfg` | `src/ui/menu.asm`, CI | the game's version (`version = 0.<milestone>.<part>`) and its `title`: shown in the main menu; each new version gets its own release |
@@ -516,8 +517,27 @@ name and a title made from it ("stone_bricks" → "Stone bricks"). Records:
 | | `stack` | 1–64 (default 64) |
 | | `tab` | the tab id (items that match no tab pattern go to the last tab) |
 | | `hidden` | `1`: not in the Creative inventory |
+| | `tool` | `pickaxe`, `axe`, `shovel` or `hoe`: the item is that tool (default none) |
+| | `tier` | `wood`, `stone`, `copper`, `iron`, `diamond`, `mythril`, `adamantite`, `star_crystal` (default hand) |
+| | `speed` | mining speed with the right tool (default 1 = by hand) |
+| | `durability` | uses before it breaks (0 = never wears) |
 
 An `[item]` with an existing item's name (a block's, too) changes that item.
+
+### `mining.cfg` (Milestone 18)
+
+| Record | Key | Meaning |
+|---|---|---|
+| `[material <name>]` | `hardness` | seconds-ish: time = hardness × 1.5 (× 5 when the block won't drop), divided by the right tool's `speed`; `0` = at once, below 0 = unbreakable |
+| | `tool` | the tool that mines it fast (`pickaxe`, `axe`, `shovel`, `hoe`) |
+| | `tier` | the tier that tool needs for the block to drop anything (`hand` = no need) |
+| | `blocks` | block name patterns (`*` = anything) |
+| | `shapes` | block shapes (`plant`, `tall_plant`, `fluid`, …) |
+| `[drops]` | `<block pattern> = <item> [count]` | what a block drops instead of itself; `none` = nothing |
+
+A block takes the first material whose `shapes` or `blocks` match it (all
+its states alike); unmatched blocks are hardness 1, any tool, no tier. The
+first matching `[drops]` line counts; otherwise a block drops its own item.
 
 ## Saved worlds (`saves/<name>/`, Milestone 17)
 

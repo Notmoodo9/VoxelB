@@ -23,9 +23,12 @@
 %include "packet.inc"
 %include "block.inc"
 %include "world_api.inc"
+%include "save.inc"
 
 global interact_init, interact_update
 extern held_swing
+global g_dig_want
+extern g_world_mode
 global g_target_valid, g_target, g_target_face, g_target_id, g_held_block
 
 extern g_cam_pos, g_cam_yaw, g_cam_pitch, g_mouse_captured, g_cl_player
@@ -64,6 +67,7 @@ g_cell:         resd 3
 g_step:         resd 3
 g_req:          resb BLOCK_PKT_size
 g_pick:         resb INV_PKT_size
+g_dig_want:     resd 1                  ; Survival: break held on the target
 
 section .text
 
@@ -292,6 +296,7 @@ ENDPROC
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC interact_update, 0, rbx
+    mov dword [rel g_dig_want], 0
     call raycast
     ; only with the mouse captured, and not on the click that captured it
     mov ebx, [rel g_was_captured]
@@ -303,6 +308,20 @@ PROC interact_update, 0, rbx
     jz .done
     cmp dword [rel g_target_valid], 0
     je .done
+    cmp dword [rel g_world_mode], MODE_CREATIVE
+    je .creative_break
+    ; Survival: hold to mine (the simulation counts the time; dig.asm)
+    mov ecx, ACT_BREAK_BLOCK
+    call input_down
+    mov [rel g_dig_want], eax
+    mov ecx, ACT_BREAK_BLOCK
+    lea rdx, [rel g_next_break]
+    call action_due
+    test eax, eax
+    jz .no_break
+    call held_swing                     ; (swings on while mining)
+    jmp .no_break
+.creative_break:
     mov ecx, ACT_BREAK_BLOCK
     lea rdx, [rel g_next_break]
     call action_due

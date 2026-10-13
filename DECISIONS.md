@@ -1660,3 +1660,31 @@ block for their upper half (mossy cobblestone boulders).
   name, across all tabs) + a 12 × 5 scrolling grid; the world keeps
   running behind the screen, the player stands still.
 
+## D94 — Mining, drops, Survival before M20 (M18 part 2)
+* **Mining data is pattern-based** (`data/items/mining.cfg`): ~26
+  materials cover 2288 block ids by name pattern or shape, so new blocks
+  get sensible hardness without data changes; per-block drop overrides in
+  one `[drops]` list. The rules are Minecraft's (hardness × 1.5, × 5 when
+  not harvestable, ÷ the right tool's speed) because the design asked for
+  the classic pace and those numbers are proven.
+* **The simulation mines** (dig.asm): the client only says "break is held
+  on block x, y, z" in its input packet each tick; the simulation counts
+  the time with the item in hand, breaks the block through the normal edit
+  path (reach, liquids, door halves) and spawns the drop. Progress goes to
+  the client for the cracks (a procedural shader: iso-lines of a pixel-grid
+  value noise that widen with progress; no crack textures needed).
+* **Dropped items** (drops.asm) are simulation entities in a fixed table of
+  512: points with a small radius against block collision (any colliding
+  block counts as a cube), gravity, drag, ground friction, rest detection
+  (resting drops cost nothing and send nothing), merging of resting stacks,
+  a 3-block magnet and a 1.5-block pickup into the inventory, 5-minute
+  lifetime. Moving drops send their position each tick; the client glides
+  to it and draws a spinning, bobbing cube or picture (one draw per drop,
+  lit like the terrain, depth-tested in the scene). Not saved with the
+  world (they would have despawned anyway on most reloads).
+* **Survival before milestone 20** (owner's choice): selectable in world
+  creation; no flying, real mining times, drops, placing uses items,
+  Creative-only packets are refused; health and hunger come in M20.
+* `--world "Name with spaces"` is now parsed with its quotes (a quote in a
+  folder name made the region files unwritable).
+

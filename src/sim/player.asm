@@ -32,11 +32,12 @@
 %include "cfg.inc"
 %include "packet.inc"
 %include "physics.inc"
+%include "save.inc"
 
 global player_load, player_spawn, player_tick, player_toggle_fly, player_fill
 global g_pl_pos, g_pl_vel, g_pl_flags, g_pl_eye, g_pl_reach, g_pl_width, g_pl_height
 
-extern str_ieq, str_parse_float, sincosf, g_gravity
+extern str_ieq, str_parse_float, sincosf, g_gravity, g_world_mode
 
 %define TICK_DT     0.05
 %define MAX_FALL_Y  -512.0              ; below the world: stop falling here
@@ -217,6 +218,12 @@ ENDPROC
 ; -----------------------------------------------------------------------------
 player_spawn:
     and edx, PF_FLYING | PF_NOCLIP
+    cmp dword [rel g_world_mode], MODE_CREATIVE
+    je .flags
+    test edx, PF_NOCLIP
+    jnz .flags
+    and edx, ~PF_FLYING                 ; (Survival walks)
+.flags:
     mov [rel g_pl_flags], edx
     movsd xmm0, [rcx]
     movsd [rel g_pl_pos], xmm0
@@ -242,6 +249,8 @@ player_spawn:
 player_toggle_fly:
     test dword [rel g_pl_flags], PF_NOCLIP
     jnz .done
+    cmp dword [rel g_world_mode], MODE_CREATIVE
+    jne .done                           ; (Survival walks)
     xor dword [rel g_pl_flags], PF_FLYING
     xorps xmm0, xmm0
     movsd [rel g_pl_vel + 8], xmm0
@@ -266,7 +275,12 @@ player_fill:
     mov [rcx + PLAYER_PKT.eye], eax
     mov eax, [rel g_pl_flags]
     mov [rcx + PLAYER_PKT.flags], eax
-    mov dword [rcx + PLAYER_PKT.mode], GAMEMODE_CREATIVE
+    mov eax, GAMEMODE_CREATIVE
+    cmp dword [rel g_world_mode], MODE_CREATIVE
+    je .mode
+    mov eax, GAMEMODE_SURVIVAL
+.mode:
+    mov [rcx + PLAYER_PKT.mode], eax
     mov eax, [rel s_reach]
     mov [rcx + PLAYER_PKT.reach], eax
     ret

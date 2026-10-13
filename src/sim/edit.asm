@@ -297,6 +297,7 @@ PROC edit_request, 16, rbx, rsi, rdi, r12, r13, r14
     mov r8d, edi
     xor r9d, r9d
     call queue_edit
+    mov eax, 1
     RETURN
 
     ; ---- place ----

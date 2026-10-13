@@ -89,3 +89,12 @@ Survival is unlocked in world creation with this milestone: no flying,
 real mining times, drops, crafting and tool wear, but no health or hunger
 until milestone 20. Worlds made now keep Survival and gain health and
 hunger then.
+
+## Drops (decided while building part 2, following "familiar where it exists")
+
+grass block, forest floor, needle floor, mycelium → dirt; stone →
+cobblestone; coal ore → coal; diamond / emerald / star crystal ore → the
+gem; leaves, glass, stained glass, ice, short/tall grass, ferns, dead
+bushes, crystal sprouts → nothing (fibre, resin and crystal shards come
+with the bindings in part 4); metal ores drop the ore block itself, which
+the furnace smelts (part 4). Everything else drops itself.

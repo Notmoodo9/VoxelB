@@ -31,7 +31,7 @@ blocks = *_ore, *_crystal, *_crystal_sprout, *_veined_stone, deep_stone, bedrock
 
 [tab items]
 title = Items
-icon = stone
+icon = diamond
 
 [tab nature]
 title = Nature

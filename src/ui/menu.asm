@@ -90,7 +90,7 @@ s_l_name:       db "Name", 0
 s_l_seed:       db "Seed", 0
 s_seed_hint:    db "Empty: a random seed", 0
 s_l_mode:       db "Game mode", 0
-s_mode_note:    db "Survival, Adventure and Spectator are coming later", 0
+s_mode_note:    db "Survival has no health or hunger yet. Adventure and Spectator: later", 0
 s_l_diff:       db "Difficulty", 0
 s_hardcore_off: db "Hardcore: off", 0
 s_diff_note:    db "Difficulty and Hardcore arrive with Survival", 0
@@ -201,6 +201,7 @@ PROC menu_open, 0
     ; a fresh form: "World N", no seed, the name field typing
     call new_world_name
     mov byte [rel g_seed_text], 0
+    mov dword [rel g_new_mode], MODE_CREATIVE
     mov ecx, FIELD_NAME + 1
     call ui_focus
     RETURN
@@ -901,7 +902,7 @@ PROC create_world, 0, rbx, rsi
     inc ebx
     jmp .unique
 .seed:
-    mov dword [rel g_new_mode], MODE_CREATIVE
+    ; (the mode chosen on the form; difficulty and hardcore come later)
     mov dword [rel g_new_difficulty], DIFF_NORMAL
     mov dword [rel g_new_hardcore], 0
     lea rcx, [rel g_seed_text]
@@ -1569,10 +1570,14 @@ PROC menu_frame, 48, rbx, rsi, rdi, r12, r13, r14, r15
     mov rax, [rax + rbx * 8]
     mov [rsp + 40], rax
     mov qword [rsp + 32], 46
-    mov r10d, UIW_DISABLED
+    xor r10d, r10d
+    cmp ebx, MODE_SURVIVAL
+    jbe .c_mode_on
+    mov r10d, UIW_DISABLED              ; (not built yet)
+.c_mode_on:
     cmp ebx, [rel g_new_mode]
     jne .c_mode_f
-    mov r10d, UIW_SELECTED
+    or r10d, UIW_SELECTED
 .c_mode_f:
     mov [rsp + 48], r10
     imul edx, ebx, 162
@@ -1580,6 +1585,10 @@ PROC menu_frame, 48, rbx, rsi, rdi, r12, r13, r14, r15
     lea r8d, [esi + 292]
     lea ecx, [ebx + 32]
     INVOKE ui_button, rcx, rdx, r8, 152
+    test eax, eax
+    jz .c_mode_next
+    mov [rel g_new_mode], ebx
+.c_mode_next:
     inc ebx
     jmp .c_mode_b
 .c_mode_note:

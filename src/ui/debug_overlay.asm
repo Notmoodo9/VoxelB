@@ -44,6 +44,7 @@ extern g_time_of_day, g_day_length, g_shadow_records
 extern g_block_names
 extern g_cl_player, g_sim_tick, g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us
 extern g_pkt_sent_sim, g_pkt_sent_client, g_pkt_dropped
+extern g_drop_count
 extern g_target_valid, g_target, g_target_id, g_held_block, g_edit_applied, g_edit_rejected
 extern g_stream_remeshes, g_fluid_updates, g_fluid_changes, g_fluid_pending
 
@@ -134,7 +135,9 @@ s_casters:      db "   shadow casters ", 0
 align 4
 c_day_minutes:  dd 1440.0
 s_held_off:     db " us   held light off", 10, 0
-s_player:       db "player  creative  ", 0
+s_player:       db "player  ", 0
+s_m_creative:   db "creative  ", 0
+s_m_survival:   db "survival  ", 0
 s_p_noclip:     db "noclip", 0
 s_p_flying:     db "flying", 0
 s_p_walking:    db "walking", 0
@@ -157,6 +160,7 @@ s_target:       db "target  ", 0
 s_t_none:       db "none", 0
 s_t_at:         db " at ", 0
 s_t_held:       db "   held ", 0
+s_drops:        db "   dropped items ", 0
 s_t_edits:      db "   edits ", 0
 s_t_rej:        db "  rejected ", 0
 s_t_remesh:     db "  remeshed columns ", 0
@@ -509,6 +513,12 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
     PUT s_nl
     ; the player and the simulation (milestone 16)
     PUT s_player
+    lea rdx, [rel s_m_creative]
+    cmp dword [rel g_cl_player + PLAYER_PKT.mode], GAMEMODE_SURVIVAL
+    jne .mode_named
+    lea rdx, [rel s_m_survival]
+.mode_named:
+    PUTP rdx
     mov r13d, [rel g_cl_player + PLAYER_PKT.flags]
     lea rdx, [rel s_p_walking]
     test r13d, PF_FLYING
@@ -603,6 +613,9 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
     PUTNUM [rel g_fluid_changes], 0
     PUT s_f_pending
     PUTNUM [rel g_fluid_pending], 0
+    PUT s_drops
+    mov eax, [rel g_drop_count]
+    PUTNUM rax, 0
     PUT s_nl
     ; distant terrain tiles (milestone 12)
     PUT s_lod

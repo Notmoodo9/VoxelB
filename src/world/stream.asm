@@ -575,6 +575,8 @@ PROC unload_column, 0, rbx
     je .unchanged
     mov rcx, rbx
     call save_column
+    test eax, eax
+    jz .unchanged                       ; (the failure is logged by save_column)
     LOG_INFO "save: a changed column left the view; saved to its region file"
 .unchanged:
     mov rcx, rbx

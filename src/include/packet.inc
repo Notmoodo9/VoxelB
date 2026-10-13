@@ -65,11 +65,13 @@ struc INPUT_PKT
     .pitch      resd 1                  ; f32 radians
     .buttons    resd 1                  ; INB_*
     .seq        resd 1
+    .dig        resd 3                  ; i32 the block being dug (INB_DIG)
 endstruc
 %define INB_JUMP            1           ; jump / swim up / fly up / climb
 %define INB_SNEAK           2           ; sneak / fly down
 %define INB_SPRINT          4
 %define INB_TIME_FORWARD    8           ; debug: the clock runs fast
+%define INB_DIG             16          ; Survival: mining the block at .dig
 
 ; ---- simulation -> client ------------------------------------------------------
 %define PKT_S_PLAYER        64          ; PLAYER_PKT, every tick
@@ -77,6 +79,22 @@ endstruc
 %define PKT_S_BLOCK         66          ; BLOCK_PKT: a block changed
 %define PKT_S_SLOT          67          ; INV_PKT: a slot's contents (0-35, INV_CURSOR)
 %define PKT_S_SELECT        68          ; INV_PKT .slot: the hotbar slot in hand
+%define PKT_S_DIG           69          ; DIG_PKT: how far a block is mined
+%define PKT_S_DROP          70          ; DROP_PKT: a dropped item appeared / moved
+%define PKT_S_DROP_GONE     71          ; DROP_PKT .id: picked up or gone
+
+struc DIG_PKT
+    .pos        resd 3                  ; i32 block
+    .progress   resd 1                  ; f32 0..1; < 0: not mining
+endstruc
+
+struc DROP_PKT
+    .pos        resq 3                  ; f64 centre
+    .id         resd 1                  ; slot in the simulation's drop table
+    .item       resw 1
+    .count      resw 1
+endstruc
+%define MAX_DROPS           512         ; dropped items in the world at once
 
 struc PLAYER_PKT
     .pos        resq 3                  ; f64 feet (x, y, z); x, z = centre
@@ -97,6 +115,7 @@ endstruc
 %define PF_FROZEN           256         ; the ground is not generated yet
 
 %define GAMEMODE_CREATIVE   1
+%define GAMEMODE_SURVIVAL   2
 
 struc TIME_PKT
     .time       resd 1                  ; f32 time of day 0..1 (0 midnight)

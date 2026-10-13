@@ -1,14 +1,62 @@
 # Progress
 
 ## Current state
-**Milestone 18, part 1: Items, inventory, hotbar, Creative inventory, item in hand: DONE** (v0.18.1, Windows CI green: run #93)
+**Milestone 18, part 2: Mining, drops, Survival (without health yet): DONE** (v0.18.2, Windows CI: see below)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
 
-Next: **Milestone 18, part 2: mining and drops** (block hardness and
-tools' speed, drop tables, item entities you pick up; Survival unlocked
-in world creation) — design/items/items_inventory.md.
+Next: **Milestone 18, part 3: crafting and chests** (2x2 and 3x3 grids,
+workbench, recipe book, chests that join; design/items/items_inventory.md).
+
+---
+
+## Milestone 18, part 2 — done (2026-10-13): mining and drops (D94)
+
+### What was built
+* **Survival** can be chosen when creating a world: you walk (no flying),
+  blocks take time to mine, they drop items, placing uses them up. Health
+  and hunger come with milestone 20.
+* **Mining times** from `data/items/mining.cfg`: hardness, the tool that
+  mines a block fast and the tier it needs to drop anything (the ore
+  ladder: coal needs wood, copper/iron stone, silver/gold copper,
+  diamond/emerald iron, mythril diamond, adamantite mythril, star crystal
+  adamantite). Classic pace: sand ~0.75 s by hand, stone ~7.5 s by hand
+  and nothing drops. (Tools arrive in part 4.)
+* **Drops:** grass → dirt, stone → cobblestone, coal ore → coal, diamond /
+  emerald / star crystal ore → the gem; leaves, glass, ice, grass plants
+  nothing; everything else itself. New items coal, diamond, emerald, star
+  crystal with their own pixel-art pictures (`tools/texgen/itemgen.py`).
+* **Cracks** spread over the block while it's mined.
+* **Dropped items** pop out, fall, slide, spin and bob, join nearby stacks,
+  drift to you within 3 blocks and go into the inventory; gone after 5
+  minutes.
+* Debug overlay: game mode, dropped items count.
+
+### Verified (scripted with xdotool)
+* A Survival world made in the menu (`game_mode = survival` in
+  world.dat). Holding break on sand: cracks after ~0.5 s, the block breaks,
+  a small sand cube drops into the hole; mining the block underneath
+  drops the player onto it and it is picked up (sand ×3 after 8 s of
+  digging down); placing sand uses one (5 → 4). Double-tap jump does not
+  fly in Survival. Creative: the Items tab shows coal, diamond, emerald,
+  star crystal.
+* Found and fixed: `--world "World 1"` created a folder named `"World`,
+  whose region files could not be written.
+* Debug build through the same steps: no assert; headless tests pass.
+
+### Performance
+* Mining: a few table lookups per tick. Drops: resting drops cost one
+  merge check every 10 ticks; moving ones one collision probe per axis
+  per tick and a 48-byte packet; drawing is one 36-vertex call per drop.
+
+### Deferred
+* Tools (part 4) — until then everything is mined by hand.
+* Wall signs drop the wall-sign item (it places a wall sign); a pattern
+  rule that maps it to the standing sign needs name substitution.
+* Dropped items are not saved with the world.
+* Under the software renderer used for testing, the screen capture
+  sometimes catches a black frame (also on v0.18.1; a capture artefact).
 
 ---
 

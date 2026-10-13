@@ -1,0 +1,18 @@
+# Materials that are not blocks (milestone 18): what ores drop. Pictures:
+# assets/textures/items/<texture>.png, drawn by tools/texgen/itemgen.py.
+
+[item coal]
+texture = coal
+tab = items
+
+[item diamond]
+texture = diamond
+tab = items
+
+[item emerald]
+texture = emerald
+tab = items
+
+[item star_crystal]
+texture = star_crystal
+tab = items

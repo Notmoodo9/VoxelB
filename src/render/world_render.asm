@@ -50,7 +50,7 @@
 %include "world_api.inc"
 %include "lod.inc"
 
-extern icons_init, held_init
+extern icons_init, held_init, drops_view_draw, g_dig_pos, g_dig_progress
 global world_render_init, world_render_draw, world_render_shutdown, tint_upload, shadow_apply
 global g_world_visible, g_world_drawn_quads, g_world_gpu_bytes, g_quad_buffer
 global g_light_buffer, g_held_on, g_daylight, g_shadow_records, g_cam_in_water
@@ -163,6 +163,8 @@ str_fs:         db "shaders/chunk.frag", 0
 str_cull:       db "shaders/cull.comp", 0
 str_outline_vs: db "shaders/outline.vert", 0
 str_outline_fs: db "shaders/outline.frag", 0
+str_crack_vs:   db "shaders/crack.vert", 0
+str_crack_fs:   db "shaders/crack.frag", 0
 str_hiz:        db "shaders/hiz.comp", 0
 str_shadow_fs:  db "shaders/shadow.frag", 0
 str_shadow_cs:  db "shaders/shadow_setup.comp", 0
@@ -191,6 +193,7 @@ section .bss
 alignb 4
 g_world_prog:       resd 1
 g_outline_prog:     resd 1              ; the targeted block's outline (M16)
+g_crack_prog:       resd 1              ; cracks on the block being mined (M18)
 g_world_vao:        resd 1
 g_quad_buffer:      resd 1
 g_light_buffer:     resd 1              ; light words, one per quad (M13)
@@ -291,6 +294,12 @@ PROC world_render_init, 0, rbx
     cmp eax, -1
     je .fail
     mov [rel g_outline_prog], eax
+    lea rcx, [rel str_crack_vs]
+    lea rdx, [rel str_crack_fs]
+    call shader_create
+    cmp eax, -1
+    je .fail
+    mov [rel g_crack_prog], eax
     lea rdx, [rel g_world_vao]
     GL glCreateVertexArrays, 1, rdx
     call gpu_draw_init
@@ -1476,6 +1485,8 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     inc qword [rel g_world_draws]
 .p3_done:
     call outline_draw
+    call crack_draw
+    call drops_view_draw                ; dropped items (milestone 18)
     ; the depth pyramid for the next frame's occlusion test
     cmp dword [rel g_gpu_culling], 0
     je .no_hiz
@@ -2052,6 +2063,51 @@ PROC outline_draw, 32, rbx
     GL glDepthMask, GL_FALSE
     GL glDrawArrays, GL_LINES, 0, 24
     GL glDepthMask, GL_TRUE
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; crack_draw — cracks on the block being mined (milestone 18), darker lines
+; spreading with the progress the simulation reports.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC crack_draw, 32, rbx
+    movss xmm0, [rel g_dig_progress]
+    xorps xmm1, xmm1
+    comiss xmm0, xmm1
+    jbe .done
+    xor ebx, ebx
+.corner:
+    lea rax, [rel g_dig_pos]
+    cvtsi2sd xmm0, dword [rax + rbx * 4]
+    lea rax, [rel g_cam_pos]
+    subsd xmm0, [rax + rbx * 8]
+    cvtsd2ss xmm0, xmm0
+    movss [LOCAL(0) + rbx * 4], xmm0
+    inc ebx
+    cmp ebx, 3
+    jb .corner
+    mov ecx, [rel g_crack_prog]
+    call shader_program
+    mov ebx, eax
+    GL glUseProgram, rbx
+    lea rax, [rel g_cam_viewproj]
+    mov [rsp + 32], rax
+    GL glProgramUniformMatrix4fv, rbx, 0, 1, GL_FALSE
+    lea r9, [LOCAL(0)]
+    GL glProgramUniform3fv, rbx, 1, 1, r9
+    movss xmm2, [rel g_dig_progress]
+    GL glProgramUniform1f, rbx, 2
+    GL glBindVertexArray, [rel g_world_vao]
+    GL glEnable, GL_BLEND
+    GL glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+    GL glDepthMask, GL_FALSE
+    GL glDisable, GL_CULL_FACE
+    GL glDrawArrays, GL_TRIANGLES, 0, 36
+    GL glEnable, GL_CULL_FACE
+    GL glDepthMask, GL_TRUE
+    GL glDisable, GL_BLEND
 .done:
     RETURN
 ENDPROC

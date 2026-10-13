@@ -115,7 +115,10 @@ PROC inv_init, 0, rbx, rsi, rdi
     mov [rel g_inv_sel], eax
     jmp .done
 .held:
-    ; an older save or a new world: the held block in slot 0
+    ; an older save or a new Creative world: the held block in slot 0
+    ; (Survival starts empty-handed)
+    cmp dword [rel g_world_mode], MODE_CREATIVE
+    jne .done
     mov eax, [rel g_held_block]
     test eax, eax
     jz .done

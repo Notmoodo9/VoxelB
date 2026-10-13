@@ -366,10 +366,24 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     lea rdx, [rax + 8]
     lea rdi, [rel g_world_arg]
     xor ecx, ecx
+    xor r8d, r8d                        ; quoted: "World 1" (spaces allowed)
+    cmp byte [rdx], '"'
+    jne .world_copy
+    inc rdx
+    mov r8d, 1
 .world_copy:
     mov al, [rdx + rcx]
+    test al, al
+    jz .world_end
+    cmp al, '"'
+    je .world_end
+    test r8d, r8d
+    jnz .world_char                     ; (inside quotes a space is part of it)
     cmp al, ' '
     jbe .world_end
+.world_char:
+    cmp al, ' '
+    jb .world_end
     cmp al, '\'
     je .world_end                       ; (a folder name, not a path)
     cmp al, '/'

@@ -15,6 +15,8 @@
 ;                                       block editing: interact.asm)
 ;   client_view()                       after sim_update: g_cam_pos, time
 ;   g_cl_player                         the latest PLAYER_PKT (overlay)
+;   g_dig_pos, g_dig_progress           the block being mined and how far
+;                                       (f32; < 0: none), for the cracks
 ;   g_cinv (37 x {u16 item, u16 count, u16 durability, u16 spare}: the
 ;   hotbar 0-8, the inventory 9-35, the carried stack 36), g_csel (the
 ;   hotbar slot in hand): the client's copy of the simulation's inventory
@@ -26,12 +28,13 @@
 %include "packet.inc"
 
 global client_init, client_input, client_view, g_cl_player, g_cinv, g_csel
-global client_select, client_input_idle
+global client_select, client_input_idle, g_dig_pos, g_dig_progress
 
 extern g_cam_yaw, g_cam_pitch, g_cam_pos, g_sim_alpha
 extern daycycle_set, timer_elapsed_us
 extern interact_init, interact_update, stream_block_changed
-extern g_held_block, g_item_block
+extern g_held_block, g_item_block, g_dig_want, g_target_valid, g_target
+extern drops_view_packet, drops_view_reset
 
 %define DOUBLE_TAP_US   300000          ; move_up twice within this: fly
 
@@ -51,6 +54,8 @@ alignb 8
 g_cl_last_jump: resq 1                  ; time of the last move_up press (us)
 g_cinv:         resq INV_SLOTS + 1
 g_csel:         resd 1
+g_dig_pos:      resd 3
+g_dig_progress: resd 1
 g_cl_sel_pkt:   resb INV_PKT_size
 
 section .rdata
@@ -73,6 +78,9 @@ PROC client_init, 0
     mov [rel g_cl_seq], eax
     mov [rel g_cl_last_jump], rax
     mov [rel g_csel], eax
+    mov dword [rel g_dig_progress], 0xBF800000   ; -1: not mining
+    call drops_view_reset
+    xor eax, eax
     lea rcx, [rel g_cinv]
     mov edx, INV_SLOTS + 1
 .clear:
@@ -181,6 +189,8 @@ ENDPROC
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC client_input, 0, rbx
+    call hotbar_input
+    call interact_update                ; target, break / place / pick
     INVOKE axis, ACT_MOVE_FORWARD, ACT_MOVE_BACK
     cmp dword [rel g_cl_flytest], 0
     je .fwd
@@ -201,6 +211,19 @@ PROC client_input, 0, rbx
     or ebx, eax
     INVOKE button, ACT_TIME_FORWARD, INB_TIME_FORWARD
     or ebx, eax
+    ; Survival mining: the block being dug
+    cmp dword [rel g_dig_want], 0
+    je .no_dig
+    cmp dword [rel g_target_valid], 0
+    je .no_dig
+    or ebx, INB_DIG
+    mov eax, [rel g_target]
+    mov [rel g_cl_input + INPUT_PKT.dig], eax
+    mov eax, [rel g_target + 4]
+    mov [rel g_cl_input + INPUT_PKT.dig + 4], eax
+    mov eax, [rel g_target + 8]
+    mov [rel g_cl_input + INPUT_PKT.dig + 8], eax
+.no_dig:
     mov [rel g_cl_input + INPUT_PKT.buttons], ebx
     inc dword [rel g_cl_seq]
     mov eax, [rel g_cl_seq]
@@ -224,8 +247,6 @@ PROC client_input, 0, rbx
     lea rcx, [rel g_to_sim]
     INVOKE pkt_send, rcx, PKT_C_TOGGLE_FLY, 0, 0
 .done:
-    call hotbar_input
-    call interact_update                ; target, break / place / pick
     RETURN
 ENDPROC
 
@@ -307,6 +328,28 @@ PROC client_view, 0, rsi, rdi
     call held_follows
     jmp .packet
 .not_select:
+    cmp eax, PKT_S_DIG
+    jne .not_dig
+    mov eax, [rel g_cl_pkt + PKT.data + DIG_PKT.pos]
+    mov [rel g_dig_pos], eax
+    mov eax, [rel g_cl_pkt + PKT.data + DIG_PKT.pos + 4]
+    mov [rel g_dig_pos + 4], eax
+    mov eax, [rel g_cl_pkt + PKT.data + DIG_PKT.pos + 8]
+    mov [rel g_dig_pos + 8], eax
+    mov eax, [rel g_cl_pkt + PKT.data + DIG_PKT.progress]
+    mov [rel g_dig_progress], eax
+    jmp .packet
+.not_dig:
+    cmp eax, PKT_S_DROP
+    je .drop
+    cmp eax, PKT_S_DROP_GONE
+    jne .not_drop
+.drop:
+    mov ecx, eax
+    lea rdx, [rel g_cl_pkt + PKT.data]
+    call drops_view_packet
+    jmp .packet
+.not_drop:
     cmp eax, PKT_S_TIME
     jne .packet
     mov eax, [rel g_cl_pkt + PKT.data + TIME_PKT.time]

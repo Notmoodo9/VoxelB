@@ -12,7 +12,9 @@
 ;                 inventory)
 ;   [item <name>] title = ..., texture = <png in assets/textures/items/>,
 ;                 block = <block it places>, stack = 1..64, tab = <tab id>,
-;                 hidden = 1 (not in the Creative inventory)
+;                 hidden = 1 (not in the Creative inventory),
+;                 tool = pickaxe | axe | shovel | hoe, tier = wood .. star_crystal,
+;                 speed = mining speed (x), durability = uses (milestone 18)
 ; An [item] with a block's name changes that block's item. Items left
 ; without a tab go to the last tab. Adding items never needs assembly.
 ;
@@ -23,7 +25,10 @@
 ;     g_item_count, g_item_names, g_item_titles (shown names), g_item_block
 ;     (u16 block placed, 0 = none), g_item_stack (u8), g_item_tab (u8),
 ;     g_item_tex (char* texture name or 0: a sprite instead of a block icon),
-;     g_item_flags (ITEMF_*)
+;     g_item_flags (ITEMF_*), g_item_tool (u8 TOOL_*), g_item_tier (u8
+;     TIER_*), g_item_speed (f32, 1 = by hand), g_item_dur (u16 uses, 0 =
+;     does not wear)
+;   item_tool_index(name) / item_tier_index(name) -> eax TOOL_* / TIER_*, -1
 ;   g_block_item (u16 per block id: the item of a block, any state)
 ;   tabs: g_tab_count, g_tab_titles, g_tab_icon (u16 item)
 ; =============================================================================
@@ -40,8 +45,10 @@ global items_load, item_find
 global g_item_count, g_item_names, g_item_titles, g_item_block, g_item_stack
 global g_item_tab, g_item_tex, g_item_flags, g_block_item
 global g_tab_count, g_tab_titles, g_tab_icon
+global g_item_tool, g_item_tier, g_item_speed, g_item_dur
+global item_tool_index, item_tier_index, items_match_list
 
-extern str_ieq, str_len, str_copy, str_parse_u64, str_dup
+extern str_ieq, str_len, str_copy, str_parse_u64, str_dup, str_parse_float
 
 IMPORT FindFirstFileA, FindNextFileA, FindClose
 
@@ -68,6 +75,29 @@ k_stack:        db "stack", 0
 k_hidden:       db "hidden", 0
 k_icon:         db "icon", 0
 k_blocks:       db "blocks", 0
+k_tool:         db "tool", 0
+k_tier:         db "tier", 0
+k_speed:        db "speed", 0
+k_durability:   db "durability", 0
+tool_0:         db "none", 0
+tool_1:         db "pickaxe", 0
+tool_2:         db "axe", 0
+tool_3:         db "shovel", 0
+tool_4:         db "hoe", 0
+tier_0:         db "hand", 0
+tier_1:         db "wood", 0
+tier_2:         db "stone", 0
+tier_3:         db "copper", 0
+tier_4:         db "iron", 0
+tier_5:         db "diamond", 0
+tier_6:         db "mythril", 0
+tier_7:         db "adamantite", 0
+tier_8:         db "star_crystal", 0
+align 8
+tool_names:     dq tool_0, tool_1, tool_2, tool_3, tool_4
+tier_names:     dq tier_0, tier_1, tier_2, tier_3, tier_4, tier_5, tier_6, tier_7, tier_8
+align 4
+c_one:          dd 1.0
 str_unknown:    db "unknown setting: ", 0
 str_no_block:   db "unknown block: ", 0
 str_no_item:    db "unknown item: ", 0
@@ -87,6 +117,11 @@ g_item_block:   resw MAX_ITEMS
 g_item_stack:   resb MAX_ITEMS
 g_item_tab:     resb MAX_ITEMS
 g_item_flags:   resb MAX_ITEMS
+g_item_tool:    resb MAX_ITEMS
+g_item_tier:    resb MAX_ITEMS
+alignb 4
+g_item_speed:   resd MAX_ITEMS
+g_item_dur:     resw MAX_ITEMS
 alignb 8
 g_block_item:   resw 65536
 g_tab_titles:   resq MAX_TABS
@@ -144,6 +179,48 @@ PROC make_title, 0, rbx
 .ok:
     mov rax, rbx
 .done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; item_tool_index / item_tier_index — a tool type / tier by name.
+;   in:  rcx = name
+;   out: eax = TOOL_* / TIER_*, -1 if unknown
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC item_tool_index, 0
+    lea rdx, [rel tool_names]
+    mov r8d, TOOL_COUNT
+    call index_of
+    RETURN
+ENDPROC
+
+PROC item_tier_index, 0
+    lea rdx, [rel tier_names]
+    mov r8d, TIER_COUNT
+    call index_of
+    RETURN
+ENDPROC
+
+; index_of — eax = index of name rcx in the table rdx (r8d entries), -1
+PROC index_of, 0, rbx, rsi, rdi, r12
+    mov rbx, rcx
+    mov rsi, rdx
+    mov edi, r8d
+    xor r12d, r12d
+.n:
+    cmp r12d, edi
+    jae .none
+    INVOKE str_ieq, [rsi + r12 * 8], rbx
+    test eax, eax
+    jnz .found
+    inc r12d
+    jmp .n
+.found:
+    mov eax, r12d
+    RETURN
+.none:
+    mov eax, -1
     RETURN
 ENDPROC
 
@@ -259,8 +336,9 @@ glob_match:
     xor eax, eax
     ret
 
-; matches_list — eax = 1 if name rdx matches any pattern of the list rcx
-; ("a*, *b, c")   clobbers: volatile registers
+; matches_list (items_match_list) — eax = 1 if name rdx matches any
+; pattern of the list rcx ("a*, *b, c")   clobbers: volatile registers
+items_match_list:
 PROC matches_list, 0, rbx, rsi
     mov rbx, rcx
     mov rsi, rdx
@@ -321,6 +399,15 @@ PROC new_item, 0, rbx, rsi
     mov byte [rax + rbx], TAB_UNSET
     lea rax, [rel g_item_flags]
     mov byte [rax + rbx], 0
+    lea rax, [rel g_item_tool]
+    mov byte [rax + rbx], TOOL_NONE
+    lea rax, [rel g_item_tier]
+    mov byte [rax + rbx], TIER_HAND
+    mov ecx, [rel c_one]
+    lea rax, [rel g_item_speed]
+    mov [rax + rbx * 4], ecx
+    lea rax, [rel g_item_dur]
+    mov word [rax + rbx * 2], 0
     mov eax, ebx
     RETURN
 .full:
@@ -533,6 +620,56 @@ PROC items_pair, 0, rbx, rsi, rdi
     call warn
     RETURN
 .i_hidden:
+    lea rdx, [rel k_tool]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_tier
+    mov rcx, rsi
+    call item_tool_index
+    test eax, eax
+    js .bad
+    lea rcx, [rel g_item_tool]
+    mov [rcx + rdi], al
+    RETURN
+.i_tier:
+    lea rdx, [rel k_tier]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_speed
+    mov rcx, rsi
+    call item_tier_index
+    test eax, eax
+    js .bad
+    lea rcx, [rel g_item_tier]
+    mov [rcx + rdi], al
+    RETURN
+.i_speed:
+    lea rdx, [rel k_speed]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_dur
+    mov rcx, rsi
+    call str_parse_float
+    test eax, eax
+    jz .bad
+    lea rcx, [rel g_item_speed]
+    movss [rcx + rdi * 4], xmm0
+    RETURN
+.i_dur:
+    lea rdx, [rel k_durability]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_hid
+    mov rcx, rsi
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    cmp rax, 65535
+    ja .bad
+    lea rcx, [rel g_item_dur]
+    mov [rcx + rdi * 2], ax
+    RETURN
+.i_hid:
     lea rdx, [rel k_hidden]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
