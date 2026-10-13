@@ -36,12 +36,12 @@ are small with big heads and follow their mother.
 ## The animals
 | Animal | Variants (biome) | Temperament | Food (follow + breed) | Drops | Extras |
 |---|---|---|---|---|---|
-| Cow | spotted black-white (plains, meadow); brown (forest, birch, dark forest, taiga); shaggy red highland (snowy taiga, tundra, steppe, alpine meadow); pale zebu (savanna) | calm | wheat | raw beef 1–3, leather 0–2 | milk with a bucket |
+| Cow | spotted black-white (plains, meadow); brown (forest, birch, dark forest, taiga); shaggy red highland (snowy taiga, tundra, steppe, alpine meadow); pale zebu (savanna) | calm | wheat | raw beef 1–3, raw leather 0–2 | milk with a bucket |
 | Sheep | natural wool shades — white, cream, grey, brown, black; warmer tones in warmer biomes, a rare russet one. Mountain rams with curled horns on alpine meadows (plains, meadow, steppe, alpine meadow) | calm | wheat | raw mutton 1–2, 1 wool of its shade | shears take 1–3 wool; regrows after grazing |
 | Pig | pink pig (plains, meadow, forest edges); bristly brown wild boar with tusks (forest, dark forest, old growth, jungle) | pig calm; boar charges back when hit | carrot, berries | raw pork 1–3 | |
 | Chicken | white hen (plains, meadow); speckled brown (forests); colourful jungle fowl (jungle) | calm | seeds | raw chicken 1, feathers 0–2 | lays an egg every 5–10 min; flutters down slowly |
-| Deer | red deer, bucks with antlers (forest, old growth, dark forest); white-tailed (birch grove); reindeer (taiga, snowy taiga, tundra) | wild: flees within ~12 blocks, leaps 2 blocks | berries (apples later) | raw venison 1–3, deer hide 0–2, antler 0–1 (bucks) | fawns spotted |
-| Rabbit | brown (plains, meadow, forest); sandy (desert, badlands, savanna); white (snowy biomes) | wild: hops, flees | carrot, berries | raw rabbit 1, rabbit hide 0–1, rabbit's foot (rare) | nibbles flowers |
+| Deer | red deer, bucks with antlers (forest, old growth, dark forest); white-tailed (birch grove); reindeer (taiga, snowy taiga, tundra) | wild: flees within ~12 blocks, leaps 2 blocks | berries (apples later) | raw venison 1–3, raw deer hide 0–2, antler 0–1 (bucks) | fawns spotted |
+| Rabbit | brown (plains, meadow, forest); sandy (desert, badlands, savanna); white (snowy biomes) | wild: hops, flees | carrot, berries | raw rabbit 1, raw rabbit hide 0–1, rabbit's foot (rare) | nibbles flowers |
 | Goat | white shaggy mountain goat (high slopes, alpine meadow) | climbs and jumps 3 blocks; no damage on short falls; sometimes rams you if you stand too close | wheat | raw mutton 1–2, goat horn (sometimes) | milk with a bucket |
 
 ## Forage (until farming comes)
@@ -57,25 +57,40 @@ goat horn, rabbit's foot; bucket, milk bucket; shears; lead; name tag.
 Cream and russet wool blocks join the 16 dyed wools.
 Eating and hunger come in M20; until then food is ingredients and breeding food.
 
-## Proposed recipes (my proposal — please correct)
+## Recipes (approved 2026-10-14)
 | Item | Recipe |
 |---|---|
-| Bucket | 3 iron bars in a V |
-| Shears | 2 iron bars diagonally |
-| Lead | 4 leather + 1 iron bar (ring) |
-| Name tag | 1 leather + 1 iron bar |
-| Leather | 1 deer hide, or 4 rabbit hide |
+| Bucket | 3 iron bars in a V (workbench) |
+| Shears | 2 iron bars diagonally (workbench) |
+| Lead | 4 leather + 1 iron bar (workbench) |
+| Name tag | 1 leather + 1 iron bar (workbench) |
 | Cooked meats | smelt the raw meat in a furnace |
 
-Naming: right-click an animal with a name tag; a small journal page asks for the name.
+Naming: right-click an animal with a name tag; a small journal page asks
+for the name; the tag is used up.
+
+## Hides and drying (owner, 2026-10-14)
+Animals drop **raw** hides that must be salted and dried before they are
+leather:
+* cows drop **raw leather**, deer **raw deer hide**, rabbits **raw rabbit
+  hide** (no plain leather from animals any more);
+* **salt first**: a raw hide + salt (crafted by hand) gives a **salted** hide;
+* hang a salted hide on a **drying rack** (a placeable wooden block): right
+  click puts it up (it shows on the rack), it dries in **about 2 minutes**,
+  right click takes the result: salted raw leather → leather, salted deer
+  hide → leather, salted rabbit hide → dried rabbit hide (4 of those craft
+  into 1 leather);
+* only salted hides can be hung; the rack holds one hide.
 
 ## Build order
 1. Entity framework: storage, physics, rendering of cuboid models, hits, drops, saving per region, spawning — with the **cow** (all variants).
 2. Pathfinding + behaviours: wander, flee, follow food, herds, grazing, sleep, breeding, babies.
-3. Sheep, pig/boar, chicken, deer, rabbit, goat; forage plants and items; shearing, milking, eggs, leads, name tags.
+3. Part 3a: hides, salt and the drying rack; sheep (shearing, wool regrowth), pig and wild boar, chicken (eggs); forage (seeds from grass, wild carrots, berries); shears.
+4. Part 3b: deer, rabbit, goat; bucket and milking; leads; name tags.
+
 
 ## Still open
-* What pigs/boars give besides pork (tusks?) — none for now.
+* Pigs and boars drop only pork (owner, 2026-10-14).
 * Uses for antlers, goat horns, feathers and rabbit's feet (crafting, magic M27).
 * Taming/pets, horses (steppe interview), bees, arctic animals, fish — later animals.
 
