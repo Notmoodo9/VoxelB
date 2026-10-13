@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 19, part 1: Animals — the entity framework and cows: DONE** (v0.19.1, Windows CI: see below)
+**Milestone 19, part 1: Animals — the entity framework and cows: DONE** (v0.19.1, Windows CI green: run #105)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
