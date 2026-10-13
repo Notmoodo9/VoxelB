@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 18 (items, inventory, crafting, tools, smelting): DONE** — part 4: Tools, smelting and repair (v0.18.4, Windows CI: see below)
+**Milestone 18 (items, inventory, crafting, tools, smelting): DONE** — part 4: Tools, smelting and repair (v0.18.4, Windows CI green: run #99)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
