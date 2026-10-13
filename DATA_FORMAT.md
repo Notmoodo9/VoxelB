@@ -64,7 +64,9 @@ Actions: `move_forward`, `move_back`, `move_left`, `move_right`, `move_up`,
 `break_block` (Mouse1), `place_block` (Mouse2: the item in hand),
 `pick_block` (Mouse3: brings the targeted block's item to hand),
 `inventory` (E), `hotbar_1` … `hotbar_9` (1–9; the mouse wheel also steps
-through the hotbar); holding break or place repeats it every 0.25 s. Each takes one or two key names (the list of
+through the hotbar), `recipe_book` (R: the recipe book page next to a
+crafting grid), `swap_hands` (F: the main and the off hand trade items);
+holding break or place repeats it every 0.25 s. Each takes one or two key names (the list of
 names is at the top of the file).
 
 Settings: `mouse_sensitivity` (degrees per mouse count), `invert_mouse_y`
@@ -108,6 +110,19 @@ kept (`src/core/cfg_write.asm`). An unbound key slot is written as nothing
 | `fov` | `50`–`110` (default 70) | vertical field of view in degrees |
 | `autosave_minutes` | `0`–`1440` (default 5; `0` = only when leaving the world) | how often the world being played is saved (moved here from `world.cfg`) |
 | `show_hud` | `0`/`1` (default 1) | `0` hides the crosshair and the held block's name |
+| `recipe_book` | `0`/`1` (default 1) | the recipe book page is open next to crafting grids (the game writes the player's last choice) |
+
+### `assets/textures/ui/journal.cfg` (Milestone 18 part 5)
+
+The journal UI's pieces in `journal.png` (both written by
+`tools/texgen/uigen.py`; edit or replace them to reskin the UI):
+`<piece> = x, y, w, h, border, scale` — the piece's rectangle in the atlas
+(pixels), its 9-slice border (atlas pixels: kept, the middle repeats; 0 =
+the whole picture is stretched) and its size on screen (UI units per atlas
+pixel). Pieces: `leather`, `page`, `slot`, `slot_hi`, `seal`,
+`corner_tl/tr/bl/br`, `ribbon`, `button`, `button_hi`, `field`, `book`,
+`check_off`, `check_on`, `knob`, `strip`, `strip_slot`, `tip`, `page_tile`.
+Missing files: plain rectangles.
 
 ## Block files (`data/blocks/*.blocks`)
 
@@ -612,7 +627,7 @@ Text in the format above (the game rewrites them on every save, via a
 | | `look` | yaw, pitch in radians |
 | | `flying` | `0`/`1` |
 | | `selected` | the hotbar slot in hand, 0–8 (Milestone 18) |
-| | `slot` | one line per used slot: `index, item, count, durability` (0–8 the hotbar, 9–35 the inventory; 36 the stack carried by the mouse and 37–45 the crafting grid when the game quit with the inventory open: they go back into the slots on load); unknown items are skipped |
+| | `slot` | one line per used slot: `index, item, count, durability` (0–8 the hotbar, 9–35 the inventory, 101 the off hand; 36 the stack carried by the mouse and 37–45 the crafting grid when the game quit with the inventory open: they go back into the slots on load); unknown items are skipped |
 | | `held_block` | (saves from before Milestone 18) a block name: put in hotbar slot 0 |
 
 `containers.dat` holds what is in the chests: a `[container x y z]`

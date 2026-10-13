@@ -1,7 +1,7 @@
 # Progress
 
 ## Current state
-**Milestone 18 (items, inventory, crafting, tools, smelting): DONE** — part 4: Tools, smelting and repair (v0.18.4, Windows CI green: run #99)
+**Milestone 18, part 5: The adventurer's journal (UI rework, off hand, recipe book toggle, Shift+drag): DONE** (v0.18.5, Windows CI: see below)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
@@ -9,7 +9,61 @@ Every version has its own release on GitHub ("VoxelB v<version> -
 Next: **Milestone 19 (🎨 DESIGN): entity framework + passive animals +
 pathfinding.** The entity framework is engine work; the animals start
 with a design interview (which animals, per biome, what they drop, how
-they behave).
+they behave). The character preview in the inventory waits for the
+player model (design/BACKLOG.md).
+
+---
+
+## Milestone 18, part 5 — done (2026-10-13): the adventurer's journal (D97)
+
+From the owner's feedback ("feels like a hacked client"), interviewed and
+approved as design/ui/journal_ui.md.
+
+### What was built
+* **The journal look everywhere**: a stitched dark-leather cover with
+  brass corners around cream parchment pages, sepia ink, inked slots and
+  buttons, red wax seals on the important buttons (Play, Create world,
+  Resume, Done ...), inked text fields, inked check boxes for the settings
+  toggles, parchment tooltips. Main menu, world list, world creation,
+  settings, credits and pause menu are journal pages. The art is one
+  generated atlas (`tools/texgen/uigen.py`) drawn as 9-slice pieces.
+* **The inventory is a two-page book**: inventory and crafting on the
+  right page; the recipe book, the Creative catalog (tabs as ribbon
+  bookmarks), a chest or a furnace on the left page.
+* **Recipe book toggle**: the book icon next to the crafting grid or R
+  opens / closes it; the choice is remembered (game.cfg). "Show all"
+  lists every recipe the grid allows, the ones you can't make yet faded.
+* **HUD**: the hotbar is a leather strip with parchment pockets, the slot
+  in hand framed in brass; the item name appears on a parchment slip.
+* **Off hand**: a slot for any item; F swaps it with the main hand. Blocks
+  place from it when the main hand has nothing placeable; light blocks in
+  either hand light the area; it is held lower-left in first person and
+  has its own pocket left of the hotbar and a slot in the book.
+* **Dragging**: with a stack in hand, Shift+drag over slots splits it
+  evenly (leftover stays in hand); right-drag puts one in each.
+
+### Verified (scripted with xdotool)
+* Screenshots of the main menu, settings (check boxes), world list,
+  world creation, credits, pause menu, Survival inventory with the recipe
+  book, Creative catalog with ribbons, chest and furnace pages, the HUD.
+* Recipe book: the book icon closed it (single page; game.cfg
+  `recipe_book = 0`); holding R toggled it again.
+* Shift+drag: 30 cobblestone over 4 slots → 7, 7, 7, 7, 2 left in hand.
+  Right-drag put one cobblestone in a slot. Glowstone put in the off hand
+  showed in the left hand and in the HUD pocket; saved as `slot = 101`.
+* Debug and release headless tests pass; no asserts.
+* Found and fixed: the new hand-light routine had landed in the read-only
+  data section (the game closed at the first frame).
+
+### Performance
+* The journal pieces are textured quads like the old ones (a few hundred
+  per screen); no extra passes. The glass blur is no longer used by any
+  screen.
+
+### Deferred
+* The character preview on the inventory page (needs the player model:
+  milestone 19+).
+* Ink-drawn previews of the split counts while dragging.
 
 ---
 

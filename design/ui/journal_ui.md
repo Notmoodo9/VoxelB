@@ -49,3 +49,16 @@ recipe book**, and **Shift+drag** to split a stack evenly.
 
 * Your character shown in the inventory (a figure on the right page that
   turns with the mouse) — needs the player model (entity milestone).
+
+## Built (milestone 18 part 5)
+
+Everything in the decisions table, as designed. Small choices made while
+building (tell me if any should change):
+* The book's left page disappears when the recipe book is closed (the
+  inventory becomes a single page).
+* The off-hand slot sits at the left of the crafting row, captioned
+  "Off hand".
+* Recipes you can't make yet show faded with "Show all"; clicking them
+  does nothing.
+* The Hardcore choice in world creation is an inked check box (faded
+  until Hardcore arrives with milestone 20).

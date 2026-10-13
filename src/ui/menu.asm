@@ -35,7 +35,7 @@ global menu_open, menu_back, menu_frame, menu_screen
 global g_new_mode, g_new_difficulty, g_new_hardcore
 
 extern ui_frame, ui_end, ui_button, ui_panel, ui_label, ui_rect, ui_text
-extern ui_image, ui_textfield, ui_focus
+extern ui_image, ui_textfield, ui_focus, ui_skin
 extern g_ui_vw, g_ui_vh, g_ui_alpha, g_ui_oy, g_ui_dt, g_ui_click, g_ui_mx
 extern g_ui_my, g_menu_fade, g_game_state, g_mouse_wheel, g_ui_images_tex
 extern str_copy, str_append_dec, str_ieq, str_len, str_parse_u64
@@ -92,7 +92,7 @@ s_seed_hint:    db "Empty: a random seed", 0
 s_l_mode:       db "Game mode", 0
 s_mode_note:    db "Survival has no health or hunger yet. Adventure and Spectator: later", 0
 s_l_diff:       db "Difficulty", 0
-s_hardcore_off: db "Hardcore: off", 0
+s_hardcore_word: db "Hardcore", 0
 s_diff_note:    db "Difficulty and Hardcore arrive with Survival", 0
 s_paused:       db "Paused", 0
 s_resume:       db "Resume", 0
@@ -1621,12 +1621,17 @@ PROC menu_frame, 48, rbx, rsi, rdi, r12, r13, r14, r15
     inc ebx
     jmp .c_diff_b
 .c_hardcore:
-    mov qword [rsp + 32], 40
-    lea rax, [rel s_hardcore_off]
-    mov [rsp + 40], rax
-    mov qword [rsp + 48], UIW_DISABLED
-    lea r8d, [esi + 456]
-    INVOKE ui_button, 53, r12, r8, 200
+    ; an inked check box, faded until Hardcore arrives (milestone 20)
+    mov dword [rsp + 40], 0x60FFFFFF
+    mov qword [rsp + 32], SKIN_CHECK_OFF
+    lea r8d, [esi + 462]
+    INVOKE ui_skin, r12, r8, 28, 28
+    lea edx, [r12d + 38]
+    lea r8d, [esi + 464]
+    mov dword [rsp + 32], COL_TEXT_OFF
+    mov qword [rsp + 40], 0
+    lea rcx, [rel s_hardcore_word]
+    INVOKE ui_label, rcx, rdx, r8, 20
     lea r8d, [esi + 467]
     lea edx, [r12d + 220]
     mov dword [rsp + 32], COL_TEXT_OFF

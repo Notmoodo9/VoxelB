@@ -1764,3 +1764,34 @@ block for their upper half (mossy cobblestone boulders).
   plant fibre 20 % from grasses / 35 % from vines and reeds, resin 10 %
   from logs; crystal sprouts always drop a crystal shard. The dice are the
   simulation's own (xorshift), not the client's.
+
+## D97 — The adventurer's journal UI, off hand, dragging (M18 part 5)
+* **The owner's art direction** (design/ui/journal_ui.md): every screen is
+  a leather-bound journal with cream parchment pages, sepia ink and brass,
+  the smooth font kept. Implemented as a **skin**, not per-screen art: a
+  generated pixel-art atlas (`tools/texgen/uigen.py` → `journal.png` +
+  `journal.cfg`) and one new quad kind in the UI renderer, a textured
+  9-slice whose border keeps its size and whose middle tiles at the
+  piece's scale (nearest sampling: crisp pixels at any window size). The
+  widgets (`ui_panel`, `ui_button`, `ui_textfield`, new `ui_book`,
+  `ui_page`, `ui_checkbox`) draw with it, so every menu changed at once;
+  the palette constants became ink / leather / wax / brass. Text shadows
+  adapt: dark ink gets a pale "pressed into paper" highlight, light text a
+  dark shadow.
+* **The inventory is a two-page book**: the right page is always the
+  player's (title, crafting area with the off-hand slot, inventory,
+  hotbar); the left page holds the recipe book, the Creative catalog
+  (tabs as ribbon bookmarks over the book's edge), a chest or a furnace —
+  or there is no left page (recipe book closed). The recipe book's
+  open/closed state is a game.cfg setting the game writes when toggled.
+* **Off hand = slot 101**, after the window slots (the existing slot
+  numbers in saves stay valid). Placing takes the main hand's block, else
+  the off hand's; the held light takes the brightest of both hands' block
+  light (the old debug light still works); the first-person view draws
+  the off-hand item mirrored to the lower left without the swing.
+* **Dragging is decided by the client, done by the simulation**: the
+  screen collects the slots the mouse passes while the button is held
+  (Shift + left: even split; right: one each) and sends one
+  PKT_C_INV_DRAG on release; the simulation skips slots that can't take
+  the item (full, other item, result, furnace output) and splits what is
+  carried among the rest. A drag over a single slot is a plain click.
