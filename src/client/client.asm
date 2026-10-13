@@ -15,16 +15,23 @@
 ;                                       block editing: interact.asm)
 ;   client_view()                       after sim_update: g_cam_pos, time
 ;   g_cl_player                         the latest PLAYER_PKT (overlay)
+;   g_cinv (37 x {u16 item, u16 count, u16 durability, u16 spare}: the
+;   hotbar 0-8, the inventory 9-35, the carried stack 36), g_csel (the
+;   hotbar slot in hand): the client's copy of the simulation's inventory
+;   (milestone 18). The hotbar keys and the mouse wheel select; the held
+;   block (g_held_block) follows the item in hand.
 ; =============================================================================
 %include "macros.inc"
 %include "input.inc"
 %include "packet.inc"
 
-global client_init, client_input, client_view, g_cl_player
+global client_init, client_input, client_view, g_cl_player, g_cinv, g_csel
+global client_select
 
 extern g_cam_yaw, g_cam_pitch, g_cam_pos, g_sim_alpha
 extern daycycle_set, timer_elapsed_us
 extern interact_init, interact_update, stream_block_changed
+extern g_held_block, g_item_block
 
 %define DOUBLE_TAP_US   300000          ; move_up twice within this: fly
 
@@ -42,6 +49,9 @@ g_cl_flytest:   resd 1
 g_cl_seq:       resd 1
 alignb 8
 g_cl_last_jump: resq 1                  ; time of the last move_up press (us)
+g_cinv:         resq INV_SLOTS + 1
+g_csel:         resd 1
+g_cl_sel_pkt:   resb INV_PKT_size
 
 section .rdata
 align 16
@@ -62,7 +72,80 @@ PROC client_init, 0
     mov [rel g_cl_time_have], eax
     mov [rel g_cl_seq], eax
     mov [rel g_cl_last_jump], rax
+    mov [rel g_csel], eax
+    lea rcx, [rel g_cinv]
+    mov edx, INV_SLOTS + 1
+.clear:
+    mov [rcx], rax
+    add rcx, 8
+    dec edx
+    jnz .clear
     call interact_init
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; client_select — put hotbar slot ecx in hand (shown at once; the
+; simulation is told).
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC client_select, 0
+    mov [rel g_csel], ecx
+    mov [rel g_cl_sel_pkt + INV_PKT.slot], ecx
+    lea rcx, [rel g_to_sim]
+    lea r8, [rel g_cl_sel_pkt]
+    INVOKE pkt_send, rcx, PKT_C_SELECT, r8, INV_PKT_size
+    call held_follows
+    RETURN
+ENDPROC
+
+; held_follows — g_held_block = the block of the item in hand (0: none)
+held_follows:
+    mov eax, [rel g_csel]
+    lea rcx, [rel g_cinv]
+    movzx ecx, word [rcx + rax * 8]
+    xor eax, eax
+    test ecx, ecx
+    jz .set
+    lea rax, [rel g_item_block]
+    movzx eax, word [rax + rcx * 2]
+.set:
+    mov [rel g_held_block], eax
+    ret
+
+; hotbar_input — the hotbar keys and the mouse wheel   clobbers: volatile
+PROC hotbar_input, 0, rbx
+    xor ebx, ebx
+.key:
+    lea ecx, [ebx + ACT_HOTBAR_1]
+    call input_pressed
+    test eax, eax
+    jnz .pick
+    inc ebx
+    cmp ebx, INV_HOTBAR
+    jb .key
+    ; the wheel: up = the slot to the left
+    mov eax, [rel g_mouse_wheel]
+    test eax, eax
+    jz .done
+    cmp dword [rel g_mouse_captured], 0
+    je .done
+    mov ebx, [rel g_csel]
+    cmp eax, 0
+    jg .left
+    inc ebx
+    cmp ebx, INV_HOTBAR
+    jb .pick
+    xor ebx, ebx
+    jmp .pick
+.left:
+    dec ebx
+    jns .pick
+    mov ebx, INV_HOTBAR - 1
+.pick:
+    mov ecx, ebx
+    call client_select
+.done:
     RETURN
 ENDPROC
 
@@ -141,6 +224,7 @@ PROC client_input, 0, rbx
     lea rcx, [rel g_to_sim]
     INVOKE pkt_send, rcx, PKT_C_TOGGLE_FLY, 0, 0
 .done:
+    call hotbar_input
     call interact_update                ; target, break / place / pick
     RETURN
 ENDPROC
@@ -184,6 +268,29 @@ PROC client_view, 0, rsi, rdi
     call stream_block_changed
     jmp .packet
 .not_block:
+    cmp eax, PKT_S_SLOT
+    jne .not_slot
+    mov ecx, [rel g_cl_pkt + PKT.data + INV_PKT.slot]
+    cmp ecx, INV_SLOTS
+    ja .packet
+    lea rdx, [rel g_cinv]
+    lea rdx, [rdx + rcx * 8]
+    mov eax, [rel g_cl_pkt + PKT.data + INV_PKT.item]
+    mov [rdx], ax
+    mov eax, [rel g_cl_pkt + PKT.data + INV_PKT.count]
+    mov [rdx + 2], ax
+    mov eax, [rel g_cl_pkt + PKT.data + INV_PKT.arg]
+    mov [rdx + 4], ax
+    call held_follows
+    jmp .packet
+.not_slot:
+    cmp eax, PKT_S_SELECT
+    jne .not_select
+    mov eax, [rel g_cl_pkt + PKT.data + INV_PKT.slot]
+    mov [rel g_csel], eax
+    call held_follows
+    jmp .packet
+.not_select:
     cmp eax, PKT_S_TIME
     jne .packet
     mov eax, [rel g_cl_pkt + PKT.data + TIME_PKT.time]

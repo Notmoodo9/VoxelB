@@ -333,9 +333,11 @@ PROC edit_request, 16, rbx, rsi, rdi, r12, r13, r14
     mov r8d, edi
     mov r9d, r12d
     call queue_edit
+    mov eax, 1
     RETURN
 .reject:
     inc qword [rel g_edit_rejected]
+    xor eax, eax
     RETURN
 ENDPROC
 

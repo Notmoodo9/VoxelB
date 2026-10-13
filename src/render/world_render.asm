@@ -50,6 +50,7 @@
 %include "world_api.inc"
 %include "lod.inc"
 
+extern icons_init
 global world_render_init, world_render_draw, world_render_shutdown, tint_upload, shadow_apply
 global g_world_visible, g_world_drawn_quads, g_world_gpu_bytes, g_quad_buffer
 global g_light_buffer, g_held_on, g_daylight, g_shadow_records, g_cam_in_water
@@ -314,6 +315,7 @@ PROC world_render_init, 0, rbx
     call block_textures_init
     test eax, eax
     jz .fail
+    call icons_init                     ; (milestone 18: no icons is not fatal)
 
     ; biome tint map: 1024 x 1024 texels per layer, one per 4 x 4 blocks,
     ; repeating every 4096 blocks (the loaded world is always smaller);

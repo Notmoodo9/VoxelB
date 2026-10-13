@@ -62,6 +62,7 @@ g_tdelta:       resq 3
 g_cell:         resd 3
 g_step:         resd 3
 g_req:          resb BLOCK_PKT_size
+g_pick:         resb INV_PKT_size
 
 section .text
 
@@ -316,6 +317,8 @@ PROC interact_update, 0, rbx
     call action_due
     test eax, eax
     jz .no_place
+    cmp dword [rel g_held_block], 0
+    je .no_place                        ; (nothing placeable in hand)
     mov ecx, PKT_C_PLACE
     mov edx, 1
     mov r8d, [rel g_held_block]
@@ -325,8 +328,12 @@ PROC interact_update, 0, rbx
     call input_pressed
     test eax, eax
     jz .done
+    ; the simulation brings the item to hand (milestone 18)
     mov eax, [rel g_target_id]
-    mov [rel g_held_block], eax
+    mov [rel g_pick + INV_PKT.item], eax
+    lea rcx, [rel g_to_sim]
+    lea r8, [rel g_pick]
+    INVOKE pkt_send, rcx, PKT_C_PICK, r8, INV_PKT_size
 .done:
     RETURN
 ENDPROC

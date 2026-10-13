@@ -2,7 +2,8 @@
 // Menus and HUD (milestone 17): one 64-byte record per quad in a storage
 // buffer, six vertices each (vertex pulling). Kinds: 0 rounded rectangle
 // (vertical gradient), 1 SDF glyph, 2 glass panel (blurred backdrop), 3 soft
-// glow / shadow around a rounded rectangle, 4 image (uv into u_images).
+// glow / shadow around a rounded rectangle, 4 image (uv into u_images), 5 item icon
+// (uv into u_icons).
 
 struct Quad {
     vec4 rect;       // x, y, w, h (pixels, top-left origin)
@@ -31,7 +32,7 @@ void main() {
     Quad Q = q[gl_VertexID / 6];
     vec2 c = C[gl_VertexID % 6];
     float m = (Q.kind == 3u) ? Q.p.y : 1.0;          // room for the glow / AA
-    if (Q.kind == 1u || Q.kind == 4u) m = 0.0;
+    if (Q.kind == 1u || Q.kind >= 4u) m = 0.0;
     vec2 pos = Q.rect.xy - m + c * (Q.rect.zw + 2.0 * m);
     v_local = pos - Q.rect.xy;
     v_uv = mix(Q.uv.xy, Q.uv.zw, c);

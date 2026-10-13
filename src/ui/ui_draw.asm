@@ -21,6 +21,7 @@
 ;   ui_glass(x, y, w, h, radius, tint, border color)
 ;   ui_glow(x, y, w, h, radius, size, color)
 ;   ui_image(x, y, w, h, u0, v0, u1, v1 (floats as dword bits), color)
+;   ui_icon_quad(...)                   the same from the item icon atlas
 ;   ui_text(str, x, y, size, color, color2, flags) -> eax width (units)
 ;       y = top of the line; size = em in units; flags UI_CENTER / UI_RIGHT
 ;       (x is the centre / right edge), UI_SHADOW, UI_BOLD
@@ -38,10 +39,11 @@
 %include "ui.inc"
 
 global ui_draw_init, ui_draw_begin, ui_rect, ui_glass, ui_glow, ui_image
+global ui_icon_quad
 global ui_text, ui_text_width, ui_draw_flush, ui_draw_shutdown
 global g_ui_scale, g_ui_vw, g_ui_vh, g_ui_alpha, g_ui_oy, g_ui_images_tex
 
-extern png_decode, str_ieq, str_parse_float, str_parse_u64
+extern png_decode, str_ieq, str_parse_float, str_parse_u64, g_icon_tex
 
 %define MAX_QUADS       16384
 %define QUAD_SIZE       64
@@ -535,6 +537,25 @@ PROC ui_image, 0
     RETURN
 ENDPROC
 
+; ui_icon_quad — like ui_image, from the item icon atlas (item_icons.asm)
+PROC ui_icon_quad, 0
+    call set_rect
+    mov eax, [ARG(5)]
+    mov [rel g_q + QUAD.u0], eax
+    mov eax, [ARG(6)]
+    mov [rel g_q + QUAD.v0], eax
+    mov eax, [ARG(7)]
+    mov [rel g_q + QUAD.u1], eax
+    mov eax, [ARG(8)]
+    mov [rel g_q + QUAD.v1], eax
+    mov eax, [ARG(9)]
+    mov [rel g_q + QUAD.color], eax
+    mov [rel g_q + QUAD.color2], eax
+    mov dword [rel g_q + QUAD.kind], UIK_ICON
+    call push_quad
+    RETURN
+ENDPROC
+
 ; -----------------------------------------------------------------------------
 ; ui_text_width — width of a string at a size.
 ;   in:  rcx = string, edx = size (units)
@@ -869,6 +890,12 @@ PROC ui_draw_flush, 16, rbx, rsi, rdi
     mov eax, [rel g_font_tex]           ; (nothing yet: any texture)
 .images:
     GL glBindTextureUnit, 2, rax
+    mov eax, [rel g_icon_tex]
+    test eax, eax
+    jnz .icons
+    mov eax, [rel g_font_tex]
+.icons:
+    GL glBindTextureUnit, 3, rax
     GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 0, [rel g_ui_buf]
     mov r8d, [rel g_quad_count]
     imul r8d, r8d, 6

@@ -25,7 +25,9 @@
 %define ACT_BREAK_BLOCK         13      ; milestone 16: break the targeted block
 %define ACT_PLACE_BLOCK         14      ; place the held block
 %define ACT_PICK_BLOCK          15      ; hold the targeted block
-%define ACT_COUNT               16
+%define ACT_INVENTORY           16      ; milestone 18: open / close the inventory
+%define ACT_HOTBAR_1            17      ; ..ACT_HOTBAR_1 + 8: hotbar slots 1-9
+%define ACT_COUNT               26
 %define BINDS_PER_ACTION        2
 
 %define VK_LBUTTON              0x01

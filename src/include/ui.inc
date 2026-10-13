@@ -11,6 +11,7 @@
 %define UIK_GLASS       2
 %define UIK_GLOW        3
 %define UIK_IMAGE       4
+%define UIK_ICON        5               ; item icon atlas (milestone 18)
 
 ; ui_text flags
 %define UI_CENTER       1

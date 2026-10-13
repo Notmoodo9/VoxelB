@@ -5,6 +5,7 @@
 layout(binding = 0) uniform sampler2D u_font;       // SDF atlas (R8, 0.5 = edge)
 layout(binding = 1) uniform sampler2D u_backdrop;   // the frame, 1/16 size
 layout(binding = 2) uniform sampler2D u_images;     // thumbnails etc.
+layout(binding = 3) uniform sampler2D u_icons;      // item icons (milestone 18)
 layout(location = 0) uniform vec2 u_screen;
 
 in vec2 v_local;
@@ -56,6 +57,11 @@ void main() {
     }
     if (v_kind == 4u) {
         o_color = texture(u_images, v_uv) * v_color;
+        return;
+    }
+    if (v_kind == 5u) {
+        o_color = texture(u_icons, v_uv) * v_color;
+        if (o_color.a <= 0.01) discard;
         return;
     }
     float d = box(v_local, v_size, v_p.x);

@@ -6,7 +6,8 @@
 ;                           seed, generator, game_mode, difficulty,
 ;                           hardcore, last_played, time
 ;   thumb.png               a recent view of the world (thumb.asm)
-;   player.dat              text: eye position, look, flying, held block
+;   player.dat              text: eye position, look, flying, the slot in
+;                           hand and the inventory (slot = i, item, count, wear)
 ;   overworld/region/r.<rx>.<rz>.vxr   region files (the overworld realm)
 ; Only columns that changed (block edits, flowing liquids) are saved: every
 ; other column is generated again from the seed, identically. A region file
@@ -54,10 +55,12 @@
 %include "world_api.inc"
 %include "packet.inc"
 %include "save.inc"
+%include "items.inc"
 
 global save_open, save_load_player, save_column, save_load_column, save_all
 global save_update
 global g_save_enabled, g_save_exists, g_save_player_flags, g_save_held
+global g_save_inv, g_save_inv_loaded, g_save_inv_sel
 global g_save_columns, g_save_bytes, g_save_loaded, g_save_last_ms
 global g_world_name, g_autosave_minutes, save_peek
 global g_world_mode, g_world_difficulty, g_world_hardcore
@@ -69,6 +72,7 @@ extern block_find, timer_elapsed_us, thumb_write
 extern g_seed_override, g_seed_override_set, g_force_flat, g_generator
 extern g_world_seed, g_time_override, g_sim_time
 extern g_cam_pos, g_cam_yaw, g_cam_pitch, g_held_block, g_block_names
+extern g_inv, g_inv_sel
 extern g_pl_pos, g_pl_eye, g_pl_flags, g_loaded, g_loaded_count
 
 IMPORT CreateFileA, ReadFile, WriteFile, CloseHandle, SetFilePointerEx
@@ -134,6 +138,8 @@ k_eye:          db "eye_position", 0
 k_look:         db "look", 0
 k_flying:       db "flying", 0
 k_held:         db "held_block", 0
+k_selected:     db "selected", 0
+k_slot:         db "slot", 0
 k_difficulty:   db "difficulty", 0
 k_hardcore:     db "hardcore", 0
 k_played:       db "last_played", 0
@@ -166,7 +172,8 @@ t_time:         db 10, "time = ", 0
 t_eye:          db 10, "eye_position = ", 0
 t_look:         db 10, "look = ", 0
 t_flying:       db 10, "flying = ", 0
-t_held:         db 10, "held_block = ", 0
+t_selected:     db 10, "selected = ", 0
+t_slot:         db 10, "slot = ", 0
 t_comma:        db ", ", 0
 t_nl:           db 10, 0
 str_newer:      db "save: this world was saved by a newer version (format_version ", 0
@@ -198,6 +205,10 @@ g_lock:             resq 1              ; SRWLOCK (zero = unlocked)
 g_save_exists:      resd 1
 g_save_player_flags: resd 1
 g_save_held:        resd 1
+g_save_inv_loaded:  resd 1
+g_save_inv_sel:     resd 1
+alignb 8
+g_save_inv:         resq INV_SLOTS      ; player.dat's slots, for inv_init
 g_save_columns:     resq 1              ; columns written
 g_save_bytes:       resq 1              ; compressed bytes written
 g_save_loaded:      resq 1              ; columns loaded from regions
@@ -597,6 +608,17 @@ ENDPROC
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC save_load_player, 0
+    mov dword [rel g_save_held], 0
+    mov dword [rel g_save_inv_loaded], 0
+    mov dword [rel g_save_inv_sel], 0
+    lea rcx, [rel g_save_inv]
+    xor eax, eax
+    mov edx, INV_SLOTS
+.clear:
+    mov [rcx], rax
+    add rcx, 8
+    dec edx
+    jnz .clear
     cmp dword [rel g_save_enabled], 0
     je .none
     cmp dword [rel g_save_exists], 0
@@ -674,12 +696,86 @@ PROC player_pair, 0, rbx, rsi, rdi
     lea rdx, [rel k_held]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
-    jz .done
+    jz .not_held
     mov rcx, rsi
     call block_find
     cmp eax, 0
     jle .done
-    mov [rel g_save_held], eax
+    mov [rel g_save_held], eax          ; (saves from before milestone 18)
+    RETURN
+.not_held:
+    lea rdx, [rel k_selected]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_selected
+    mov rcx, rsi
+    call str_parse_u64
+    cmp rax, INV_HOTBAR
+    jae .done
+    mov [rel g_save_inv_sel], eax
+    RETURN
+.not_selected:
+    lea rdx, [rel k_slot]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .done
+    mov rcx, rsi
+    call parse_slot
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; parse_slot — "slot = <index>, <item>, <count>[, <durability>]" into the
+; inventory waiting for the simulation (g_save_inv). Unknown items (a data
+; file changed) are left out.
+;   in:  rcx = value text
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC parse_slot, 16, rbx, rsi, rdi
+    mov rsi, rcx
+    call cfg_next_token
+    mov rsi, rdx
+    mov rcx, rax
+    call str_parse_u64
+    cmp rax, INV_SLOTS
+    jae .done
+    lea rbx, [rel g_save_inv]
+    lea rbx, [rbx + rax * 8]
+    test rsi, rsi
+    jz .done
+    mov rcx, rsi
+    call cfg_next_token
+    mov rsi, rdx
+    mov rcx, rax
+    call item_find
+    cmp eax, 0
+    jle .done
+    mov edi, eax
+    test rsi, rsi
+    jz .done
+    mov rcx, rsi
+    call cfg_next_token
+    mov rsi, rdx
+    mov rcx, rax
+    call str_parse_u64
+    test rax, rax
+    jz .done
+    cmp rax, 64
+    jbe .count
+    mov eax, 64
+.count:
+    mov [rbx], di
+    mov [rbx + 2], ax
+    mov word [rbx + 4], 0
+    mov dword [rel g_save_inv_loaded], 1
+    test rsi, rsi
+    jz .done
+    mov rcx, rsi
+    call cfg_next_token
+    mov rcx, rax
+    call str_parse_u64
+    mov [rbx + 4], ax
 .done:
     RETURN
 ENDPROC
@@ -1358,7 +1454,7 @@ PROC write_world_dat, 16, rbx
     RETURN
 ENDPROC
 
-PROC write_player_dat, 16, rbx, rsi
+PROC write_player_dat, 16, rbx, rsi, rdi
     lea rcx, [rel g_arena_scratch]
     call arena_mark
     mov [LOCAL(0)], rax
@@ -1413,14 +1509,47 @@ PROC write_player_dat, 16, rbx, rsi
     test dword [rel g_pl_flags], PF_FLYING
     setnz dl
     INVOKE str_append_dec, rax, rdx, 0
-    lea rdx, [rel t_held]
+    ; the inventory (milestone 18): the slot in hand, then every used slot
+    lea rdx, [rel t_selected]
     mov rcx, rax
     call str_copy
-    mov edx, [rel g_held_block]
-    lea rcx, [rel g_block_names]
+    mov edx, [rel g_inv_sel]
+    INVOKE str_append_dec, rax, rdx, 0
+    xor esi, esi
+.slot:
+    cmp esi, INV_SLOTS
+    jae .slots_done
+    lea rcx, [rel g_inv]
+    lea rdi, [rcx + rsi * 8]
+    movzx ecx, word [rdi]
+    test ecx, ecx
+    jz .slot_next
+    lea rdx, [rel t_slot]
+    mov rcx, rax
+    call str_copy
+    INVOKE str_append_dec, rax, rsi, 0
+    lea rdx, [rel t_comma]
+    mov rcx, rax
+    call str_copy
+    movzx edx, word [rdi]
+    lea rcx, [rel g_item_names]
     mov rdx, [rcx + rdx * 8]
     mov rcx, rax
     call str_copy
+    lea rdx, [rel t_comma]
+    mov rcx, rax
+    call str_copy
+    movzx edx, word [rdi + 2]
+    INVOKE str_append_dec, rax, rdx, 0
+    lea rdx, [rel t_comma]
+    mov rcx, rax
+    call str_copy
+    movzx edx, word [rdi + 4]
+    INVOKE str_append_dec, rax, rdx, 0
+.slot_next:
+    inc esi
+    jmp .slot
+.slots_done:
     lea rdx, [rel t_nl]
     mov rcx, rax
     call str_copy

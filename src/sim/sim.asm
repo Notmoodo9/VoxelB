@@ -30,6 +30,7 @@ global g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us, g_sim_time
 
 extern player_load, player_spawn, player_tick, player_toggle_fly, player_fill
 extern edit_request, edit_tick, fluid_tick
+extern inv_init, inv_packet, inv_selected_block, inv_used_selected, inv_flush
 extern timer_elapsed_us, g_frame_us, g_time_of_day, g_day_length
 
 %define TICK_US             50000       ; 20 TPS
@@ -80,6 +81,7 @@ PROC sim_init, 16, rbx, rsi
     mov rcx, rbx
     mov edx, esi
     call player_spawn
+    call inv_init                       ; (milestone 18)
     cvtss2sd xmm0, [rel g_time_of_day]
     movsd [rel g_sim_time], xmm0
     mov qword [rel g_sim_acc], 0
@@ -148,25 +150,46 @@ PROC sim_tick, 16, rbx, rsi, rdi
     jmp .packet
 .not_input:
     cmp eax, PKT_C_BREAK
-    je .edit
+    je .break
     cmp eax, PKT_C_PLACE
-    je .edit
+    je .place
+    cmp eax, PKT_C_SELECT
+    jb .not_inv
+    cmp eax, PKT_C_CREATIVE_SET
+    ja .not_inv
+    mov ecx, eax                        ; inventory (milestone 18)
+    lea rdx, [rel g_pkt + PKT.data]
+    call inv_packet
+    jmp .packet
+.not_inv:
     cmp eax, PKT_C_TOGGLE_FLY
     jne .packet                         ; (unknown packets are ignored)
     call player_toggle_fly
     jmp .packet
-.edit:
+.break:
     xor edx, edx
-    cmp eax, PKT_C_PLACE
-    sete dl
     lea rcx, [rel g_pkt + PKT.data]
     call edit_request
+    jmp .packet
+.place:
+    ; the block of the item in hand (the client's id is not trusted)
+    call inv_selected_block
+    test eax, eax
+    jz .packet
+    mov [rel g_pkt + PKT.data + BLOCK_PKT.id], eax
+    mov edx, 1
+    lea rcx, [rel g_pkt + PKT.data]
+    call edit_request
+    test eax, eax
+    jz .packet
+    call inv_used_selected
     jmp .packet
 .packets_done:
     lea rcx, [rel g_input]
     mov edx, [rel g_pressed]
     call player_tick
     call edit_tick                      ; block changes (they wait for busy columns)
+    call inv_flush                      ; changed inventory slots to the client
     mov rcx, [rel g_sim_tick]
     call fluid_tick                     ; flowing liquids
 

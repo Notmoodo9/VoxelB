@@ -1,0 +1,42 @@
+# The Creative inventory's tabs (milestone 18; format: DATA_FORMAT.md
+# "Item files"). Tabs show in this order. Every block is an item by
+# itself; a block item goes to the first tab whose `blocks` patterns match
+# its name ('*' = anything). Items and blocks matching no tab go to the
+# last tab, so new blocks always show up somewhere.
+
+[tab building]
+title = Building
+icon = stone_bricks
+blocks = *_planks, *bricks, *_bookshelf, stone, cobblestone, mossy_cobblestone, smooth_stone, sandstone, *_log, *_bark, stripped_*, *_stem, *_cap, *_gills
+
+[tab shapes]
+title = Shapes
+icon = oak_stairs
+blocks = *_slab, *_stairs, *_fence, *_fence_gate, *_door, *_trapdoor, *_ladder, *_sign, *_pressure_plate, *_wall
+
+[tab colours]
+title = Colours & glass
+icon = cyan_wool
+blocks = *_terracotta, *_stained_glass, *_wool, glass, tinted_glass
+
+[tab lights]
+title = Lights
+icon = yellow_lamp
+blocks = *lamp, glowstone, *_glow_pool, glow_moss
+
+[tab ores]
+title = Ores & crystals
+icon = diamond_ore
+blocks = *_ore, *_crystal, *_crystal_sprout, *_veined_stone, deep_stone, bedrock, dripstone_block, pointed_dripstone, salt, bone_block
+
+[tab items]
+title = Items
+icon = stone
+
+[tab nature]
+title = Nature
+icon = grass_block
+
+# Placed by the game (a sign against a wall), not picked from the inventory.
+[hidden]
+blocks = *_wall_sign

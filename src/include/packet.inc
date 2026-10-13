@@ -32,7 +32,24 @@ endstruc
 %define PKT_C_INPUT         1           ; INPUT_PKT: movement keys and view
 %define PKT_C_TOGGLE_FLY    2           ; ask to start / stop flying (Creative)
 %define PKT_C_BREAK         3           ; BLOCK_PKT: break the block at x, y, z
-%define PKT_C_PLACE         4           ; BLOCK_PKT: place id at x, y, z
+%define PKT_C_PLACE         4           ; BLOCK_PKT: place the selected item's block at x, y, z
+%define PKT_C_SELECT        5           ; INV_PKT .slot: the hotbar slot in hand (0-8)
+%define PKT_C_PICK          6           ; INV_PKT .item: a block id: bring its item to hand
+%define PKT_C_INV_CLICK     7           ; INV_PKT .slot (INV_CURSOR..), .arg INVB_*
+%define PKT_C_CREATIVE_SET  8           ; INV_PKT .slot, .item, .count (Creative only)
+
+; inventory (milestone 18): slots 0-8 are the hotbar, 9-35 the inventory
+struc INV_PKT
+    .slot       resd 1
+    .item       resd 1
+    .count      resd 1
+    .arg        resd 1                  ; S_SLOT: durability; C_INV_CLICK: INVB_*
+endstruc
+%define INV_SLOTS           36
+%define INV_HOTBAR          9
+%define INV_CURSOR          36          ; the stack carried by the mouse
+%define INVB_RIGHT          1           ; right button: half / one
+%define INVB_SHIFT          2           ; shift-click: move to the other part
 
 struc BLOCK_PKT
     .x          resd 1                  ; i32 world block position
@@ -58,6 +75,8 @@ endstruc
 %define PKT_S_PLAYER        64          ; PLAYER_PKT, every tick
 %define PKT_S_TIME          65          ; TIME_PKT, every tick
 %define PKT_S_BLOCK         66          ; BLOCK_PKT: a block changed
+%define PKT_S_SLOT          67          ; INV_PKT: a slot's contents (0-35, INV_CURSOR)
+%define PKT_S_SELECT        68          ; INV_PKT .slot: the hotbar slot in hand
 
 struc PLAYER_PKT
     .pos        resq 3                  ; f64 feet (x, y, z); x, z = centre

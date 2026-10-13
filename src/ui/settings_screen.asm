@@ -29,7 +29,7 @@ global settings_screen_open, settings_screen_frame, settings_screen_back
 global settings_screen_close
 
 extern ui_button, ui_panel, ui_label, ui_text
-extern g_ui_vh, g_ui_click
+extern g_ui_vh, g_ui_click, g_mouse_wheel
 extern str_copy, str_append_dec
 extern settings_save_graphics, settings_save_game, shadow_apply
 extern stream_set_distance, lod_reset
@@ -61,6 +61,7 @@ extern g_show_hud
 %define PANEL_W         820
 %define PANEL_H         640
 %define ROW_STEP        46
+%define CTL_ROWS        8               ; Controls: rows of two actions shown
 %define VK_DELETE       0x2E
 
 struc SROW
@@ -102,7 +103,7 @@ s_off:          db "Off", 0
 s_left:         db "<", 0
 s_right:        db ">", 0
 s_press:        db "Press a key", 0
-s_keys_hint:    db "Click a key to change it, then press the new key (Delete: none, Esc: cancel)", 0
+s_keys_hint2:   db "Scroll for more. Click a key, then press the new one (Delete: none, Esc: cancel)", 0
 s_restart_hint: db "Fast leaves takes effect after a restart", 0
 s_chunks:       db " chunks", 0
 s_blocks:       db " blocks", 0
@@ -167,12 +168,23 @@ a_12:           db "Fast time", 0
 a_13:           db "Break block", 0
 a_14:           db "Place block", 0
 a_15:           db "Pick block", 0
+a_16:           db "Inventory", 0
+a_17:           db "Hotbar 1", 0
+a_18:           db "Hotbar 2", 0
+a_19:           db "Hotbar 3", 0
+a_20:           db "Hotbar 4", 0
+a_21:           db "Hotbar 5", 0
+a_22:           db "Hotbar 6", 0
+a_23:           db "Hotbar 7", 0
+a_24:           db "Hotbar 8", 0
+a_25:           db "Hotbar 9", 0
 
 align 8
 tab_names:      dq s_tab0, s_tab1, s_tab2
 preset_names:   dq s_p0, s_p1, s_p2, s_p3
 action_names:   dq a_0, a_1, a_2, a_3, a_4, a_5, a_6, a_7, a_8, a_9, a_10
-                dq a_11, a_12, a_13, a_14, a_15
+                dq a_11, a_12, a_13, a_14, a_15, a_16, a_17, a_18, a_19, a_20
+                dq a_21, a_22, a_23, a_24, a_25
 %if ($ - action_names) / 8 != ACT_COUNT
     %error "action_names does not match ACT_COUNT"
 %endif
@@ -234,6 +246,7 @@ g_dirty:        resd 1                  ; G_* touched since opening
 g_wait_action:  resd 1                  ; action being rebound, -1 none
 g_wait_slot:    resd 1
 g_wait_armed:   resd 1                  ; (from the frame after the click)
+g_ctl_scroll:   resd 1                  ; first row shown in Controls
 g_old_render:   resd 1
 g_old_lod:      resd 1
 g_text:         resb 48
@@ -827,17 +840,42 @@ PROC settings_screen_frame, 16, rbx, rsi, rdi, r12, r13, r14, r15
     mov dword [rel g_ui_click], 0       ; (a mouse button bound: no click)
     or dword [rel g_dirty], G_CONTROLS
 .c_rows:
-    xor ebx, ebx
+    ; two actions per row, CTL_ROWS rows visible; the wheel scrolls
+    mov eax, [rel g_mouse_wheel]
+    test eax, eax
+    jz .c_scrolled
+    mov ecx, [rel g_ctl_scroll]
+    cmp eax, 0
+    jg .c_up
+    inc ecx
+    jmp .c_clamp
+.c_up:
+    dec ecx
+.c_clamp:
+    cmp ecx, (ACT_COUNT + 1) / 2 - CTL_ROWS
+    jle .c_c1
+    mov ecx, (ACT_COUNT + 1) / 2 - CTL_ROWS
+.c_c1:
+    test ecx, ecx
+    jns .c_c2
+    xor ecx, ecx
+.c_c2:
+    mov [rel g_ctl_scroll], ecx
+.c_scrolled:
+    mov ebx, [rel g_ctl_scroll]
+    add ebx, ebx                        ; first action shown
 .c_action:
     cmp ebx, ACT_COUNT
     jae .c_extra
-    ; 8 per column
     mov eax, ebx
-    and eax, 7
+    shr eax, 1
+    sub eax, [rel g_ctl_scroll]
+    cmp eax, CTL_ROWS
+    jae .c_extra
     imul r13d, eax, 42
     add r13d, [LOCAL(F_Y0)]             ; row top
     mov eax, ebx
-    shr eax, 3
+    and eax, 1
     imul r12d, eax, 390
     add r12d, edi
     add r12d, 40                        ; row left
@@ -871,7 +909,10 @@ PROC settings_screen_frame, 16, rbx, rsi, rdi, r12, r13, r14, r15
     imul edx, r14d, 104
     add edx, r12d
     add edx, 350 - 202
-    lea ecx, [ebx * 2 + 190]
+    mov eax, ebx
+    sub eax, [rel g_ctl_scroll]
+    sub eax, [rel g_ctl_scroll]
+    lea ecx, [eax * 2 + 190]            ; (ids by position: steady hover)
     add ecx, r14d
     INVOKE ui_button, rcx, rdx, r13, 98
     test eax, eax
@@ -913,7 +954,7 @@ PROC settings_screen_frame, 16, rbx, rsi, rdi, r12, r13, r14, r15
     add r8d, 8 * 42 + 14 + ROW_STEP + 4
     mov dword [rsp + 32], COL_TEXT_OFF
     mov qword [rsp + 40], UI_CENTER
-    lea rcx, [rel s_keys_hint]
+    lea rcx, [rel s_keys_hint2]
     INVOKE ui_label, rcx, [LOCAL(F_CX)], r8, 15
     ; the click that started a rebinding is not the key
     cmp dword [rel g_wait_action], 0
