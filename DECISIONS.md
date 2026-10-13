@@ -1635,3 +1635,28 @@ block for their upper half (mossy cobblestone boulders).
   v0.1.0 – v0.16.0); it skips versions that already have a release.
 * The main menu's footer shows "v<version> - <title>".
 
+## D93 — Items, inventory, icons, the item in hand (M18 part 1)
+* **Every block is an item** automatically (zero data needed for 600+
+  block items); `data/items/*.items` add non-block items and Creative tabs.
+  Tabs pick block items by name patterns, so a new block lands in a tab
+  without touching item files; anything unmatched goes to the last tab.
+* **The inventory belongs to the simulation** (D85): 36 slots + the
+  carried stack, slot = 8 bytes (item, count, durability). The client sends
+  intents (select, pick, click, Creative set) and draws its copy, which the
+  simulation updates with one packet per changed slot at the end of a
+  tick. Placing uses the simulation's item in hand (the client's block id
+  is ignored), so a networked client cannot place what it doesn't hold.
+* **Icons are drawn once** at start-up into a 2048 × 1280 atlas
+  (64 px cells) with a small vertex-pulling shader that reads the same face
+  and texture buffers as the chunks: isometric cubes, half-height slabs,
+  flat pictures for plant-like shapes; ~15 ms for 639 items. The UI draws
+  them as a new quad kind from that atlas (still one draw call).
+* **The item in hand** is drawn over the finished frame with its own fixed
+  70° projection (so the FOV setting doesn't stretch it); only faces
+  turned to the eye are emitted, so no depth buffer is needed. Light =
+  daylight (or the held light), sway by walking speed, a 0.25 s swing on
+  break / place.
+* **Creative inventory:** icon tabs + search (substring of the shown
+  name, across all tabs) + a 12 × 5 scrolling grid; the world keeps
+  running behind the screen, the player stands still.
+

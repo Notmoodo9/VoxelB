@@ -12,6 +12,7 @@
 ;   icons_init() -> eax 1/0             after block_textures_init, items_load
 ;   icon_uv(ecx = item, rdx = out f32[4] u0, v0, u1, v1 for ui_icon_quad)
 ;   ui_icon(ecx = item, edx = x, r8d = y, r9d = size, ARG5 = colour)
+;   icon_kind(ecx = item) -> eax 0 cube, 1 slab, 2 flat picture
 ;   g_icon_tex                          the atlas (ui_draw binds it)
 ; =============================================================================
 %include "macros.inc"
@@ -22,7 +23,7 @@
 %include "block.inc"
 %include "items.inc"
 
-global icons_init, icon_uv, ui_icon, g_icon_tex
+global icons_init, icon_uv, ui_icon, icon_kind, g_icon_tex
 
 extern shader_create, shader_program, block_textures_bind, png_decode
 extern ui_icon_quad, str_copy
@@ -274,6 +275,30 @@ PROC icons_init, 16, rbx, rsi, rdi
     xor eax, eax
     RETURN
 ENDPROC
+
+; icon_kind — how an item is shown: eax = KIND_* (see the header)
+;   in:  ecx = item   clobbers: rax, rcx
+icon_kind:
+    lea rax, [rel g_item_tex]
+    cmp qword [rax + rcx * 8], 0
+    jne .flat
+    lea rax, [rel g_item_block]
+    movzx ecx, word [rax + rcx * 2]
+    test ecx, ecx
+    jz .flat
+    lea rax, [rel g_block_shape]
+    movzx eax, byte [rax + rcx]
+    cmp eax, SHAPE_COUNT
+    jae .cube
+    lea rcx, [rel shape_kind]
+    movzx eax, byte [rcx + rax]
+    ret
+.cube:
+    xor eax, eax
+    ret
+.flat:
+    mov eax, KIND_FLAT
+    ret
 
 ; -----------------------------------------------------------------------------
 ; icon_uv — an item's cell in the atlas as texture coordinates (top-left

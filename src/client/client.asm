@@ -26,7 +26,7 @@
 %include "packet.inc"
 
 global client_init, client_input, client_view, g_cl_player, g_cinv, g_csel
-global client_select
+global client_select, client_input_idle
 
 extern g_cam_yaw, g_cam_pitch, g_cam_pos, g_sim_alpha
 extern daycycle_set, timer_elapsed_us
@@ -226,6 +226,22 @@ PROC client_input, 0, rbx
 .done:
     call hotbar_input
     call interact_update                ; target, break / place / pick
+    RETURN
+ENDPROC
+
+; client_input_idle — standing still (a screen is open): no movement, the
+; same view   clobbers: volatile registers
+PROC client_input_idle, 0
+    xor eax, eax
+    mov [rel g_cl_input + INPUT_PKT.forward], eax
+    mov [rel g_cl_input + INPUT_PKT.strafe], eax
+    mov [rel g_cl_input + INPUT_PKT.buttons], eax
+    inc dword [rel g_cl_seq]
+    mov eax, [rel g_cl_seq]
+    mov [rel g_cl_input + INPUT_PKT.seq], eax
+    lea rcx, [rel g_to_sim]
+    lea r8, [rel g_cl_input]
+    INVOKE pkt_send, rcx, PKT_C_INPUT, r8, INPUT_PKT_size
     RETURN
 ENDPROC
 

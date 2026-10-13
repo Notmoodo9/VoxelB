@@ -23,7 +23,7 @@ global input_down, input_pressed, input_vk_pressed
 global input_set_capture, input_update_capture, input_key_name, input_action_name
 global g_mouse_dx, g_mouse_dy, g_mouse_captured, g_bindings
 global g_mouse_sensitivity, g_invert_mouse_y
-global input_any_pressed, input_format_binding, input_save_bindings
+global input_any_pressed, input_format_binding, input_save_bindings, input_vk_down
 global input_on_char, g_mouse_x, g_mouse_y, g_mouse_wheel, g_chars, g_char_count
 
 extern str_ieq, str_parse_float, str_copy
@@ -638,6 +638,13 @@ input_vk_pressed_raw:                   ; ORs the result into al
     movzx ecx, cl
     lea rdx, [rel g_keys_pressed]
     or al, [rdx + rcx]
+    ret
+
+; input_vk_down — eax = 1 if key ecx is held   clobbers: rax, rcx, rdx
+input_vk_down:
+    movzx ecx, cl
+    lea rdx, [rel g_keys_down]
+    movzx eax, byte [rdx + rcx]
     ret
 
 ; -----------------------------------------------------------------------------

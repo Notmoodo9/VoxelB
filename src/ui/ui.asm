@@ -25,7 +25,7 @@
 
 global ui_frame, ui_end, ui_button, ui_panel, ui_label, ui_hover
 global ui_textfield, ui_focus
-global g_ui_mx, g_ui_my, g_ui_click, g_ui_dt, g_ui_time
+global g_ui_mx, g_ui_my, g_ui_click, g_ui_dt, g_ui_time, g_ui_rclick, ui_focused
 
 extern ui_draw_begin, ui_draw_flush, ui_rect, ui_glass, ui_glow, ui_text
 extern ui_text_width, str_len
@@ -47,6 +47,7 @@ alignb 4
 g_ui_mx:        resd 1
 g_ui_my:        resd 1
 g_ui_click:     resd 1
+g_ui_rclick:    resd 1                  ; right button went down this frame
 g_ui_dt:        resd 1
 g_ui_time:      resd 1
 g_anim:         resd UI_IDS             ; hover 0..1 per widget id
@@ -71,11 +72,15 @@ PROC ui_frame, 0
     cvttss2si eax, xmm0
     mov [rel g_ui_my], eax
     mov dword [rel g_ui_click], 0
+    mov dword [rel g_ui_rclick], 0
     cmp dword [rel g_mouse_captured], 0
     jne .no_click
     mov ecx, VK_LBUTTON
     call input_vk_pressed
     mov [rel g_ui_click], eax
+    mov ecx, VK_RBUTTON
+    call input_vk_pressed
+    mov [rel g_ui_rclick], eax
 .no_click:
     mov rax, [rel g_frame_us]
     cvtsi2ss xmm0, rax
@@ -303,6 +308,11 @@ PROC ui_label, 0
     call ui_text
     RETURN
 ENDPROC
+
+; ui_focused — eax = the text field with the keyboard (id + 1, 0 none)
+ui_focused:
+    mov eax, [rel g_focus]
+    ret
 
 ; ui_focus — ecx = text field id + 1 (0: none) gets the keyboard
 ui_focus:

@@ -25,6 +25,7 @@
 %include "world_api.inc"
 
 global interact_init, interact_update
+extern held_swing
 global g_target_valid, g_target, g_target_face, g_target_id, g_held_block
 
 extern g_cam_pos, g_cam_yaw, g_cam_pitch, g_mouse_captured, g_cl_player
@@ -311,6 +312,7 @@ PROC interact_update, 0, rbx
     xor edx, edx
     xor r8d, r8d
     call send_edit
+    call held_swing
 .no_break:
     mov ecx, ACT_PLACE_BLOCK
     lea rdx, [rel g_next_place]
@@ -323,6 +325,7 @@ PROC interact_update, 0, rbx
     mov edx, 1
     mov r8d, [rel g_held_block]
     call send_edit
+    call held_swing
 .no_place:
     mov ecx, ACT_PICK_BLOCK
     call input_pressed

@@ -33,6 +33,8 @@ extern camera_update, client_init, client_input, client_view
 extern sim_init, sim_update, save_update, save_all, save_open, save_load_player
 extern stream_update, stream_reset, lod_update, lod_reset, fluid_reset, edit_reset
 extern thumb_update, thumb_reset, menu_screen, g_show_hud
+extern inv_screen_open, inv_screen_close, inv_screen_frame, inv_screen_typing
+extern client_input_idle, held_draw
 extern g_world_mode, g_world_difficulty, g_world_hardcore
 extern g_new_mode, g_new_difficulty, g_new_hardcore
 extern renderer_frame, hud_draw, overlay_draw, menu_frame, menu_open, menu_back
@@ -78,6 +80,7 @@ alignb 4
 g_game_state:   resd 1
 g_game_paused:  resd 1
 g_save_allowed: resd 1                  ; not --nosave
+g_inv_open:     resd 1                  ; the inventory screen is open
 g_default_seed: resd 1
 g_menu_loaded:  resd 1
 g_fly_n:        resd 1
@@ -356,6 +359,7 @@ ENDPROC
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC world_teardown, 0
+    mov dword [rel g_inv_open], 0
     cmp dword [rel g_game_state], GS_PLAYING
     jne .unload
     call save_all                       ; (no-op when saving is off)
@@ -498,9 +502,32 @@ PROC game_frame, 16, rbx, rsi, rdi
     jne .menu_keys
     cmp dword [rel g_game_paused], 0
     jne .paused_keys
+    cmp dword [rel g_inv_open], 0
+    jne .inv_keys
     cmp dword [LOCAL(0)], 0
-    je .click_capture
+    je .inv_open_key
     call pause_game
+    jmp .keys_done
+.inv_open_key:
+    mov ecx, ACT_INVENTORY
+    call input_pressed
+    test eax, eax
+    jz .click_capture
+    call open_inventory
+    jmp .keys_done
+.inv_keys:
+    ; Esc, or the inventory key (unless typing a search), closes it
+    cmp dword [LOCAL(0)], 0
+    jne .inv_close
+    call inv_screen_typing
+    test eax, eax
+    jnz .keys_done
+    mov ecx, ACT_INVENTORY
+    call input_pressed
+    test eax, eax
+    jz .keys_done
+.inv_close:
+    call close_inventory
     jmp .keys_done
 .click_capture:
     cmp dword [rel g_mouse_captured], 0
@@ -551,7 +578,13 @@ PROC game_frame, 16, rbx, rsi, rdi
 .playing:
     cmp dword [rel g_game_paused], 0
     jne .stream
+    cmp dword [rel g_inv_open], 0
+    je .live_input
+    call client_input_idle              ; (the inventory is open: stand still)
+    jmp .sim
+.live_input:
     call client_input
+.sim:
     call sim_update
     call client_view
     call save_update
@@ -569,10 +602,21 @@ PROC game_frame, 16, rbx, rsi, rdi
     jne .menus
     call thumb_update                   ; (the world list's picture, no HUD)
     cmp dword [rel g_show_hud], 0
-    je .overlay
+    je .inventory
+    mov ecx, esi
+    mov edx, edi
+    call held_draw                      ; the item in hand
+    cmp dword [rel g_inv_open], 0
+    jne .inventory                      ; (the inventory screen shows the hotbar)
     mov ecx, esi
     mov edx, edi
     call hud_draw
+.inventory:
+    cmp dword [rel g_inv_open], 0
+    je .overlay
+    mov ecx, esi
+    mov edx, edi
+    call inv_screen_frame
     jmp .overlay
 .menus:
     mov ecx, esi
@@ -585,6 +629,26 @@ PROC game_frame, 16, rbx, rsi, rdi
     mov edx, edi
     call overlay_draw
     mov eax, ebx
+    RETURN
+ENDPROC
+
+; open_inventory / close_inventory (milestone 18)
+PROC open_inventory, 0
+    mov dword [rel g_inv_open], 1
+    xor ecx, ecx
+    call input_set_capture
+    call inv_screen_open
+    RETURN
+ENDPROC
+
+PROC close_inventory, 0
+    call inv_screen_close
+    mov dword [rel g_inv_open], 0
+    cmp dword [rel g_window_active], 0
+    je .done
+    mov ecx, 1
+    call input_set_capture
+.done:
     RETURN
 ENDPROC
 

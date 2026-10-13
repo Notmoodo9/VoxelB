@@ -1,20 +1,63 @@
 # Progress
 
 ## Current state
-**Milestone 17: Save/load, main menu, world creation, settings: DONE** (part 2c, Windows CI green: run #87)
+**Milestone 18, part 1: Items, inventory, hotbar, Creative inventory, item in hand: DONE** (v0.18.1, Windows CI: see below)
 
-Milestone 10 (biomes) is complete. The owner plans a larger rework of
-terrain generation and biomes, with many more biomes, later (in
-`design/BACKLOG.md`). Progressive LOD is planned as Milestone 34.
-
-Version **v0.17.0 — Saves, menus and settings** (`data/version.cfg`).
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
 
-Next: **Milestone 18 (🎨 DESIGN): items, inventory, hotbar, chests,
-crafting, tool tiers, smelting** — interviewed and approved
-(`design/items/items_inventory.md`); building part 1 (items and the
-inventory, v0.18.1).
+Next: **Milestone 18, part 2: mining and drops** (block hardness and
+tools' speed, drop tables, item entities you pick up; Survival unlocked
+in world creation) — design/items/items_inventory.md.
+
+---
+
+## Milestone 18, part 1 — done (2026-10-13): items and the inventory (D93)
+
+### What was built
+* **Items:** every block is an item (639); `data/items/00_tabs.items`
+  sorts them into Creative tabs (Building, Shapes, Colours & glass,
+  Lights, Ores & crystals, Items, Nature) by name patterns.
+* **Icons:** every item's icon drawn once into an atlas: 3D cubes, slabs,
+  flat pictures for plants, doors, fences …
+* **Inventory + hotbar:** 9 + 27 slots, stacks of 64, kept by the
+  simulation and saved in `player.dat`. HUD hotbar on glass with counts;
+  the slot in hand glows teal; its item's name shows for a moment. Keys
+  1–9 and the mouse wheel select; middle click brings the targeted
+  block's item to hand (Creative: a full stack); placing uses the item in
+  hand (Survival will use it up).
+* **Inventory screen (E):** drag stacks with the mouse (left: take / put /
+  swap, right: half / one, shift: hotbar ↔ inventory), tooltips with the
+  item's name. Creative: the catalog with icon tabs, a search field and
+  scrolling; click takes a stack, right click one, shift-click puts one
+  in the inventory, clicking it with a stack in hand throws it away.
+* **Item in hand:** the held block as a lit 3D cube in the lower right
+  (plants and items as a flat picture), swaying while walking, swinging on
+  break / place.
+* Controls: `inventory` and `hotbar_1..9` are rebindable; the Controls tab
+  scrolls.
+
+### Verified (scripted clicks and keys with xdotool)
+* Hotbar with stone ×64 at start; key 3 + middle click on sand → sand ×64
+  in slot 3 with "Sand" shown; placing stone and sand works (edits
+  applied); `player.dat` has `selected` and `slot` lines and a reload
+  restores them.
+* Creative inventory: Lights tab → lime lamp taken and dropped into
+  hotbar slot 2 (saved); search "glass" lists every glass block; E and Esc
+  close the screen; the HUD hotbar hides while it's open.
+* In hand: stone as a cube, a poppy as a flat picture.
+* Debug build through the same steps: no assert; headless tests pass.
+
+### Performance
+* Icon atlas: 639 icons in 15 ms at start-up (release, llvmpipe).
+* The inventory screen is one UI draw call; the item in hand one 36-vertex
+  draw.
+
+### Deferred
+* Survival mode in world creation, mining times, drops (part 2).
+* Crafting (2x2 / 3x3, recipe book) and chests (part 3); tools, smelting,
+  repair (part 4).
+* Hotbar keys over an inventory slot to swap it (Minecraft-style).
 
 ---
 

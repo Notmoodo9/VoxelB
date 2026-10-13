@@ -48,6 +48,8 @@ warnings, as above.
 | `data/world/ores.cfg` | `src/world/terrain.asm` (used by `caves.asm`) | ores: blocks, heights, cluster sizes and counts |
 | `data/world/flat_test.cfg` | `src/world/world.asm` | **debug** test world: layers, block gallery, test structures |
 | `assets/textures/blocks/*.png` | `src/render/block_textures.asm` | block textures (16×16, animated strips, glow layers) |
+| `data/items/*.items` | `src/world/items.asm` | items beyond the blocks, item settings, the Creative inventory's tabs |
+| `assets/textures/items/*.png` | `src/render/item_icons.asm` | item pictures (16×16), for items that are not blocks |
 | `data/ui/menu.cfg` | `src/core/game.asm` | the main menu's background: world seed, time, the camera's path |
 | `data/version.cfg` | `src/ui/menu.asm`, CI | the game's version (`version = 0.<milestone>.<part>`) and its `title`: shown in the main menu; each new version gets its own release |
 | `data/ui/credits.txt` | `src/ui/menu.asm` | the Credits screen: plain text, one line per line (the first is the heading) |
@@ -58,9 +60,10 @@ warnings, as above.
 Actions: `move_forward`, `move_back`, `move_left`, `move_right`, `move_up`,
 `move_down`, `sprint`, `toggle_debug_overlay`, `toggle_vsync`,
 `reload_shaders`, `menu`, `toggle_held_light`, `time_forward` (hold: the clock runs 240× faster),
-`break_block` (Mouse1), `place_block` (Mouse2), `pick_block` (Mouse3: the
-targeted block becomes the held block); holding break or place repeats it
-every 0.25 s. Each takes one or two key names (the list of
+`break_block` (Mouse1), `place_block` (Mouse2: the item in hand),
+`pick_block` (Mouse3: brings the targeted block's item to hand),
+`inventory` (E), `hotbar_1` … `hotbar_9` (1–9; the mouse wheel also steps
+through the hotbar); holding break or place repeats it every 0.25 s. Each takes one or two key names (the list of
 names is at the top of the file).
 
 Settings: `mouse_sensitivity` (degrees per mouse count), `invert_mouse_y`
@@ -495,6 +498,27 @@ The parser is shared (`src/core/cfg.asm`). Every reader reports problems as
 | `look_at` | x, y, z | the point the camera keeps facing |
 | `point` | x, y, z | the path, two or more points in order; at the end it fades and starts again |
 
+## Item files (`data/items/*.items`, Milestone 18)
+
+Read in file-name order after the blocks. Every block is an item by itself
+(its first state; the flowing states of liquids are not), with the block's
+name and a title made from it ("stone_bricks" → "Stone bricks"). Records:
+
+| Record | Key | Meaning |
+|---|---|---|
+| `[tab <id>]` | `title` | the tab's name in the Creative inventory |
+| | `icon` | the item shown on the tab |
+| | `blocks` | name patterns (`*` = anything, comma-separated): a block item goes to the first tab one of whose patterns matches its name |
+| `[hidden]` | `blocks` | patterns of block items left out of the Creative inventory (e.g. `*_wall_sign`) |
+| `[item <name>]` | `title` | the shown name |
+| | `texture` | a 16×16 picture in `assets/textures/items/` (items that are not blocks) |
+| | `block` | the block it places |
+| | `stack` | 1–64 (default 64) |
+| | `tab` | the tab id (items that match no tab pattern go to the last tab) |
+| | `hidden` | `1`: not in the Creative inventory |
+
+An `[item]` with an existing item's name (a block's, too) changes that item.
+
 ## Saved worlds (`saves/<name>/`, Milestone 17)
 
 Written by the game; `--world <name>` picks the world (default `world`,
@@ -519,7 +543,9 @@ Text in the format above (the game rewrites them on every save, via a
 | player.dat | `eye_position` | x, y, z of the eyes (blocks, 4 decimals) |
 | | `look` | yaw, pitch in radians |
 | | `flying` | `0`/`1` |
-| | `held_block` | block name |
+| | `selected` | the hotbar slot in hand, 0–8 (Milestone 18) |
+| | `slot` | one line per used slot: `index, item, count, durability` (0–8 the hotbar, 9–35 the inventory); unknown items are skipped |
+| | `held_block` | (saves from before Milestone 18) a block name: put in hotbar slot 0 |
 
 `thumb.png` (256 × 144 RGB) in the world folder is the picture shown in
 the world list; the game rewrites it on every save.
