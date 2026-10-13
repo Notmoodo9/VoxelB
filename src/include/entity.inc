@@ -22,6 +22,7 @@
 %define EF_AWAKE        128             ; within SIM_RADIUS this tick
 %define EF_BUMPED       256             ; walked into something last tick
 %define EF_SLEEP        512             ; lying down for the night
+%define EF_SHEARED      1024            ; part 3: its coat was shorn (saved)
 
 ; AI states
 %define AI_IDLE         0
@@ -31,6 +32,7 @@
 %define AI_SEEK         4               ; to a mate, its mother or its herd
 %define AI_GRAZE        5               ; eating grass
 %define AI_SLEEP        6
+%define AI_CHARGE       7               ; part 3: a fierce animal after the player
 
 %define PATH_MAX        16              ; waypoints kept (pathfind.asm)
 %define WP_BYTES        12              ; i32 x, y, z
@@ -66,7 +68,8 @@ struc EntT
     .repath     resw 1                  ; ticks before the path is worked out again
     .path_len   resb 1
     .path_i     resb 1                  ; the next waypoint
-    .pad        resb 72
+    .lay        resd 1                  ; part 3: ticks until it lays (0: not counting yet)
+    .pad        resb 68
 endstruc                                ; 192 bytes
 
 ; an entity region: 32 x 32 columns, saved as overworld\entities\e.<rx>.<rz>.vxe

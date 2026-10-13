@@ -1871,3 +1871,47 @@ block for their upper half (mossy cobblestone boulders).
   the steppe, drops wheat (the cows' food, design doc "forage").
 * **Testing breeding without aiming**: `--breed-test` feeds every awake
   grown-up 5 seconds in (logged); births are logged at INFO.
+
+## D100 — Hides, drying racks, sheep, pigs, boars, chickens (M19 part 3a)
+* **Drying racks are a station kind** (`[rack]` in the recipe files,
+  STATION_RACK): the rack's look is the state of the work — an empty
+  rack, a rack with a wet hide, a rack with a dry one are three blocks
+  named in `hang` lines, so the world itself (and its region files) shows
+  and keeps what hangs. Only the timer lives in racks.asm (256 racks), is
+  advanced once a second and saved in `racks.dat` by input item name; a
+  rack whose block changed (broken) is simply forgotten — the block's own
+  `[drops]` give the hide back. Any number of hide kinds can share a rack
+  (deer and rabbit hides in part 3b are data lines).
+* **Two bonus lines per block** in `mining.cfg` (grass: plant fibre and
+  seeds), rolled independently; a second table rather than a general list,
+  since no block needs three.
+* **Coats are parts, not skins**: a sheep's fleece is a `coat`-motion box
+  around a smaller shorn body. Shearing sets one flag (EF_SHEARED, sent to
+  the client as EPF_SHEARED, saved as bit 2 of the record flags) and the
+  renderer skips coat boxes — no second skin per sheep. The wool given is
+  the variant's `coat` item; the death drop `coat` reuses it, so one
+  data line ties look and wool together. The coat grows back on the
+  next successful graze (the design's "regrows after grazing").
+* **Mixed herds** (`mix` in a spawn rule): each placed animal rolls for
+  another look of the same mob by percent, from the column's seeded
+  random numbers — still deterministic per seed. Breeding already keeps a
+  parent's look, so mixed flocks stay mixed.
+* **Fierce animals** (boars) get a seventh AI state, CHARGE, taking
+  priority over everything for up to 6 s after a hit: a path to the
+  player at 2.4 × speed (straight at them when no path), and within 1.4
+  blocks a knock-back of the player (9 blocks/s away, 5.5 up) through the
+  player's velocity, then a 1.5 s back-off. No damage until survival
+  health (M20); the herd does not join in (a sounder that all charges
+  would make boars unapproachable).
+* **Wings are a per-box roll**: the instance record grew from 96 to 112
+  bytes (a seventh vec4: the box's roll about its pivot's Z axis), used by
+  `wing0`/`wing1` parts while the animal is off the ground (EPF_AIR).
+  `glide` clamps the fall speed in the simulation.
+* **Laying is a per-animal countdown** (EntT.lay, not saved: after a load
+  each layer starts a fresh 5–10 minute wait), dropping the item as a
+  normal item drop at the animal.
+* **Pigs and boars are two mobs**, not variants: temper is per mob, and
+  pigs and boars should not breed into each other.
+* **`--mob-gallery [name]`** places one of every look (or one animal's /
+  one look's) in a row in front of the player — for screenshots and for
+  tests that need an animal within reach without aiming the mouse.

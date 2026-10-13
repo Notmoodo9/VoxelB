@@ -13,9 +13,16 @@
 ;   4. a player within 10 blocks holding its food: it follows, stopping 2.5
 ;      blocks away and looking up at the player;
 ;   5. a baby keeps within 5 blocks of a grown-up of its herd;
+;   (part 3) a fierce animal (boar) that is hit charges the player instead
+;      of running: for up to 6 s it runs at them and, reaching them,
+;      knocks them back, then backs off; its herd stays;
 ;   6. otherwise: stands and looks around, wanders a few blocks (back
 ;      towards its herd when it strayed more than 8 blocks), or grazes: the
-;      grass under it turns to dirt, which grows back in 1–3 minutes.
+;      grass under it turns to dirt, which grows back in 1–3 minutes; a
+;      shorn animal's coat grows back when it grazes.
+; Part 3: shears (the mob's `shear` tool) take a coat (1–3 of the
+; variant's coat item) from an adult; layers (`lays`) drop their item every
+; few minutes.
 ; Movement goes along A* paths (pathfind.asm), worked out again now and
 ; then for moving targets; at most PATHS_PER_TICK paths per tick (the rest
 ; wait a tick). Babies grow up in 20 minutes; feeding one takes 2 off.
@@ -39,22 +46,26 @@
 %include "entity.inc"
 
 global behave_reset, behave_tick, behave, behave_hurt, behave_interact
-global g_herd_count, g_regrow_count, g_breed_test
+global g_herd_count, g_regrow_count, g_breed_test, g_mob_gallery, g_gallery_name
 
 extern path_find, g_pf_start, g_pf_goal, g_pf_height, g_pf_out
-extern atan2f, edit_apply, block_find, inv_used_selected
-extern g_pl_pos, g_pl_reach, g_inv, g_inv_sel, g_sim_time
+extern atan2f, edit_apply, block_find, inv_used_selected, inv_wear_selected
+extern drops_spawn, ent_new, str_ieq
+extern g_pl_pos, g_pl_vel, g_pl_reach, g_inv, g_inv_sel, g_sim_time
 
 %define PATHS_PER_TICK  3
 %define FLEE_TICKS      100
 %define MAX_HERDS       512             ; power of two (hash)
 %define MAX_REGROW      512
 %define HERD_EVERY      20
+%define CHARGE_TICKS    120             ; a fierce animal gives up after 6 s
+%define BACK_OFF_TICKS  30              ; after ramming: backs off 1.5 s
 
 section .rdata
 str_grass:      db "grass_block", 0
 str_dirt:       db "dirt", 0
 str_fed:        db "entities: --breed-test fed the grown-ups nearby: ", 0
+str_gallery:    db "entities: --mob-gallery placed every look: ", 0
 align 8
 c_per_tick:     dq 0.05
 c_flee_mul:     dq 2.2
@@ -85,10 +96,20 @@ c_moving2:      dq 0.0004
 c_eye_lift:     dq -0.4
 c_night_end:    dq 0.23                 ; sleeps before 5:30 ...
 c_night_start:  dq 0.79                 ; ... and after 19:00
+c_gallery_z:    dq 3.0
+c_gallery_per:  dq 0.55
+c_charge_mul:   dq 2.4                  ; charging: faster than running away
+c_ram2:         dq 1.96                 ; (1.4 blocks)^2: it reaches the player
+c_ram_dy:       dq 1.6
+c_ram_push:     dq 9.0                  ; the player flies off (blocks per second)
+c_ram_up:       dq 5.5
+c_lay_up:       dq 0.3
+c_shear_up:     dq 0.8
 align 4
 c_turn:         dd 0.25
 c_head_turn:    dd 0.2
 c_two_pi:       dd 6.28318531
+c_pi_f:         dd 3.14159265
 c_head_max:     dd 1.2
 c_pitch_max:    dd 0.7
 c_look_far:     dd 0.9
@@ -98,6 +119,7 @@ c_progress:     dd 0.02
 align 16
 c_neg_f:        dd 0x80000000, 0, 0, 0
 c_sign_d:       dq 0x8000000000000000, 0
+c_abs_d:        dq 0x7FFFFFFFFFFFFFFF, 0
 
 section .bss
 alignb 8
@@ -108,6 +130,8 @@ g_herd_z:       resq MAX_HERDS
 g_regrow:       resd MAX_REGROW * 4     ; x, y, z, due tick
 g_herd_count:   resd 1
 g_breed_test:   resd 1                  ; --breed-test
+g_mob_gallery:  resd 1                  ; --mob-gallery
+g_gallery_name: resb 32                 ; --mob-gallery <animal> (empty: all)
 g_regrow_count: resd 1
 g_btick:        resd 1
 g_rand:         resd 1
@@ -124,6 +148,8 @@ g_d2:           resq 1
 g_tx:           resq 1                  ; a target point
 g_tz:           resq 1
 g_ty:           resd 1
+alignb 8
+g_spot:         resq 3                  ; where an egg or wool drops
 
 section .text
 
@@ -230,6 +256,107 @@ PROC behave_reset, 0
     RETURN
 ENDPROC
 
+; -----------------------------------------------------------------------------
+; gallery — --mob-gallery: one animal of every look (or of the named
+; animal's looks) in a row north of the player (2 blocks apart; 3 blocks
+; away and half a block more per animal), at
+; the player's height (they drop to the ground), turned to the player and
+; resting a while (screenshots, tests).
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC gallery, 32, rbx, rsi, rdi
+    ; how many
+    xor esi, esi
+    xor edi, edi
+.count:
+    cmp esi, [rel g_variant_count]
+    jae .counted
+    mov ecx, esi
+    call gallery_wants
+    add edi, eax
+    inc esi
+    jmp .count
+.counted:
+    ; the row: nearer for a few, further for many
+    cvtsi2sd xmm0, edi
+    mulsd xmm0, [rel c_gallery_per]
+    addsd xmm0, [rel c_gallery_z]
+    movsd [LOCAL(24)], xmm0
+    shr edi, 1
+    neg edi                             ; (the row's first place)
+    xor esi, esi
+    xor ebx, ebx                        ; placed
+.v:
+    cmp esi, [rel g_variant_count]
+    jae .done
+    mov ecx, esi
+    call gallery_wants
+    test eax, eax
+    jz .next
+    lea ecx, [rdi + rbx]
+    inc ebx
+    add ecx, ecx
+    cvtsi2sd xmm0, ecx
+    addsd xmm0, [rel g_pl_pos]
+    movsd [LOCAL(0)], xmm0
+    mov rax, [rel g_pl_pos + 8]
+    mov [LOCAL(8)], rax
+    movsd xmm0, [rel g_pl_pos + 16]
+    subsd xmm0, [LOCAL(24)]
+    movsd [LOCAL(16)], xmm0
+    mov ecx, esi
+    xor edx, edx
+    lea r8, [LOCAL(0)]
+    call ent_new
+    test eax, eax
+    js .next
+    mov ecx, eax
+    call ent_of
+    mov ecx, [rel c_pi_f]
+    mov [rax + EntT.yaw], ecx
+    mov word [rax + EntT.timer], 400
+.next:
+    inc esi
+    jmp .v
+.done:
+    mov ecx, LOG_LEVEL_INFO
+    call log_begin
+    lea rcx, [rel str_gallery]
+    call log_append_str
+    mov ecx, ebx
+    call log_append_dec
+    call log_end
+    RETURN
+ENDPROC
+
+; gallery_wants — eax = 1 if variant ecx is in the gallery (its animal's or
+; its own name is the one asked for)   clobbers: volatile
+PROC gallery_wants, 0, rbx
+    mov eax, 1
+    cmp byte [rel g_gallery_name], 0
+    je .done
+    imul ebx, ecx, VARIANT_size
+    lea rax, [rel g_variants]
+    add rbx, rax
+    ; the animal's name ...
+    mov eax, [rbx + VARIANT.mob]
+    imul eax, eax, MOB_size
+    lea rcx, [rel g_mobs]
+    lea rdx, [rel g_gallery_name]
+    INVOKE str_ieq, [rcx + rax + MOB.name], rdx
+    test eax, eax
+    jnz .yes
+    ; ... or the look's
+    lea rdx, [rel g_gallery_name]
+    INVOKE str_ieq, [rbx + VARIANT.name], rdx
+    test eax, eax
+    jz .done
+.yes:
+    mov eax, 1
+.done:
+    RETURN
+ENDPROC
+
 ; herd_slot — eax = the hash slot of herd id ecx (inserted if new), -1 full
 ;   clobbers: rax, rdx, r8
 herd_slot:
@@ -290,6 +417,12 @@ PROC behave_tick, 0, rbx, rsi, rdi
     call log_append_dec
     call log_end
 .no_test:
+    cmp dword [rel g_mob_gallery], 0
+    je .no_gallery
+    cmp dword [rel g_btick], 60
+    jne .no_gallery
+    call gallery
+.no_gallery:
     mov eax, [rel g_btick]
     xor edx, edx
     mov ecx, HERD_EVERY
@@ -716,6 +849,18 @@ ENDPROC
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC behave_hurt, 0, rbx, rsi, rdi, r12
+    call mob_of
+    cmp dword [rax + MOB.temper], TEMPER_FIERCE
+    jne .runs
+    ; a fierce one turns on the player (its herd stays)
+    mov byte [rbx + EntT.state], AI_CHARGE
+    mov word [rbx + EntT.timer], CHARGE_TICKS
+    mov byte [rbx + EntT.path_len], 0
+    mov word [rbx + EntT.repath], 0
+    and dword [rbx + EntT.flags], ~EF_SLEEP
+    or dword [rbx + EntT.flags], EF_DIRTY
+    RETURN
+.runs:
     call start_flee
     mov r12d, [rbx + EntT.herd]
     test r12d, r12d
@@ -776,6 +921,18 @@ PROC behave_interact, 0, rbx, rsi
     mulsd xmm1, xmm1
     comisd xmm0, xmm1
     ja .done
+    ; shears: its coat
+    call mob_of
+    movzx edx, word [rax + MOB.shear_tool]
+    test edx, edx
+    jz .feed
+    mov ecx, [rel g_inv_sel]
+    lea r8, [rel g_inv]
+    cmp dx, [r8 + rcx * 8]
+    jne .feed
+    call shear
+    RETURN
+.feed:
     call holds_food
     test eax, eax
     jz .done
@@ -795,6 +952,119 @@ PROC behave_interact, 0, rbx, rsi
     add dword [rbx + EntT.age], GROW_TICKS / 10
     call inv_used_selected
 .done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; shear — the player's shears on entity rbx: a grown-up with its coat gives
+; shear_min .. shear_max of its variant's coat item (they pop out); the
+; shears wear.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC shear, 0, rsi, rdi
+    test dword [rbx + EntT.flags], EF_BABY | EF_SHEARED
+    jnz .done
+    movzx eax, word [rbx + EntT.variant]
+    imul eax, eax, VARIANT_size
+    lea rcx, [rel g_variants]
+    mov esi, [rcx + rax + VARIANT.coat]
+    test esi, esi
+    jz .done
+    call mob_of
+    mov rdi, rax
+    movzx ecx, byte [rdi + MOB.shear_max]
+    movzx eax, byte [rdi + MOB.shear_min]
+    sub ecx, eax
+    inc ecx
+    call rand_below
+    movzx ecx, byte [rdi + MOB.shear_min]
+    add eax, ecx
+    mov edi, eax
+    or dword [rbx + EntT.flags], EF_SHEARED | EF_DIRTY
+    test edi, edi
+    jz .worn
+    movsd xmm0, [rel c_shear_up]
+    call spot_above
+    mov ecx, esi
+    mov edx, edi
+    lea r8, [rel g_spot]
+    call drops_spawn
+.worn:
+    call inv_wear_selected
+    LOG_DEBUG "entities: an animal was shorn"
+.done:
+    RETURN
+ENDPROC
+
+; spot_above — g_spot = entity rbx's feet, xmm0 blocks up   clobbers: rax
+spot_above:
+    mov rax, [rbx + EntT.pos]
+    mov [rel g_spot], rax
+    addsd xmm0, [rbx + EntT.pos + 8]
+    movsd [rel g_spot + 8], xmm0
+    mov rax, [rbx + EntT.pos + 16]
+    mov [rel g_spot + 16], rax
+    ret
+
+; -----------------------------------------------------------------------------
+; lay — a grown-up layer (mob rdi has `lays`): counts down and drops its
+; item now and then (lay_min .. lay_max ticks apart).
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC lay, 0
+    movzx eax, word [rdi + MOB.lay_item]
+    test eax, eax
+    jz .done
+    test dword [rbx + EntT.flags], EF_BABY
+    jnz .done
+    mov eax, [rbx + EntT.lay]
+    test eax, eax
+    jz .count                           ; (not counting yet: start)
+    dec eax
+    mov [rbx + EntT.lay], eax
+    jnz .done
+    movsd xmm0, [rel c_lay_up]
+    call spot_above
+    movzx ecx, word [rdi + MOB.lay_item]
+    mov edx, 1
+    lea r8, [rel g_spot]
+    call drops_spawn
+    LOG_DEBUG "entities: an animal laid"
+.count:
+    mov ecx, [rdi + MOB.lay_max]
+    sub ecx, [rdi + MOB.lay_min]
+    inc ecx
+    call rand_below
+    add eax, [rdi + MOB.lay_min]
+    or eax, 1
+    mov [rbx + EntT.lay], eax
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; ram — a charging animal (rbx) reached the player: they are knocked away
+; (g_dx, g_dz: animal - player; g_d2).
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC ram, 0
+    movsd xmm2, [rel g_d2]
+    sqrtsd xmm2, xmm2
+    addsd xmm2, [rel c_tiny]
+    movsd xmm0, [rel g_dx]
+    movsd xmm1, [rel g_dz]
+    divsd xmm0, xmm2
+    divsd xmm1, xmm2
+    mulsd xmm0, [rel c_ram_push]
+    mulsd xmm1, [rel c_ram_push]
+    xorpd xmm0, [rel c_sign_d]          ; (away from the animal)
+    xorpd xmm1, [rel c_sign_d]
+    movsd [rel g_pl_vel], xmm0
+    movsd [rel g_pl_vel + 16], xmm1
+    movsd xmm0, [rel g_pl_vel + 8]
+    maxsd xmm0, [rel c_ram_up]
+    movsd [rel g_pl_vel + 8], xmm0
+    LOG_DEBUG "entities: a fierce animal rammed the player"
     RETURN
 ENDPROC
 
@@ -967,6 +1237,13 @@ PROC graze_here, 16, rdi
     call edit_apply
     test eax, eax
     jz .done
+    ; a shorn coat grows back
+    test dword [rbx + EntT.flags], EF_SHEARED
+    jz .regrow
+    and dword [rbx + EntT.flags], ~EF_SHEARED
+    or dword [rbx + EntT.flags], EF_DIRTY
+    LOG_DEBUG "entities: a shorn coat grew back (grazing)"
+.regrow:
     mov eax, [rel g_regrow_count]
     inc dword [rel g_regrow_count]
     shl eax, 4
@@ -1070,6 +1347,69 @@ PROC behave, 16, rdi
     and dword [rbx + EntT.flags], ~EF_BABY
     or dword [rbx + EntT.flags], EF_DIRTY
 .grown:
+    call lay                            ; (eggs; rdi = MOB*)
+
+    ; ---- 0. charging the player (fierce, hit) ----
+    cmp byte [rbx + EntT.state], AI_CHARGE
+    jne .no_charge
+    cmp word [rbx + EntT.timer], 0
+    je .to_idle
+    movsd xmm0, [rel g_speed]
+    mulsd xmm0, [rel c_charge_mul]
+    movsd [rel g_speed], xmm0
+    call look_at_player
+    movsd xmm0, [rel g_d2]
+    comisd xmm0, [rel c_ram2]
+    jae .charge_go
+    movsd xmm0, [rel g_pl_pos + 8]
+    subsd xmm0, [rbx + EntT.pos + 8]
+    andpd xmm0, [rel c_abs_d]
+    comisd xmm0, [rel c_ram_dy]
+    ja .charge_go
+    call ram
+    call start_flee                     ; (backs off a moment)
+    mov word [rbx + EntT.timer], BACK_OFF_TICKS
+    jmp .apply
+.charge_go:
+    mov rax, [rel g_pl_pos]
+    mov [rel g_tx], rax
+    mov rax, [rel g_pl_pos + 16]
+    mov [rel g_tz], rax
+    movsd xmm0, [rel g_pl_pos + 8]
+    addsd xmm0, [rel c_tiny]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si eax, xmm0
+    mov [rel g_ty], eax
+    mov ecx, 5
+    call go_to
+    test eax, eax
+    jnz .apply
+    ; (no path, or at its end: straight at them)
+    movsd xmm0, [rel g_dx]
+    movsd xmm1, [rel g_dz]
+    movsd xmm2, [rel g_d2]
+    sqrtsd xmm2, xmm2
+    addsd xmm2, [rel c_tiny]
+    divsd xmm0, xmm2
+    divsd xmm1, xmm2
+    mulsd xmm0, [rel g_speed]
+    mulsd xmm1, [rel g_speed]
+    xorpd xmm0, [rel c_sign_d]
+    xorpd xmm1, [rel c_sign_d]
+    movsd [rel g_wx], xmm0
+    movsd [rel g_wz], xmm1
+    ; the body turns to them: yaw = atan2(dx, -dz)
+    cvtsd2ss xmm0, xmm0
+    xorpd xmm1, [rel c_sign_d]
+    cvtsd2ss xmm1, xmm1
+    call atan2f
+    movss xmm1, xmm0
+    movss xmm0, [rbx + EntT.yaw]
+    movss xmm2, [rel c_turn]
+    call turn
+    movss [rbx + EntT.yaw], xmm0
+    jmp .apply
+.no_charge:
 
     ; ---- 1. running away ----
     cmp byte [rbx + EntT.state], AI_FLEE

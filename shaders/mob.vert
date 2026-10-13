@@ -3,7 +3,7 @@
 // in the Parts buffer; 36 vertices each (6 faces x 2 triangles), built here
 // from the record (vertex pulling, no vertex buffers). A box is posed by its
 // own turn at its pivot (legs swing, the head looks), scaled to blocks (16
-// pixels = 1 block; babies smaller with bigger heads), tipped over when the
+// pixels = 1 block; babies smaller with bigger heads; wings roll), tipped over when the
 // animal dies, then turned by the body's yaw and placed camera-relative.
 // The skin layout per box (pixels, as tools/texgen/mobgen.py paints it):
 //   top (u+d, v) w x d, bottom (u+d+w, v) w x d, -X (u, v+d) d x h,
@@ -17,6 +17,7 @@ struct Part {
     vec4 d;     // box size (pixels), the box's pitch
     vec4 e;     // the box's yaw, the body's roll (dying), skin u, v (pixels)
     vec4 f;     // sky light 0..1, red tint 0..1, box scale (baby heads), pink tint 0..1
+    vec4 g;     // the box's roll (wings flapping), unused x3
 };
 layout(std430, binding = 11) readonly buffer Parts { Part parts[]; };
 
@@ -56,8 +57,8 @@ void main() {
     else              { q = vec3(s, 1.0 - t, 1.0);       r = vec4(u + 2.0 * d + w, v + d, w, h); n = vec3(0, 0, 1); }
     v_uv = (r.xy + st * r.zw) / 64.0;
     vec3 p = (P.c.xyz + q * P.d.xyz) * P.f.z;
-    p = rot_y(rot_x(p, P.d.w), P.e.x);
-    n = rot_y(rot_x(n, P.d.w), P.e.x);
+    p = rot_y(rot_x(rot_z(p, P.g.x), P.d.w), P.e.x);
+    n = rot_y(rot_x(rot_z(n, P.g.x), P.d.w), P.e.x);
     p = (p + P.b.xyz) * (P.b.w / 16.0);
     p = rot_z(p, P.e.y);
     n = rot_z(n, P.e.y);

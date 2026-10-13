@@ -1,0 +1,52 @@
+# Chickens (milestone 19 part 3, design/mobs/passive_animals.md). Format:
+# DATA_FORMAT.md "Mob files". They flutter down slowly (`glide`, their
+# wings beat in the air) and lay an egg every 5-10 minutes (`lays`).
+
+[model chicken]
+skin_size = 64 64
+part = body,   none,  0 4 0,     -3 0 -4,    6 6 8,      0 0
+part = head,   head,  0 9 -3,    -2 0 -3,    4 6 3,      28 0
+part = beak,   head,  0 9 -3,    -2 2 -5,    4 2 2,      42 0
+part = wattle, head,  0 9 -3,    -1 0 -4,    2 2 1,      42 4
+part = comb,   head,  0 9 -3,    -0.5 6 -3,  1 2 3,      54 0
+part = wing_l, wing0, -3 9.5 -3, -1 -4 0,    1 4 6,      0 14
+part = wing_r, wing1, 3 9.5 -3,  0 -4 0,     1 4 6,      0 14
+part = leg_l,  leg0,  -1.5 4 1,  -0.5 -4 -0.5, 1 4 1,    14 14
+part = leg_r,  leg1,  1.5 4 1,   -0.5 -4 -0.5, 1 4 1,    14 14
+part = tail,   tail,  0 9 4,     -2 -1 0,    4 4 2,      18 14
+
+[mob chicken]
+health = 4
+size = 0.45 0.7
+speed = 1.0
+temper = calm
+food = seeds
+drop = chicken, 1, 1
+drop = feather, 0, 2
+# falls no faster than 2 blocks a second; an egg every 5-10 minutes
+glide = 2
+lays = egg, 300, 600
+variant = white, chicken_white, chicken
+variant = speckled, chicken_speckled, chicken
+variant = jungle, chicken_jungle, chicken
+
+[spawn]
+mob = chicken
+variant = white
+biomes = plains, meadow
+chance = 6
+herd = 3, 5
+
+[spawn]
+mob = chicken
+variant = speckled
+biomes = forest, birch_grove, dark_forest, old_growth_forest
+chance = 3
+herd = 2, 4
+
+[spawn]
+mob = chicken
+variant = jungle
+biomes = jungle
+chance = 6
+herd = 2, 4

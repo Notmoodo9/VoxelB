@@ -19,6 +19,9 @@
 ;   --nosave           neither load nor save anything (tests)
 ;   --breed-test       5 s in, every awake grown-up animal is fed (tests the
 ;                      mates, the births and the babies; milestone 19)
+;   --mob-gallery [name]  one animal of every look (or of this animal's,
+;                      or just this look) in a row in front of the player (milestone 19
+;                      part 3: looking at the animals)
 ;   --time <0..24>     start at this hour (overrides world.cfg's start_time)
 ;   --daylight <0..100>  sky light strength in percent (preview of night
 ;                      lighting until the day/night cycle, milestone 14)
@@ -57,7 +60,7 @@ extern renderer_init, renderer_frame, renderer_shutdown
 extern camera_init, camera_update
 extern overlay_draw, overlay_toggle, hud_draw
 extern cpu_detect, selftest_run
-extern world_init, world_render_init, world_render_shutdown, g_breed_test
+extern world_init, world_render_init, world_render_shutdown, g_breed_test, g_mob_gallery, g_gallery_name
 extern terrain_survey
 extern world_spawn, g_seed_override, g_seed_override_set, g_force_flat
 extern stream_init, stream_update, stream_shutdown, settings_load
@@ -108,6 +111,7 @@ direct_opts:        dq opt_world_any, opt_pos_any, opt_flytest_any, opt_flat_any
                     dq opt_seed_any, opt_survey_any, 0
 opt_nosave:         db "--nosave", 0
 opt_breed_test:     db "--breed-test", 0
+opt_mob_gallery:    db "--mob-gallery", 0
 opt_daylight:       db "--daylight ", 0
 opt_time:           db "--time ", 0
 align 4
@@ -367,6 +371,29 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     jz .no_breed_test
     mov dword [rel g_breed_test], 1     ; (milestone 19 test: feeds the herds)
 .no_breed_test:
+    lea rdx, [rel opt_mob_gallery]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .no_gallery
+    mov dword [rel g_mob_gallery], 1
+    ; an animal's name after it: only its looks
+    lea rsi, [rax + 13]
+    cmp byte [rsi], ' '
+    jne .no_gallery
+    inc rsi
+    cmp byte [rsi], '-'
+    je .no_gallery
+    lea rdi, [rel g_gallery_name]
+    xor ecx, ecx
+.gallery_copy:
+    mov al, [rsi + rcx]
+    cmp al, ' '
+    jbe .no_gallery
+    mov [rdi + rcx], al
+    inc ecx
+    cmp ecx, 31
+    jb .gallery_copy
+.no_gallery:
     xor esi, esi                        ; world name (0: default)
     lea rdx, [rel opt_world]
     INVOKE str_find, rbx, rdx

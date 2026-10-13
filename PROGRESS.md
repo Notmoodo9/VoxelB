@@ -1,17 +1,78 @@
 # Progress
 
 ## Current state
-**Milestone 19, part 2: Animals — paths and behaviour: DONE** (v0.19.2, Windows CI green: run #107)
+**Milestone 19, part 3a: Animals — sheep, pigs, boars, chickens; hides and drying racks: DONE** (v0.19.3, Windows CI: see below)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
 
-Next: **Milestone 19, part 3: the other animals** — sheep, pig and wild
-boar, chicken, deer, rabbit, goat; forage (seeds from grass, wild carrots,
-berries); shearing, milking, eggs, leads and name tags
-(design/mobs/passive_animals.md). Before it: the owner's answers on the
-proposed recipes (bucket, shears, lead, name tag), hides → leather, the
-name-tag page and pig/boar drops.
+Next: **Milestone 19, part 3b** — deer, rabbit and goat (deer and rabbit
+hides on the drying rack), the bucket and milking, leads, name tags with
+the journal page (design/mobs/passive_animals.md, build order 4).
+
+---
+
+## Milestone 19, part 3a — done (2026-10-14): sheep, pigs, boars, chickens, hides (D100)
+
+### What was built
+* **Hides and drying racks**: cows now drop **raw leather** (0–2). Raw
+  leather + salt (by hand) → salted raw leather. The **drying rack**
+  (6 sticks, by hand) is a placeable block: right-click it holding a
+  salted hide and the hide hangs on it; after 2 minutes it turns to
+  leather on the rack; right-click takes it. What is drying is saved
+  (`racks.dat`) and keeps drying after a reload; breaking a full rack
+  gives back the rack and the hide. Overlay: "racks drying".
+* **Sheep** in seven looks: white, cream, grey, brown, black, a rare
+  russet, and the mountain **ram** with curled horns (alpine meadow).
+  Flocks are mostly one shade with a few others mixed in (plains: white;
+  meadow: cream; steppe: brown). **Shears** (2 iron bars diagonally,
+  workbench) take 1–3 wool of the sheep's shade; the shorn sheep shows its
+  pale body and the fleece grows back when it grazes. Sheep drop mutton
+  and one wool (none when shorn). New wool blocks: cream and russet.
+* **Pigs** (plains, meadow, forest) and **wild boars** with tusks and a
+  bristly ridge (forests, jungle): both follow carrots and berries and
+  breed on them; pork 1–3. Hit a boar and it **charges**: it runs at you
+  and knocks you back, then backs off.
+* **Chickens**: white (plains, meadow), speckled (forests), jungle fowl
+  (jungle). They follow seeds, **flutter down slowly** with their wings
+  beating, and **lay an egg every 5–10 minutes**. Drops: chicken,
+  0–2 feathers.
+* **Forage**: short and tall grass sometimes give **seeds**; **wild
+  carrots** (white umbels) grow in plains, meadows and forests and give
+  carrots; berry bushes give berries.
+* Raw and cooked pork, mutton and chicken (cooked in a furnace).
+* Start option `--mob-gallery [name]`: one of every look (or of one
+  animal, or one look) in a row in front of the player.
+
+### Verified (scripted with xdotool)
+* Drying rack: placed, a salted hide hung (rack shows it), dried (rack
+  shows leather), taken (leather in the hotbar, the rack empty after a
+  reload); `racks.dat` saved `rack = 30, 104, -33, 2260, salted_leather`
+  and the time kept counting down after a reload (1880).
+* `--mob-gallery`: all 16 looks rendered (screens); close-ups of sheep,
+  pig, boar and chickens.
+* Shearing a ram with shears: the fleece disappears, wool drops (log
+  "shorn", overlay "dropped items 1"); the region file kept flag 2; a
+  reload with the shorn ram logged "a shorn coat grew back (grazing)".
+* Boar: hit it standing on the ground → it charged and rammed (log);
+  the player was pushed 1.3 blocks back.
+* Chickens dropped from 20 blocks: slow fall, wings spread and beating
+  (screens). Laying with the time set to 5–10 s for the test: eggs laid
+  (log), then the data restored.
+* Natural herds: cream sheep flocks in the meadow, cows as before (log).
+* Debug and release builds; no asserts.
+
+### Performance (llvmpipe test VM)
+* 116 animals in memory, 60 awake, 38 drawn: 412 boxes, prep 49 µs;
+  animal tick 90 µs; paths 161–185 µs on average. Racks: one timer pass
+  a second (nothing measurable).
+
+### Deferred
+* Eggs and feathers have no use yet (throwing eggs, arrows: combat M21);
+  food is not eaten until hunger (M20).
+* Boars do no damage when they ram (player health comes in M20).
+* Egg timers and grazed patches are not saved (a fresh wait after a load).
+* Deer, rabbit, goat, bucket/milk, leads, name tags: part 3b.
 
 ---
 

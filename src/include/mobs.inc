@@ -21,10 +21,17 @@
 %define MOTION_LEG0     2               ; walking: swings forward first
 %define MOTION_LEG1     3               ; walking: swings back first
 %define MOTION_TAIL     4               ; sways
+%define MOTION_COAT     5               ; part 3: still; hidden while sheared (wool)
+%define MOTION_WING0    6               ; part 3: flaps in the air (left wing)
+%define MOTION_WING1    7               ; part 3: flaps in the air (right wing)
 
 ; tempers
 %define TEMPER_CALM     0               ; wanders, runs when hurt
 %define TEMPER_WILD     1               ; also runs when the player comes close
+%define TEMPER_FIERCE   2               ; part 3: charges the player who hit it
+
+%define DROP_COAT       0xFFFF          ; drop item: the variant's coat (its wool)
+%define MAX_MIX         4               ; spawn: other looks mixed into a herd
 
 ; a box of a model, in pixels (16 = a block); the model faces north (-Z)
 struc MPART
@@ -60,6 +67,15 @@ struc MOB
     .foods      resd 1                  ; part 2: what it follows and eats to breed
     .food       resw MAX_MOB_FOODS
     .graze      resd 1                  ; 1: eats grass (grass turns to dirt a while)
+    ; part 3
+    .shear_tool resw 1                  ; item that shears it (0: none)
+    .shear_min  resb 1                  ; coat items a shearing gives
+    .shear_max  resb 1
+    .glide      resd 1                  ; f32 fastest fall, blocks per tick (0: no limit)
+    .lay_item   resw 1                  ; item it lays now and then (0: none)
+    .lay_pad    resw 1
+    .lay_min    resd 1                  ; ticks between two
+    .lay_max    resd 1
 endstruc
 
 struc VARIANT
@@ -67,6 +83,8 @@ struc VARIANT
     .skin       resq 1                  ; texture name (assets/textures/mobs/<skin>.png)
     .mob        resd 1
     .model      resd 1
+    .coat       resd 1                  ; part 3: item its coat gives (0: none)
+    .coat_pad   resd 1
 endstruc
 
 struc SPAWN
@@ -75,6 +93,9 @@ struc SPAWN
     .chance     resd 1                  ; f32: % of the biome's columns with a herd
     .herd_min   resd 1
     .herd_max   resd 1
+    .mixes      resd 1                  ; part 3: other looks in the herd
+    .mix_var    resd MAX_MIX            ; variant
+    .mix_pct    resd MAX_MIX            ; f32 % of the animals with that look
 endstruc
 
 %ifndef MOBS_IMPL

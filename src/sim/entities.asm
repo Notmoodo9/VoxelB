@@ -23,6 +23,9 @@
 ;   ents_attack(rcx = ENT_PKT*)     the player hit an animal
 ;   ent_new(ecx = variant, edx = EF_BABY or 0, r8 = f64[3] feet) -> eax id / -1
 ;   ent_remove(ecx = id)            gone (the client is told)
+; Part 3: an animal with `glide` falls no faster than that; a shorn one
+; (EF_SHEARED) drops no coat when it dies; the client is told when it is
+; off the ground (wings flap) and when it is shorn.
 ;   g_ents, g_ent_count             the table, animals in it
 ;   g_ent_awake, g_ent_sent, g_ent_tick_us   statistics (overlay)
 ; =============================================================================
@@ -371,6 +374,14 @@ PROC send, 0
     je .not_love
     or eax, EPF_LOVE
 .not_love:
+    test ecx, EF_GROUND | EF_WATER
+    jnz .not_air
+    or eax, EPF_AIR
+.not_air:
+    test ecx, EF_SHEARED
+    jz .not_shorn
+    or eax, EPF_SHEARED
+.not_shorn:
     mov [rel g_out + ENT_PKT.flags], ax
     test ecx, EF_SENT
     jnz .known
@@ -565,6 +576,18 @@ PROC die, 32, rdi, r12
     jz .next
     mov edx, eax
     movzx ecx, word [r12 + MOB.drop_item + rdi * 2]
+    cmp ecx, DROP_COAT
+    jne .spawn
+    ; its coat (none once shorn)
+    test dword [rbx + EntT.flags], EF_SHEARED
+    jnz .next
+    movzx ecx, word [rbx + EntT.variant]
+    imul ecx, ecx, VARIANT_size
+    lea r8, [rel g_variants]
+    mov ecx, [r8 + rcx + VARIANT.coat]
+    test ecx, ecx
+    jz .next
+.spawn:
     lea r8, [LOCAL(0)]
     call drops_spawn
 .next:
@@ -722,6 +745,14 @@ PROC ents_tick, 64, rbx, rsi, rdi
 .gravity:
     subsd xmm0, [rel c_gravity]
     mulsd xmm0, [rel c_drag_y]
+    ; gliders (chickens) fall slowly
+    call mob_of
+    cvtss2sd xmm1, [rax + MOB.glide]
+    xorps xmm2, xmm2
+    comisd xmm1, xmm2
+    jbe .vy
+    xorpd xmm1, [rel c_sign_d]
+    maxsd xmm0, xmm1
 .vy:
     movsd [rbx + EntT.vel + 8], xmm0
     test dword [rbx + EntT.flags], EF_DYING

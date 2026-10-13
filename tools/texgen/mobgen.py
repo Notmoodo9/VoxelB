@@ -193,6 +193,132 @@ class Cow:
         return (*self.fur(pal, p, face), 1.0)
 
 
+class Sheep:
+    """A fleece (the `coat` box) over a pale shorn body; face and legs by breed."""
+    def __init__(self, wool, face, skin="#e8c8b4", hoof="#2e2622", horn=None, seed=1):
+        self.wool = ramp(wool, 6, 0.10)
+        self.face = ramp(face, 6, 0.10)
+        self.skin = ramp(skin, 6, 0.08)
+        self.hoof = hexrgb(hoof)
+        self.horn = ramp(horn, 5, 0.12) if horn else None
+        self.seed = seed
+
+    def __call__(self, part, face, p, s, t):
+        name = part["name"]
+        light = {"top": 0.66, "bottom": 0.3, "front": 0.52, "back": 0.5,
+                 "west": 0.52, "east": 0.52}[face]
+        if name == "coat" or name == "tail":
+            # curly fleece: small bumpy clumps
+            n = 0.6 * fbm(p * 1.7, 1.6, self.seed, 2) + 0.4 * vnoise(p * 2.3, 1.0, self.seed + 3)
+            return (*shade(self.wool, light + (n - 0.5) * 0.9), 1.0)
+        if name.startswith("horn") or name.startswith("curl"):
+            ridge = 0.12 * np.sin((p[1] + p[2]) * 2.6)
+            return (*shade(self.horn, 0.55 + ridge - 0.25 * t), 1.0)
+        if name == "head":
+            if face == "top" or (face != "front" and t < 0.3):
+                n = fbm(p * 1.7, 1.6, self.seed, 2)
+                return (*shade(self.wool, light + (n - 0.5) * 0.8), 1.0)   # a wool cap
+            if face == "front" and 0.35 < t < 0.55 and (0.08 < s < 0.28 or 0.72 < s < 0.92):
+                if t < 0.44 and (0.08 < s < 0.17 or 0.83 < s < 0.92):
+                    return (0.95, 0.93, 0.85, 1.0)
+                return (0.06, 0.05, 0.05, 1.0)
+            if face == "front" and t > 0.78 and 0.35 < s < 0.65:
+                return (*self.face[0] * 0.6, 1.0)                           # the nose
+            return (*shade(self.face, light + (fbm(p, 3.0, self.seed + 7, 2) - 0.5) * 0.4), 1.0)
+        if name.startswith("ear"):
+            return (*shade(self.face, light - 0.05), 1.0)
+        if name.startswith("leg"):
+            if p[1] < 1.6:
+                return (*self.hoof, 1.0)
+            return (*shade(self.face, light + (fbm(p, 2.0, self.seed + 9, 2) - 0.5) * 0.4), 1.0)
+        # the shorn body: short pale stubble
+        n = fbm(p, 2.0, self.seed + 11, 2)
+        return (*shade(self.skin, light + (n - 0.5) * 0.35), 1.0)
+
+
+class Pig:
+    def __init__(self, coat, snout, bristles=False, stripe=None, tusk="#efe6cf",
+                 hoof="#3a2a26", seed=1):
+        self.coat = ramp(coat, 6, 0.10)
+        self.snout = ramp(snout, 5, 0.10)
+        self.bristles = bristles
+        self.stripe = ramp(stripe, 6, 0.10) if stripe else None
+        self.tusk = ramp(tusk, 4, 0.10)
+        self.hoof = hexrgb(hoof)
+        self.seed = seed
+
+    def __call__(self, part, face, p, s, t):
+        name = part["name"]
+        light = {"top": 0.64, "bottom": 0.3, "front": 0.52, "back": 0.5,
+                 "west": 0.52, "east": 0.52}[face]
+        if name.startswith("tusk"):
+            return (*shade(self.tusk, 0.8 - 0.4 * t), 1.0)
+        if name.startswith("leg") and p[1] < 1.6:
+            return (*self.hoof, 1.0)
+        if name == "snout":
+            if face == "front" and 0.3 < t < 0.75 and (0.15 < s < 0.38 or 0.62 < s < 0.85):
+                return (*self.snout[0] * 0.5, 1.0)                          # nostrils
+            return (*shade(self.snout, 0.6 - 0.2 * t), 1.0)
+        if name == "head" and face == "front" and 0.25 < t < 0.42 and \
+                (0.1 < s < 0.26 or 0.74 < s < 0.9):
+            if t < 0.33 and (0.1 < s < 0.17 or 0.83 < s < 0.9):
+                return (0.95, 0.93, 0.85, 1.0)
+            return (0.05, 0.04, 0.04, 1.0)
+        pal = self.coat
+        if self.stripe is not None and (name == "mane" or (name == "body" and p[1] > 13 and abs(p[0]) < 2)):
+            pal = self.stripe
+        n = fbm(p, 3.0, self.seed, 2)
+        if self.bristles:
+            # coarse hair: streaks along the body
+            q = np.array([p[0] * 2.2, p[1] * 2.2, p[2] * 0.35])
+            n = 0.4 * n + 0.8 * (vnoise(q, 1.0, self.seed + 5) - 0.5) + 0.5
+        if name.startswith("ear") and face == "front":
+            return (*shade(self.snout, 0.45), 1.0)
+        return (*shade(pal, light + (n - 0.5) * 0.6), 1.0)
+
+
+class Chicken:
+    def __init__(self, feather, wing=None, tail=None, speckle=None, neck=None,
+                 comb="#d8282a", beak="#f0b02a", leg="#e8a838", seed=1):
+        self.feather = ramp(feather, 6, 0.10)
+        self.wing = ramp(wing, 6, 0.10) if wing else self.feather
+        self.tail = ramp(tail, 6, 0.12) if tail else self.feather
+        self.speckle = ramp(speckle, 5, 0.10) if speckle else None
+        self.neck = ramp(neck, 6, 0.10) if neck else None
+        self.comb = ramp(comb, 4, 0.10)
+        self.beak = ramp(beak, 4, 0.10)
+        self.leg = ramp(leg, 4, 0.10)
+        self.seed = seed
+
+    def __call__(self, part, face, p, s, t):
+        name = part["name"]
+        light = {"top": 0.66, "bottom": 0.3, "front": 0.52, "back": 0.5,
+                 "west": 0.52, "east": 0.52}[face]
+        if name in ("comb", "wattle"):
+            return (*shade(self.comb, light), 1.0)
+        if name == "beak":
+            return (*shade(self.beak, light), 1.0)
+        if name.startswith("leg"):
+            return (*shade(self.leg, 0.55), 1.0)
+        if name == "head" and face in ("west", "east") and 0.3 < t < 0.45 and 0.15 < s < 0.5:
+            return (0.05, 0.04, 0.04, 1.0)                                  # eyes
+        pal = self.feather
+        if name.startswith("wing"):
+            pal = self.wing
+        elif name == "tail":
+            pal = self.tail
+        elif name == "head" and self.neck is not None:
+            pal = self.neck
+        n = fbm(p, 2.0, self.seed, 2)
+        if self.speckle is not None and name in ("body", "wing_l", "wing_r") and \
+                vnoise(p * 1.9, 1.0, self.seed + 21) > 0.72:
+            return (*shade(self.speckle, light), 1.0)
+        if name.startswith("wing") or name == "tail":
+            # feather rows
+            n = 0.5 * n + 0.35 * (0.5 + 0.5 * np.sin(p[1] * 3.0 + p[2] * 1.2))
+        return (*shade(pal, light + (n - 0.5) * 0.6), 1.0)
+
+
 SKINS = {
     # black-and-white spotted, plains and meadows
     "cow_spotted": ("cow", Cow("#f2efe6", dark="#26232a", spots=0.42, muzzle="#e3a79c",
@@ -206,7 +332,45 @@ SKINS = {
     # the pale zebu with a darker hump, savanna
     "cow_zebu": ("cow_zebu", Cow("#ddd5c4", hump="#8e877d", muzzle="#9f8d86", horn="#3a3430",
                                  seed=41)),
+    # sheep in natural wool shades (the face and legs by breed)
+    "sheep_white": ("sheep", Sheep("#f4f1e8", face="#e8d8c8", seed=51)),
+    "sheep_cream": ("sheep", Sheep("#ecdcb8", face="#c8a888", seed=53)),
+    "sheep_grey": ("sheep", Sheep("#b4b2ae", face="#3a3634", seed=55)),
+    "sheep_brown": ("sheep", Sheep("#7a5236", face="#4a3022", seed=57)),
+    "sheep_black": ("sheep", Sheep("#2e2a2c", face="#1e1a1c", skin="#8a7468", seed=59)),
+    "sheep_russet": ("sheep", Sheep("#b0582c", face="#5a3020", seed=61)),
+    # the mountain ram: a cream fleece, a tan face, ridged curling horns
+    "sheep_ram": ("sheep_ram", Sheep("#efe8d6", face="#b88a5c", horn="#cdbb92", seed=63)),
+    # pigs and boars
+    "pig_pink": ("pig", Pig("#f0a8a4", snout="#e88a8a", seed=71)),
+    "boar_wild": ("boar", Pig("#5a3e2a", snout="#3a2a24", bristles=True, stripe="#2a1e16",
+                              seed=73)),
+    # chickens
+    "chicken_white": ("chicken", Chicken("#f6f4ee", wing="#e8e4da", seed=81)),
+    "chicken_speckled": ("chicken", Chicken("#8a5a34", speckle="#efe2c8", tail="#3a2a20",
+                                            seed=83)),
+    "chicken_jungle": ("chicken", Chicken("#9a3e1e", wing="#5a2a16", tail="#1e5a3a",
+                                          neck="#e8902a", seed=85)),
 }
+
+
+def check_layout(name, model):
+    """Every box's skin area inside the skin, and no two boxes overlapping
+    (boxes with the same u, v share their pixels on purpose)."""
+    W, H = model["size"]
+    owner = {}
+    for part in model["parts"]:
+        key = tuple(part["uv"]) + tuple(part["size"])
+        for face in FACES:
+            u, v, rw, rh = face_rect(part, face)
+            if u < 0 or v < 0 or u + rw > W or v + rh > H:
+                raise SystemExit(f"{name}: {part['name']} {face} leaves the skin")
+            for j in range(rh):
+                for i in range(rw):
+                    o = owner.setdefault((u + i, v + j), key)
+                    if o != key:
+                        raise SystemExit(f"{name}: {part['name']} {face} overlaps another box at "
+                                         f"{u + i}, {v + j}")
 
 
 def paint(model, painter):
@@ -234,6 +398,8 @@ def main(args):
         print("\n".join(sorted(SKINS)))
         return
     models = load_models()
+    for mname, model in models.items():
+        check_layout(mname, model)
     names = [a for a in args if not a.startswith("-")] or sorted(SKINS)
     for name in names:
         model_name, painter = SKINS[name]

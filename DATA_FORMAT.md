@@ -552,7 +552,7 @@ An `[item]` with an existing item's name (a block's, too) changes that item.
 | | `blocks` | block name patterns (`*` = anything) |
 | | `shapes` | block shapes (`plant`, `tall_plant`, `fluid`, …) |
 | `[drops]` | `<block pattern> = <item> [count]` | what a block drops instead of itself; `none` = nothing |
-| `[bonus]` | `<block pattern> = <item> <count>, <percent>` | a chance of something extra besides the usual drop (resin from logs, plant fibre from grass) |
+| `[bonus]` | `<block pattern> = <item> <count>, <percent>` | a chance of something extra besides the usual drop (resin from logs, plant fibre from grass). A block can match two `[bonus]` lines (Milestone 19 part 3: grass gives plant fibre and seeds); each is rolled on its own |
 
 A block takes the first material whose `shapes` or `blocks` match it (all
 its states alike); unmatched blocks are hardness 1, any tool, no tier. The
@@ -580,6 +580,9 @@ only name a station defined before it).
 | | `seconds` | time in a furnace of speed 1 (default 10) |
 | | `blast` | `1`: only in a furnace with `blast = 1` |
 | `[fuel]` | `<item pattern> = seconds` | how long one item burns (one line per fuel; one item smelts in 10 s) |
+| `[rack <name>]` | `block` | a drying rack (Milestone 19 part 3): the empty rack block. Right click with a `hang` input puts it up; when it is dry, right click takes the result |
+| | `hang` | `<input item>, <wet block>, <result item>, <dry block>` — what can hang: the rack shows the wet block while it dries, the dry block when done (up to 16 lines in all racks) |
+| | `seconds` | drying time (default 10). Breaking a full rack drops what `mining.cfg` says (the hide and the rack) |
 | `[recipe <name>]` | `shape` | rows split by `/`, up to 3 × 3; one character per cell: a key letter, or `.` for an empty cell. A shape matches anywhere in the grid, mirrored too |
 | | `A` … `Z` | a key: item name patterns (`*` = anything; a comma list = any of them) |
 | | `ingredients` | instead of a shape: up to 9 patterns, one item each, in any cells (shapeless) |
@@ -611,21 +614,25 @@ animal never needs assembly. Records:
 | Record | Key | Meaning |
 |---|---|---|
 | `[model <name>]` | `skin_size` | `64 64` (every skin is 64 × 64; one texture array) |
-| | `part` | `name, motion, pivot x y z, box x y z, size w h d, u v` — one box (up to 32 per model). Pixels: 16 = one block; the model faces north (−Z), y up from the feet centre. `box` is the box's low corner from the pivot (halves allowed), `size` whole pixels, `u v` its place in the skin. `motion`: `none`, `head` (turns and tilts with the look), `leg0` / `leg1` (swing in opposite phases when walking), `tail` (sways) |
+| | `part` | `name, motion, pivot x y z, box x y z, size w h d, u v` — one box (up to 32 per model). Pixels: 16 = one block; the model faces north (−Z), y up from the feet centre. `box` is the box's low corner from the pivot (halves allowed), `size` whole pixels, `u v` its place in the skin. `motion`: `none`, `head` (turns and tilts with the look), `leg0` / `leg1` (swing in opposite phases when walking), `tail` (sways), `coat` (part 3: still; not drawn while the animal is shorn), `wing0` / `wing1` (part 3: left and right wings, beating while off the ground) |
 | `[mob <name>]` | `title` | the shown name |
 | | `health` | hit points (a hit takes 1 until combat, milestone 21) |
 | | `size` | `width height` of its body box, in blocks (babies half) |
 | | `speed` | walking speed, blocks per second (running away: 2.2 ×) |
-| | `temper` | `calm` (runs when hurt) or `wild` (also runs from a player within 12 blocks) |
-| | `drop` | `item, min, max` — loot when it dies (up to 4; babies drop nothing) |
+| | `temper` | `calm` (runs when hurt), `wild` (also runs from a player within 12 blocks) or `fierce` (part 3: when hit it charges the player for up to 6 s and knocks them back; its herd stays) |
+| | `drop` | `item, min, max` — loot when it dies (up to 4; babies drop nothing). Item `coat`: the variant's coat item, not dropped by a shorn animal |
+| | `shear` | `tool, min, max` (part 3): right click with the tool takes the coat of a grown-up (min–max of its variant's coat item); the coat grows back when it grazes. The tool wears in Survival |
+| | `glide` | fastest fall in blocks per second (part 3: chickens flutter down; their `wing0`/`wing1` parts beat while off the ground) |
+| | `lays` | `item, min, max` (part 3): a grown-up drops the item every min–max seconds (eggs) |
 | | `food` | items (up to 4): it follows a player holding one; feeding a grown-up makes it look for a mate, feeding a baby helps it grow (Milestone 19 part 2) |
 | | `graze` | `1`: it eats grass (the grass block turns to dirt for 1–3 minutes) |
-| | `variant` | `name, skin, model` — a look (`assets/textures/mobs/<skin>.png`); herds are of one variant |
+| | `variant` | `name, skin, model [, coat]` — a look (`assets/textures/mobs/<skin>.png`); `coat` is the item its coat gives (sheep: its wool) |
 | `[spawn]` | `mob` | the animal |
 | | `variant` | one of its variants (default its first) |
 | | `biomes` | biome names |
 | | `chance` | % of those biomes' chunk columns that get a herd when first generated (the rules of a biome add up; above 100 every column) |
 | | `herd` | `min, max` animals (1–16) |
+| | `mix` | `variant, percent` (part 3, up to 4): that many % of the herd's animals get this other look of the same animal (a few black sheep in a white flock) |
 
 Skin layout of a box with size w × h × d at (u, v), in pixels: top
 (u+d, v) w × d, bottom (u+d+w, v) w × d, west side (u, v+d) d × h, front
@@ -667,6 +674,10 @@ records, 27 slots each). A furnace also has `station = <name>`,
 `burn = <ticks left>, <ticks of that fuel>` and `cook = <ticks>` (it keeps
 smelting while you are away; 20 ticks a second).
 
+`racks.dat` (Milestone 19 part 3) lists the drying racks with a hide
+drying: `rack = x, y, z, <ticks left>, <input item of the hang line>`. A
+rack whose block changed meanwhile is forgotten.
+
 `thumb.png` (256 × 144 RGB) in the world folder is the picture shown in
 the world list; the game rewrites it on every save.
 
@@ -695,7 +706,7 @@ The animals, by region of 32 × 32 chunk columns (blocks `rx * 1024` …
   128 bytes: a bit per column (`(cx & 31) + (cz & 31) * 32`), set once the
   column had its herd roll (it never gets another from generation).
 * Then 64 bytes per animal: f64 x, y, z (feet centre), f32 yaw, u16 health,
-  u16 flags (1 = baby), u32 age in ticks, 24 bytes `mob:variant`
+  u16 flags (1 = baby, 2 = shorn: part 3), u32 age in ticks, 24 bytes `mob:variant`
   (zero-padded), u32 herd id (0 = none; part 2 — files from part 1 have 0
   there). An unknown `mob:variant` (a removed data file) is dropped with a
   warning.

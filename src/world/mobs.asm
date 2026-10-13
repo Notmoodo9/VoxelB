@@ -7,15 +7,19 @@
 ;   [model <name>]  skin_size = 64 64
 ;                   part = name, motion, pivot x y z, box x y z, size w h d, u v
 ;                   (pixels, 16 = a block; facing north, y up from the feet;
-;                   motion none | head | leg0 | leg1 | tail)
+;                   motion none | head | leg0 | leg1 | tail | coat | wing0 |
+;                   wing1)
 ;   [mob <name>]    title, health, size = width height (blocks), speed
-;                   (blocks per second), temper = calm | wild,
-;                   drop = item, min, max (up to 4),
-;                   variant = name, skin, model (skin: a 64 x 64 picture in
-;                   assets/textures/mobs/)
+;                   (blocks per second), temper = calm | wild | fierce,
+;                   drop = item, min, max (up to 4; item "coat": the
+;                   variant's coat), food, graze, shear = tool, min, max,
+;                   glide = fastest fall (blocks per second),
+;                   lays = item, min, max (seconds),
+;                   variant = name, skin, model [, coat item] (skin: a
+;                   64 x 64 picture in assets/textures/mobs/)
 ;   [spawn]         mob, variant (default: the mob's first), biomes = list,
 ;                   chance = % of those biomes' columns with a herd,
-;                   herd = min, max
+;                   herd = min, max, mix = variant, % (up to 4)
 ; Models come before the mobs that use them (file order). Adding an animal
 ; never needs assembly.
 ;
@@ -73,14 +77,23 @@ k_chance:       db "chance", 0
 k_herd:         db "herd", 0
 k_calm:         db "calm", 0
 k_wild:         db "wild", 0
+k_fierce:       db "fierce", 0
+k_shear:        db "shear", 0
+k_glide:        db "glide", 0
+k_lays:         db "lays", 0
+k_mix:          db "mix", 0
+k_coat:         db "coat", 0
 m_0:            db "none", 0
 m_1:            db "head", 0
 m_2:            db "leg0", 0
 m_3:            db "leg1", 0
 m_4:            db "tail", 0
+m_5:            db "coat", 0
+m_6:            db "wing0", 0
+m_7:            db "wing1", 0
 align 8
-motion_names:   dq m_0, m_1, m_2, m_3, m_4
-%define MOTION_NAMES 5
+motion_names:   dq m_0, m_1, m_2, m_3, m_4, m_5, m_6, m_7
+%define MOTION_NAMES 8
 str_unknown:    db "unknown setting: ", 0
 str_bad:        db "bad value for: ", 0
 str_full:       db "too many models, parts, mobs, variants or spawns at: ", 0
@@ -291,6 +304,7 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     mov dword [rcx + SPAWN.chance], 0
     mov dword [rcx + SPAWN.herd_min], 2
     mov dword [rcx + SPAWN.herd_max], 4
+    mov dword [rcx + SPAWN.mixes], 0
     mov dword [rel g_kind], REC_SPAWN
     RETURN
 .full:
@@ -477,8 +491,15 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     lea rdx, [rel k_wild]
     INVOKE str_ieq, rsi, rdx
     test eax, eax
-    jz .bad
+    jz .b_fierce
     mov dword [r12 + MOB.temper], TEMPER_WILD
+    RETURN
+.b_fierce:
+    lea rdx, [rel k_fierce]
+    INVOKE str_ieq, rsi, rdx
+    test eax, eax
+    jz .bad
+    mov dword [r12 + MOB.temper], TEMPER_FIERCE
     RETURN
 .b_drop:
     lea rdx, [rel k_drop]
@@ -492,10 +513,17 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     call cfg_next_token
     mov [LOCAL(0)], rdx
     mov [LOCAL(8)], rax
-    mov rcx, rax
+    lea rdx, [rel k_coat]
+    INVOKE str_ieq, rax, rdx
+    mov ecx, eax
+    mov eax, DROP_COAT
+    test ecx, ecx
+    jnz .drop_item
+    mov rcx, [LOCAL(8)]
     call item_find
     cmp eax, 0
     jle .no_item
+.drop_item:
     mov [r12 + MOB.drop_item + rdi * 2], ax
     mov byte [r12 + MOB.drop_min + rdi], 1
     mov byte [r12 + MOB.drop_max + rdi], 1
@@ -573,12 +601,84 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     lea rdx, [rel k_graze]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
-    jz .b_variant
+    jz .b_shear
     mov rcx, rsi
     call str_parse_u64
     test r8, r8
     jz .bad
     mov [r12 + MOB.graze], eax
+    RETURN
+.b_shear:
+    ; shear = tool, min, max (coat items)
+    lea rdx, [rel k_shear]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .b_glide
+    mov rcx, rsi
+    call cfg_next_token
+    mov [LOCAL(0)], rdx
+    mov [LOCAL(8)], rax
+    mov rcx, rax
+    call item_find
+    cmp eax, 0
+    jle .no_item
+    mov [r12 + MOB.shear_tool], ax
+    mov rcx, [LOCAL(0)]
+    lea rdx, [rel g_vals]
+    call two_counts
+    test eax, eax
+    jz .bad
+    cmp dword [rel g_vals + 4], 64
+    ja .bad
+    mov eax, [rel g_vals]
+    mov [r12 + MOB.shear_min], al
+    mov eax, [rel g_vals + 4]
+    mov [r12 + MOB.shear_max], al
+    RETURN
+.b_glide:
+    ; glide = fastest fall, blocks per second
+    lea rdx, [rel k_glide]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .b_lays
+    mov rcx, rsi
+    call str_parse_float
+    test eax, eax
+    jz .bad
+    xorps xmm1, xmm1
+    comiss xmm0, xmm1
+    jb .bad
+    mulss xmm0, [rel c_per_tick]
+    movss [r12 + MOB.glide], xmm0
+    RETURN
+.b_lays:
+    ; lays = item, min, max (seconds between two)
+    lea rdx, [rel k_lays]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .b_variant
+    mov rcx, rsi
+    call cfg_next_token
+    mov [LOCAL(0)], rdx
+    mov [LOCAL(8)], rax
+    mov rcx, rax
+    call item_find
+    cmp eax, 0
+    jle .no_item
+    mov [r12 + MOB.lay_item], ax
+    mov rcx, [LOCAL(0)]
+    lea rdx, [rel g_vals]
+    call two_counts
+    test eax, eax
+    jz .bad
+    mov eax, [rel g_vals]
+    test eax, eax
+    jz .bad
+    imul eax, eax, 20
+    mov [r12 + MOB.lay_min], eax
+    mov eax, [rel g_vals + 4]
+    imul eax, eax, 20
+    mov [r12 + MOB.lay_max], eax
     RETURN
 .b_variant:
     lea rdx, [rel k_variant]
@@ -604,6 +704,7 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     jz .bad
     mov rcx, rdx
     call cfg_next_token
+    mov [LOCAL(0)], rdx                 ; (the coat item, if any)
     mov [LOCAL(8)], rax
     mov rcx, rax
     lea rdx, [rel g_models]
@@ -615,6 +716,18 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     mov [r13 + VARIANT.model], eax
     mov eax, [rel g_cur]
     mov [r13 + VARIANT.mob], eax
+    mov qword [r13 + VARIANT.coat], 0
+    mov rcx, [LOCAL(0)]
+    test rcx, rcx
+    jz .v_counted
+    call cfg_next_token
+    mov [LOCAL(8)], rax
+    mov rcx, rax
+    call item_find
+    cmp eax, 0
+    jle .no_item
+    mov [r13 + VARIANT.coat], eax
+.v_counted:
     inc dword [rel g_variant_count]
     inc dword [r12 + MOB.var_count]
     RETURN
@@ -710,6 +823,8 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     call find
     test eax, eax
     js .s_b_unknown
+    cmp eax, 32
+    jae .s_b_unknown                    ; (a bit per biome: 32 at most)
     bts dword [r12 + SPAWN.biomes], eax
     jmp .s_b
 .s_b_unknown:
@@ -736,7 +851,7 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     lea rdx, [rel k_herd]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
-    jz .unknown
+    jz .s_mix
     mov rcx, rsi
     call cfg_next_token
     mov [LOCAL(0)], rdx
@@ -765,6 +880,49 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     mov [r12 + SPAWN.herd_max], eax
 .herd_done:
     RETURN
+.s_mix:
+    ; mix = variant, % (another look of the same animal in the herd)
+    lea rdx, [rel k_mix]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .unknown
+    mov eax, [r12 + SPAWN.mixes]
+    cmp eax, MAX_MIX
+    jae .full_spawn
+    mov eax, [r12 + SPAWN.variant]
+    test eax, eax
+    js .no_variant
+    mov rcx, rsi
+    call cfg_next_token
+    mov [LOCAL(0)], rdx
+    mov [LOCAL(8)], rax
+    mov ecx, [r12 + SPAWN.variant]
+    mov rdx, rax
+    call variant_of_mob
+    test eax, eax
+    js .mix_unknown
+    mov ecx, [r12 + SPAWN.mixes]
+    mov [r12 + SPAWN.mix_var + rcx * 4], eax
+    mov rcx, [LOCAL(0)]
+    test rcx, rcx
+    jz .bad
+    call str_parse_float
+    test eax, eax
+    jz .bad
+    mov ecx, [r12 + SPAWN.mixes]
+    movss [r12 + SPAWN.mix_pct + rcx * 4], xmm0
+    inc dword [r12 + SPAWN.mixes]
+    RETURN
+.mix_unknown:
+    lea rcx, [rel str_no_variant]
+    mov rdx, [LOCAL(8)]
+    call warn
+    RETURN
+.full_spawn:
+    lea rcx, [rel str_full]
+    mov rdx, rbx
+    call warn
+    RETURN
 
 .bad:
     lea rcx, [rel str_bad]
@@ -775,6 +933,78 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     lea rcx, [rel str_unknown]
     mov rdx, rbx
     call warn
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; two_counts — "min, max" (whole numbers, max >= min; one number: both)
+;   in:  rcx = text (0: bad), rdx = u32[2] out
+;   out: eax = 1 if good
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC two_counts, 0, rbx, rsi
+    mov rbx, rdx
+    test rcx, rcx
+    jz .bad
+    call cfg_next_token
+    mov rsi, rdx
+    mov rcx, rax
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    cmp rax, 0xFFFFFF
+    ja .bad
+    mov [rbx], eax
+    mov [rbx + 4], eax
+    test rsi, rsi
+    jz .ok
+    mov rcx, rsi
+    call cfg_next_token
+    mov rcx, rax
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    cmp rax, 0xFFFFFF
+    ja .bad
+    cmp eax, [rbx]
+    jb .bad
+    mov [rbx + 4], eax
+.ok:
+    mov eax, 1
+    RETURN
+.bad:
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; variant_of_mob — eax = the variant named rdx of variant ecx's animal, -1
+;   clobbers: volatile registers
+PROC variant_of_mob, 0, rbx, rsi, rdi
+    mov rsi, rdx
+    imul eax, ecx, VARIANT_size
+    lea rcx, [rel g_variants]
+    mov eax, [rcx + rax + VARIANT.mob]
+    imul eax, eax, MOB_size
+    lea rcx, [rel g_mobs]
+    add rcx, rax
+    mov ebx, [rcx + MOB.first_var]
+    mov edi, [rcx + MOB.var_count]
+    add edi, ebx
+.v:
+    cmp ebx, edi
+    jae .none
+    imul eax, ebx, VARIANT_size
+    lea rcx, [rel g_variants]
+    INVOKE str_ieq, [rcx + rax + VARIANT.name], rsi
+    test eax, eax
+    jnz .found
+    inc ebx
+    jmp .v
+.found:
+    mov eax, ebx
+    RETURN
+.none:
+    mov eax, -1
     RETURN
 ENDPROC
 
@@ -962,3 +1192,4 @@ ENDPROC
 section .rdata
 align 4
 c_skin:         dd 64.0
+c_per_tick:     dd 0.05

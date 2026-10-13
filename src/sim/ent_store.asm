@@ -12,8 +12,10 @@
 ; File: <world>\overworld\entities\e.<rx>.<rz>.vxe
 ;   "VXEN", u32 version (1), u32 animals, u32 0, 128 bytes of column bits,
 ;   then 64 bytes per animal: f64 x, y, z, f32 yaw, u16 health, u16 flags
-;   (1 baby), u32 age (ticks), 24 bytes "mob:variant" (zero-padded), u32
+;   (1 baby, 2 shorn: part 3), u32 age (ticks), 24 bytes "mob:variant" (zero-padded), u32
 ;   herd id (0: none; milestone 19 part 2, in the field that was 0).
+; A rule's `mix` lines give some of a herd other looks of the same animal
+; (part 3: a few black sheep in a white flock).
 ; Unknown variants (a removed data file) are dropped with a warning.
 ;
 ; Herds: every column within POP_RADIUS of the player, once generated, is
@@ -325,6 +327,10 @@ PROC save_region, 32, rbx, rsi, rdi, r12, r13
     jz .flags
     mov eax, 1
 .flags:
+    test dword [rbx + EntT.flags], EF_SHEARED
+    jz .flags2
+    or eax, 2
+.flags2:
     mov [rdi + 30], ax
     mov eax, [rbx + EntT.age]
     mov [rdi + 32], eax
@@ -474,6 +480,9 @@ PROC load_region, 32, rsi, rdi, r12, r13
     mov [rax + EntT.age], ecx
     mov ecx, [rsi + 60]
     mov [rax + EntT.herd], ecx
+    test word [rsi + 30], 2
+    jz .next
+    or dword [rax + EntT.flags], EF_SHEARED
 .next:
     add rsi, RECORD_BYTES
     inc dword [LOCAL(LR_I)]
@@ -898,7 +907,8 @@ PROC populate, 80, rbx, rsi, rdi, r12
     cvtsi2sd xmm0, edi
     addsd xmm0, [rel c_half]
     movsd [rel g_pos + 16], xmm0
-    mov ecx, [rbx + SPAWN.variant]
+    call herd_look
+    mov ecx, eax
     xor edx, edx
     lea r8, [rel g_pos]
     call ent_new
@@ -946,6 +956,33 @@ PROC populate, 80, rbx, rsi, rdi, r12
     xor eax, eax
     RETURN
 ENDPROC
+
+; herd_look — eax = the look of the next animal of rule rbx: one of its
+; `mix` looks by their %, else the rule's own   clobbers: rax, rcx, rdx, xmm0, xmm1
+herd_look:
+    cmp dword [rbx + SPAWN.mixes], 0
+    je .own
+    call rng
+    mov eax, eax
+    cvtsi2sd xmm0, rax
+    mulsd xmm0, [rel c_u32]
+    mulsd xmm0, [rel c_hundred]         ; 0 .. 100
+    xor edx, edx
+.mix:
+    cmp edx, [rbx + SPAWN.mixes]
+    jae .own
+    cvtss2sd xmm1, [rbx + SPAWN.mix_pct + rdx * 4]
+    comisd xmm0, xmm1
+    jb .mixed
+    subsd xmm0, xmm1
+    inc edx
+    jmp .mix
+.mixed:
+    mov eax, [rbx + SPAWN.mix_var + rdx * 4]
+    ret
+.own:
+    mov eax, [rbx + SPAWN.variant]
+    ret
 
 ; -----------------------------------------------------------------------------
 ; store_update — once per tick: herds for one new column nearby; now and

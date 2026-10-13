@@ -105,5 +105,13 @@ leather:
   grow up in 20 minutes; herds that stay together, gather and lie down at
   night and run together; grazing (grass → dirt, grows back). Wild wheat
   plants (plains, meadow, steppe) give wheat.
+* **Part 3a (v0.19.3)**: raw leather from cows, salt, the drying rack
+  (hang a salted hide, leather in 2 minutes); sheep in seven looks with
+  mixed flocks, shears, shorn coats growing back on grazing; pigs and
+  fierce wild boars; chickens that flutter down and lay eggs; seeds from
+  grass, wild carrots, berries; cream and russet wool. My own choice to
+  check: the drying rack recipe (6 sticks: `SSS / S.S / S.S`).
+* See them all: `voxelb.exe --mob-gallery --pos 41.5 108 -36 --look 0 -20`
+  (or `--mob-gallery sheep`, `pig`, `boar`, `chicken`, `ram`).
 * See them: the plains around spawn of the default seed (20261009),
   e.g. `voxelb.exe --pos 41.5 106 -36 --look 0 -25`.

@@ -145,6 +145,8 @@ endstruc
 %define EPF_WATER           8           ; swimming
 %define EPF_SLEEP           16          ; lying down (part 2)
 %define EPF_LOVE            32          ; fed, looking for a mate (part 2)
+%define EPF_AIR             64          ; off the ground (wings flap; part 3)
+%define EPF_SHEARED         128         ; its coat was shorn (part 3)
 %define MAX_ENTITIES        8192
 
 struc FURNACE_PKT

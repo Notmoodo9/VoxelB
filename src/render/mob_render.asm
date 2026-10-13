@@ -1,9 +1,9 @@
 ; =============================================================================
 ; mob_render.asm — drawing the animals (milestone 19, DECISIONS D98).
 ;
-; Every box of every animal in view is one instance record (96 bytes:
-; position, body yaw, the box's pivot, corner, size, its turn, skin
-; position, light) written each frame into one of three rotating shader
+; Every box of every animal in view is one instance record (112 bytes:
+; position, body yaw, the box's pivot, corner, size, its turn and roll,
+; skin position, light) written each frame into one of three rotating shader
 ; storage buffers; shaders/mob.vert builds the box's 36 vertices from the
 ; record (vertex pulling, one glDrawArrays for all animals). Skins are one
 ; 64 x 64 texture array, a layer per variant. The same records are drawn
@@ -35,7 +35,7 @@ extern scene_uniforms, str_copy
 extern g_cam_pos, g_cam_yaw, g_cam_pitch, g_cam_viewproj, g_cam_mod
 
 %define MAX_INST        16384           ; boxes per frame
-%define INST_BYTES      96
+%define INST_BYTES      112
 %define RING            3
 %define SKIN_UNIT       11
 %define INST_SSBO       11
@@ -66,6 +66,9 @@ c_id_phase:     dd 0.7
 c_sink:         dd 0.62                 ; lying down: blocks lower (adult)
 c_love_rate:    dd 5.0
 c_love_amp:     dd 0.17
+c_flap_rate:    dd 22.0                 ; part 3: wings in the air
+c_flap_base:    dd 0.55
+c_flap_amp:     dd 0.45
 
 section .bss
 alignb 16
@@ -258,7 +261,8 @@ ENDPROC
 %define P_ID        68
 %define P_CP        72                  ; f32 cos pitch
 %define P_LOVE      76                  ; f32 pink pulse
-PROC mobs_prepare, 80, rbx, rsi, rdi, r12
+%define P_FLAP      80                  ; f32 wing roll (part 3)
+PROC mobs_prepare, 96, rbx, rsi, rdi, r12
     call timer_elapsed_us
     mov [rel g_prep_start], rax
     call prepare
@@ -269,7 +273,7 @@ PROC mobs_prepare, 80, rbx, rsi, rdi, r12
 ENDPROC
 
 ; prepare — mobs_prepare's work (timed by it)
-PROC prepare, 80, rbx, rsi, rdi, r12, r13
+PROC prepare, 96, rbx, rsi, rdi, r12, r13
     mov dword [rel g_mob_boxes], 0
     mov dword [rel g_mobs_drawn], 0
     cmp dword [rel g_ok], 0
@@ -400,6 +404,20 @@ PROC prepare, 80, rbx, rsi, rdi, r12, r13
     addss xmm0, [rel c_love_amp]
     movss [LOCAL(P_LOVE)], xmm0
 .no_love:
+    ; off the ground: wings beat
+    xor eax, eax
+    mov [LOCAL(P_FLAP)], eax
+    test word [rbx + VENT.flags], EPF_AIR
+    jz .no_flap
+    cvtsi2ss xmm0, dword [LOCAL(P_ID)]
+    movss xmm1, [LOCAL(P_TIME)]
+    mulss xmm1, [rel c_flap_rate]
+    addss xmm0, xmm1
+    call sincosf
+    mulss xmm0, [rel c_flap_amp]
+    addss xmm0, [rel c_flap_base]
+    movss [LOCAL(P_FLAP)], xmm0
+.no_flap:
     ; ---- the boxes ----
 .part:
     mov eax, [LOCAL(P_PART)]
@@ -409,6 +427,12 @@ PROC prepare, 80, rbx, rsi, rdi, r12, r13
     imul eax, eax, MPART_size
     lea r12, [rel g_parts]
     add r12, rax
+    ; a shorn coat is not drawn
+    cmp dword [r12 + MPART.motion], MOTION_COAT
+    jne .shown
+    test word [rbx + VENT.flags], EPF_SHEARED
+    jnz .part
+.shown:
     ; a: position, body yaw
     mov eax, [LOCAL(P_REL)]
     mov [rdi], eax
@@ -448,6 +472,7 @@ PROC prepare, 80, rbx, rsi, rdi, r12, r13
     xor ecx, ecx                        ; pitch
     xor edx, edx                        ; yaw
     mov r8d, [rel c_one]                ; box scale
+    xor r9d, r9d                        ; roll (wings)
     mov eax, [r12 + MPART.motion]
     cmp eax, MOTION_HEAD
     jne .not_head
@@ -468,9 +493,20 @@ PROC prepare, 80, rbx, rsi, rdi, r12, r13
     jmp .motion_done
 .not_leg1:
     cmp eax, MOTION_TAIL
-    jne .motion_done
+    jne .not_tail
     mov ecx, [LOCAL(P_TAILP)]
     mov edx, [LOCAL(P_TAILY)]
+    jmp .motion_done
+.not_tail:
+    cmp eax, MOTION_WING0
+    jne .not_wing0
+    mov r9d, [LOCAL(P_FLAP)]
+    xor r9d, 0x80000000                 ; (the left wing lifts to -x)
+    jmp .motion_done
+.not_wing0:
+    cmp eax, MOTION_WING1
+    jne .motion_done
+    mov r9d, [LOCAL(P_FLAP)]
 .motion_done:
     mov [rdi + 60], ecx
     mov [rdi + 64], edx
@@ -489,6 +525,12 @@ PROC prepare, 80, rbx, rsi, rdi, r12, r13
     mov [rdi + 88], r8d
     mov eax, [LOCAL(P_LOVE)]
     mov [rdi + 92], eax
+    ; g: the box's roll
+    mov [rdi + 96], r9d
+    xor eax, eax
+    mov [rdi + 100], eax
+    mov [rdi + 104], eax
+    mov [rdi + 108], eax
     add rdi, INST_BYTES
     inc dword [rel g_mob_boxes]
     jmp .part

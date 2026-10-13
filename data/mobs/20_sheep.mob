@@ -1,0 +1,95 @@
+# Sheep (milestone 19 part 3, design/mobs/passive_animals.md). Format:
+# DATA_FORMAT.md "Mob files". The fleece is a `coat` box around the shorn
+# body: shears take it (1-3 of the variant's wool) and it grows back when
+# the sheep grazes.
+
+[model sheep]
+skin_size = 64 64
+part = coat,   coat, 0 11 0,    -5.5 -1.5 -8.5, 11 10 17, 0 0
+part = body,   none, 0 11 0,    -4 0 -7,    8 7 14,     0 27
+part = head,   head, 0 17 -8,   -3 -3 -6,   6 6 6,      0 48
+part = ear_l,  head, 0 17 -8,   -5 0 -3,    2 1 2,      44 27
+part = ear_r,  head, 0 17 -8,   3 0 -3,     2 1 2,      44 27
+part = leg_fl, leg0, -2.5 11 -5, -1.5 -11 -1.5, 3 11 3, 24 48
+part = leg_fr, leg1, 2.5 11 -5,  -1.5 -11 -1.5, 3 11 3, 24 48
+part = leg_bl, leg1, -2.5 11 5,  -1.5 -11 -1.5, 3 11 3, 24 48
+part = leg_br, leg0, 2.5 11 5,   -1.5 -11 -1.5, 3 11 3, 24 48
+part = tail,   tail, 0 18 8.5,  -1.5 -4 0,  3 4 2,      44 31
+
+# the mountain ram: horns curling round the sides of the head
+[model sheep_ram]
+skin_size = 64 64
+part = coat,   coat, 0 11 0,    -5.5 -1.5 -8.5, 11 10 17, 0 0
+part = body,   none, 0 11 0,    -4 0 -7,    8 7 14,     0 27
+part = head,   head, 0 17 -8,   -3 -3 -6,   6 6 6,      0 48
+part = horn_l, head, 0 17 -8,   -5 -2 -5,   2 5 4,      36 48
+part = horn_r, head, 0 17 -8,   3 -2 -5,    2 5 4,      36 48
+part = curl_l, head, 0 17 -8,   -5 -3 -7,   2 2 2,      48 48
+part = curl_r, head, 0 17 -8,   3 -3 -7,    2 2 2,      48 48
+part = leg_fl, leg0, -2.5 11 -5, -1.5 -11 -1.5, 3 11 3, 24 48
+part = leg_fr, leg1, 2.5 11 -5,  -1.5 -11 -1.5, 3 11 3, 24 48
+part = leg_bl, leg1, -2.5 11 5,  -1.5 -11 -1.5, 3 11 3, 24 48
+part = leg_br, leg0, 2.5 11 5,   -1.5 -11 -1.5, 3 11 3, 24 48
+part = tail,   tail, 0 18 8.5,  -1.5 -4 0,  3 4 2,      44 31
+
+[mob sheep]
+health = 8
+size = 0.9 1.3
+speed = 1.3
+temper = calm
+food = wheat
+graze = 1
+drop = mutton, 1, 2
+# coat: one wool of its shade (none once shorn)
+drop = coat, 1, 1
+shear = shears, 1, 3
+# variant = name, skin, model, coat (the wool its fleece gives)
+variant = white, sheep_white, sheep, white_wool
+variant = cream, sheep_cream, sheep, cream_wool
+variant = grey, sheep_grey, sheep, light_gray_wool
+variant = brown, sheep_brown, sheep, brown_wool
+variant = black, sheep_black, sheep, black_wool
+variant = russet, sheep_russet, sheep, russet_wool
+variant = ram, sheep_ram, sheep_ram, white_wool
+
+# flocks: mostly one shade with a few others mixed in (mix = look, %);
+# warmer shades in warmer places, a rare russet one
+[spawn]
+mob = sheep
+variant = white
+biomes = plains
+chance = 8
+herd = 3, 6
+mix = grey, 10
+mix = black, 6
+mix = brown, 6
+mix = russet, 1
+
+[spawn]
+mob = sheep
+variant = cream
+biomes = meadow
+chance = 8
+herd = 3, 6
+mix = white, 20
+mix = brown, 10
+mix = black, 5
+mix = russet, 2
+
+[spawn]
+mob = sheep
+variant = brown
+biomes = steppe
+chance = 7
+herd = 3, 6
+mix = cream, 25
+mix = black, 8
+mix = russet, 3
+
+[spawn]
+mob = sheep
+variant = ram
+biomes = alpine_meadow
+chance = 6
+herd = 2, 4
+mix = grey, 30
