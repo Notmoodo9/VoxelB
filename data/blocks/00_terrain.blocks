@@ -84,7 +84,7 @@ textures = side: dead_wood, end: dead_wood_top
 
 # glowing forest (design/biomes/glowing_forest.md): luminous moss
 [block glow_moss]
-light = 2, 6, 5          # a faint teal glow (milestone 13)
+light = 2, 8, 7          # a soft teal glow (milestone 13)
 
 # mushroom fields (design/biomes/mushroom_fields.md): fungal ground
 [block mycelium]

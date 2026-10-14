@@ -1,8 +1,12 @@
 ; =============================================================================
-; held.asm — the item in hand, first person (milestone 18): a block as a
-; small lit cube in the lower right, plants and items as a flat picture;
-; it sways while walking and swings when a block is broken or placed.
-; Drawn over the finished frame (shaders/held.*), before the HUD.
+; held.asm — first person (milestone 18; reworked after v0.19.3, D101):
+; the player's arm in the lower right holding what is in the hand — a block
+; as a small cube, an item or a flat block as a thin model of its picture
+; (one 1/16 box per pixel), like Minecraft. The hand sways while walking,
+; swings in an arc when used (again and again while mining) and dips while
+; the item in hand changes. The off hand shows its item in the lower left.
+; Drawn over the finished frame with its own cleared depth (shaders/held.*),
+; before the HUD.
 ;
 ; Public API:
 ;   held_init() -> eax 1/0              after icons_init
@@ -21,14 +25,17 @@ extern timer_elapsed_us, sincosf
 extern g_cinv, g_csel, g_item_block, g_icon_tex, g_daylight, g_held_on, hand_light
 extern g_cl_player
 
-%define SWING_US        250000
+%define SWING_US        300000          ; (Minecraft: 6 ticks)
+%define EQUIP_US        160000          ; the dip when the item in hand changes
+%define PICTURE_VERTS   (256 * 36)      ; a picture's 16 x 16 pixel boxes
 
 section .rdata
 str_vs:         db "shaders/held.vert", 0
 str_fs:         db "shaders/held.frag", 0
 align 4
 c_us:           dd 0.000001
-c_swing:        dd 4.0                  ; 1 / 0.25 s
+c_swing:        dd 3.3333333            ; 1 / 0.3 s
+c_equip:        dd 6.25                 ; 1 / 0.16 s
 c_one:          dd 1.0
 c_light0:       dd 0.32
 c_light1:       dd 0.68
@@ -46,6 +53,8 @@ g_prog:         resd 1
 g_vao:          resd 1
 g_uv:           resd 4
 g_last_us:      resq 1
+g_equip_t0:     resq 1                  ; when the main hand's item changed
+g_equip_item:   resd 1                  ; the item it changed to
 
 section .text
 
@@ -84,6 +93,11 @@ ENDPROC
 PROC held_draw, 0, rbx, rsi, rdi
     mov esi, ecx
     mov edi, edx
+    cmp dword [rel g_prog], 0
+    je .done
+    ; its own depth (the world's is in the scene's framebuffer)
+    GL glDepthMask, GL_TRUE
+    GL glClear, GL_DEPTH_BUFFER_BIT
     ; the main hand (lower right), then the off hand (mirrored, lower left)
     mov eax, [rel g_csel]
     lea rcx, [rel g_cinv]
@@ -98,33 +112,42 @@ PROC held_draw, 0, rbx, rsi, rdi
     mov edx, edi
     mov r9d, 1
     call held_item
+.done:
     RETURN
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; held_item — one hand's item.
+; held_item — one hand: the main hand's arm (always) and what it holds.
 ;   in:  ecx = width, edx = height, r8d = item (0: none), r9d = 1 the off
-;        hand (mirrored, no swing)
+;        hand (mirrored, no arm, no swing)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 %define D_W     0
 %define D_H     4
 %define D_ITEM  8
-%define D_MIRROR 32
+%define D_SWING 12
 %define D_NOW   16
+%define D_DT    24
+%define D_SPEED 28
+%define D_MIRROR 32
+%define D_EQUIP 36
+%define D_LIGHT 40
 PROC held_item, 48, rbx, rsi
     mov [LOCAL(D_W)], ecx
     mov [LOCAL(D_H)], edx
     mov [LOCAL(D_MIRROR)], r9d
     mov ebx, r8d
-    cmp dword [rel g_prog], 0
-    je .done
     test edx, edx
     jz .done
     test ebx, ebx
-    jz .done                            ; (empty hand)
+    jnz .something
+    cmp dword [LOCAL(D_MIRROR)], 0
+    jne .done                           ; (an empty off hand: nothing)
+.something:
     call timer_elapsed_us
     mov [LOCAL(D_NOW)], rax
+    cmp dword [LOCAL(D_MIRROR)], 0
+    jne .no_dt                          ; (the main hand steps the clocks)
     mov rcx, rax
     sub rcx, [rel g_last_us]
     mov [rel g_last_us], rax
@@ -134,34 +157,27 @@ PROC held_item, 48, rbx, rsi
 .dt:
     cvtsi2ss xmm0, rcx
     mulss xmm0, [rel c_us]
-    movss [LOCAL(24)], xmm0             ; dt (s)
+    movss [LOCAL(D_DT)], xmm0
+    ; the item changed: dip and come back up
+    cmp ebx, [rel g_equip_item]
+    je .no_dt
+    mov [rel g_equip_item], ebx
+    mov [rel g_equip_t0], rax
+.no_dt:
     GL glUseProgram, [rel g_prog]
     GL glBindVertexArray, [rel g_vao]
     call block_textures_bind
     GL glBindTextureUnit, 1, [rel g_icon_tex]
     GL glViewport, 0, 0, [LOCAL(D_W)], [LOCAL(D_H)]
-    GL glDisable, GL_DEPTH_TEST
-    GL glDisable, GL_CULL_FACE
+    GL glEnable, GL_DEPTH_TEST
+    GL glDisable, GL_CULL_FACE          ; (the depth sorts it; mirroring flips the winding)
     GL glDisable, GL_BLEND
-    ; what to draw: a cube from the block textures, or a picture
-    mov ecx, ebx
-    call icon_kind
-    xor esi, esi
-    cmp eax, 2
-    jne .kind
-    mov esi, 1
-.kind:
-    GL glProgramUniform1i, [rel g_prog], 1, rsi
     GL glProgramUniform1i, [rel g_prog], 7, [LOCAL(D_MIRROR)]
-    lea rax, [rel g_item_block]
-    movzx r9d, word [rax + rbx * 2]
-    GL glProgramUniform1ui, [rel g_prog], 0, r9
-    mov ecx, ebx
-    lea rdx, [rel g_uv]
-    call icon_uv
-    lea r9, [rel g_uv]
-    GL glProgramUniform4fv, [rel g_prog], 2, 1, r9
-    ; the swing: 0..1 over SWING_US (the main hand only)
+    xor eax, eax
+    test ebx, ebx
+    setz al
+    GL glProgramUniform1i, [rel g_prog], 9, rax
+    ; ---- the swing: 0..1 over SWING_US (the main hand only) ----
     xorps xmm0, xmm0
     cmp dword [LOCAL(D_MIRROR)], 0
     jne .swing
@@ -179,10 +195,25 @@ PROC held_item, 48, rbx, rsi
 .swing_over:
     mov qword [rel g_swing_t0], 0
 .swing:
-    movss [LOCAL(12)], xmm0
-    movss xmm2, [LOCAL(12)]
+    movss [LOCAL(D_SWING)], xmm0
+    movss xmm2, [LOCAL(D_SWING)]
     GL glProgramUniform1f, [rel g_prog], 3
-    ; walking sway: by the horizontal speed
+    ; ---- the equip dip: 0 just changed .. 1 up ----
+    movss xmm0, [rel c_one]
+    cmp dword [LOCAL(D_MIRROR)], 0
+    jne .equip
+    mov rcx, [LOCAL(D_NOW)]
+    sub rcx, [rel g_equip_t0]
+    cmp rcx, EQUIP_US
+    jae .equip
+    cvtsi2ss xmm0, rcx
+    mulss xmm0, [rel c_us]
+    mulss xmm0, [rel c_equip]
+.equip:
+    movss [LOCAL(D_EQUIP)], xmm0
+    movss xmm2, [LOCAL(D_EQUIP)]
+    GL glProgramUniform1f, [rel g_prog], 8
+    ; ---- walking sway: by the horizontal speed ----
     movss xmm0, [rel g_cl_player + PLAYER_PKT.vel]
     mulss xmm0, xmm0
     movss xmm1, [rel g_cl_player + PLAYER_PKT.vel + 8]
@@ -195,18 +226,19 @@ PROC held_item, 48, rbx, rsi
 .ground:
     divss xmm0, [rel c_speed_full]
     minss xmm0, [rel c_one]
-    movss [LOCAL(28)], xmm0             ; 0..1
-    movss xmm1, [LOCAL(24)]
+    movss [LOCAL(D_SPEED)], xmm0        ; 0..1
+    movss xmm1, [rel g_bob_phase]
+    cmp dword [LOCAL(D_MIRROR)], 0
+    jne .phase_kept                     ; (the main hand steps the sway)
+    movss xmm1, [LOCAL(D_DT)]
     mulss xmm1, [rel c_bob_rate]
     mulss xmm1, xmm0
     addss xmm1, [rel g_bob_phase]
-    cmp dword [LOCAL(D_MIRROR)], 0
-    jne .phase_kept                     ; (the main hand steps the sway)
     movss [rel g_bob_phase], xmm1
 .phase_kept:
     movss xmm0, xmm1
     call sincosf                        ; xmm0 = sin, xmm1 = cos
-    movss xmm2, [LOCAL(28)]
+    movss xmm2, [LOCAL(D_SPEED)]
     mulss xmm2, [rel c_bob_amp]
     mulss xmm0, xmm2                    ; x sway
     andps xmm1, [rel c_abs]
@@ -220,25 +252,55 @@ PROC held_item, 48, rbx, rsi
     cvtsi2ss xmm0, dword [LOCAL(D_H)]
     divss xmm2, xmm0
     GL glProgramUniform1f, [rel g_prog], 5
-    ; light: the daylight, or the held light
+    ; ---- light: the daylight, or the held light ----
     movss xmm2, [rel g_daylight]
     mulss xmm2, [rel c_light1]
     addss xmm2, [rel c_light0]
     cmp dword [rel g_held_on], 0
     jne .lit
-    movss [LOCAL(40)], xmm2
+    movss [LOCAL(D_LIGHT)], xmm2
     call hand_light                     ; (a light block in a hand)
-    movss xmm2, [LOCAL(40)]
+    movss xmm2, [LOCAL(D_LIGHT)]
     test eax, eax
     jz .light
 .lit:
     maxss xmm2, [rel c_held_min]
 .light:
     GL glProgramUniform1f, [rel g_prog], 6
+    ; ---- the arm (the main hand) ----
+    cmp dword [LOCAL(D_MIRROR)], 0
+    jne .no_arm
+    GL glProgramUniform1i, [rel g_prog], 1, 0
     GL glDrawArrays, GL_TRIANGLES, 0, 36
-    GL glBindVertexArray, 0
-    GL glEnable, GL_DEPTH_TEST
+.no_arm:
+    test ebx, ebx
+    jz .drawn
+    ; ---- what it holds: a cube from the block textures, or a picture ----
+    mov ecx, ebx
+    call icon_kind
+    mov esi, 1                          ; part 1: a block
+    cmp eax, 2
+    jne .kind
+    mov esi, 2                          ; part 2: a picture
+.kind:
+    GL glProgramUniform1i, [rel g_prog], 1, rsi
+    lea rax, [rel g_item_block]
+    movzx r9d, word [rax + rbx * 2]
+    GL glProgramUniform1ui, [rel g_prog], 0, r9
+    mov ecx, ebx
+    lea rdx, [rel g_uv]
+    call icon_uv
+    lea r9, [rel g_uv]
+    GL glProgramUniform4fv, [rel g_prog], 2, 1, r9
+    mov r8d, 36
+    cmp esi, 2
+    jne .count
+    mov r8d, PICTURE_VERTS
+.count:
+    GL glDrawArrays, GL_TRIANGLES, 0, r8
+.drawn:
     GL glEnable, GL_CULL_FACE
+    GL glBindVertexArray, 0
 .done:
     RETURN
 ENDPROC

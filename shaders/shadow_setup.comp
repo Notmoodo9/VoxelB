@@ -42,6 +42,13 @@ void main() {
         l.y = 0.12;
         l = normalize(l);
     }
+    // in steps of 0.15 degrees: between steps the light's texel grid stays
+    // put, so shadow edges don't crawl as the sun moves (a step is ~4 cm at
+    // the end of a 20-block shadow)
+    const float STEP = radians(0.15);
+    float az = round(atan(l.z, l.x) / STEP) * STEP;
+    float el = round(asin(clamp(l.y, -1.0, 1.0)) / STEP) * STEP;
+    l = vec3(cos(el) * cos(az), sin(el), cos(el) * sin(az));
     sd.light = vec4(l, strength);
     sd.splits = u_splits;
 

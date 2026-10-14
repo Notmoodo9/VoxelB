@@ -6,6 +6,11 @@
 // with the previous frame's view-projection). It writes the record's
 // indirect draw command (instanceCount 1 visible, 0 culled), keeping the
 // order (translucent records stay sorted back to front).
+// Two phases per frame (u_phase, D101): 1 draws the opaque and cutout
+// records near the camera (frustum only); then hiz.comp builds the pyramid
+// from this frame's depth; 2 tests every other record against it (the
+// pyramid's frame is this frame: nothing pops in a frame late when the
+// camera moves). Phase 0: one pass, frustum (and the given pyramid).
 
 layout(local_size_x = 64) in;
 
@@ -31,6 +36,9 @@ layout(location = 9) uniform int u_hiz_levels;   // 0: no pyramid yet
 layout(location = 10) uniform ivec2 u_hiz_size;  // level 0 size
 layout(location = 11) uniform uint u_stats;      // this slot's first counter
 layout(location = 12) uniform int u_cascade;     // > 0: shadow cascade + 1 (light-space test)
+layout(location = 13) uniform int u_phase;       // 0 one pass, 1 near, 2 the rest
+layout(location = 14) uniform uint u_split;      // records from here on are translucent
+layout(location = 15) uniform float u_near;      // phase 1: boxes closer than this (blocks)
 
 // shadow cascades (shaders/shadow_setup.comp)
 struct ShadowData { mat4 m[4]; vec4 splits; vec4 light; vec4 texel; vec4 origin[4]; };
@@ -117,7 +125,14 @@ void main() {
         return;
     }
     bool visible = in_frustum(lo, hi);
-    if (visible && occluded(lo, hi)) {
+    if (u_phase != 0) {
+        // near: an opaque or cutout section whose box comes within u_near
+        vec3 d = max(max(lo, -hi), vec3(0.0));
+        bool near = i < u_split && level == 0u && dot(d, d) < u_near * u_near;
+        if (u_phase == 1) visible = visible && near;
+        else if (near) visible = false;            // (drawn in phase 1)
+    }
+    if (visible && u_phase != 1 && occluded(lo, hi)) {
         visible = false;
         atomicAdd(stats[u_stats + 2u], 1u);
     }

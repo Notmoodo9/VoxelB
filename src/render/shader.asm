@@ -29,7 +29,7 @@ global g_shader_count, g_shader_reloads, g_shader_failures, g_shader_last_ok
 
 IMPORT GetTickCount64
 
-%define MAX_PROGRAMS    16
+%define MAX_PROGRAMS    32
 %define INFO_LOG_CAP    8192
 %define POLL_MS         250
 

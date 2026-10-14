@@ -1915,3 +1915,48 @@ block for their upper half (mossy cobblestone boulders).
 * **`--mob-gallery [name]`** places one of every look (or one animal's /
   one look's) in a row in front of the player — for screenshots and for
   tests that need an animal within reach without aiming the mouse.
+
+## D101 — Fixes after v0.19.3: culling, shadows, sprint, cracks, the hand
+Owner's list of six issues (2026-10-14).
+* **Occlusion culling in two phases, all in the same frame.** The cull
+  shader used to test against the previous frame's depth pyramid
+  (reprojected), so a section coming into view behind a moving edge was
+  hidden for a frame: holes and popping while walking. Now the opaque and
+  cutout sections within 48 blocks are drawn first (frustum test only),
+  the pyramid is built from *this* frame's depth, and every other record
+  is tested against it (no reprojection, nothing a frame late). Phase 2
+  writes a second command buffer so it never rewrites commands phase 1's
+  draws read. The end-of-frame pyramid build is gone.
+* **Shadows**: the light direction for the cascades moves in 0.15° steps
+  (between steps the shadow texel grid stays put, so edges stop crawling
+  as the sun moves), and each cascade blends into the next over the last
+  fifth of its range (no sharp seam sliding along the ground as you walk).
+* **Sprint**: it existed (hold Ctrl) but was easy to miss. Now also a
+  double tap of forward, it stays on while forward is held (until
+  sneaking), and the view widens 12% while sprinting (eased).
+* **Cracks**: the old pattern's lines were thinner than a texture pixel
+  and almost never covered a pixel centre, so no cracks showed and blocks
+  seemed to vanish early. Now ten stages like Minecraft's: whole pixels
+  near three noise iso-lines, 4% of the face at the first stage to 40% at
+  the last (shown over the last tenth before the block breaks), nearly
+  black with a faint light edge so they read on dark blocks. The shown
+  progress is carried on between simulation ticks at the last tick's rate.
+* **Shader program limit 16 → 32**: the animal shaders (M19) had filled
+  the table, so the dropped-item program (made on the first drop) failed
+  and dropped items were invisible.
+* **The hand (first person, Minecraft-like)**: an arm (4 × 12 × 4 pixels,
+  skin with a tunic sleeve) comes in from the lower right; blocks are a
+  small cube at the fist; items and flat blocks are built in the vertex
+  shader as a thin model from their 16 × 16 icon (one 1/16 box per pixel,
+  inner sides skipped, mirrored as the right hand shows it), so they have
+  thickness instead of being a flat picture. The icon's dark outline
+  pixels are left out of the model (the "edges" on held leather). Drawn
+  with its own cleared depth (reverse-Z like the world). Swing: the fist
+  moves in toward the middle and the item tips forward (Minecraft's
+  curves), 0.3 s, also on a click at the air; the hand dips while the item
+  in hand changes. The arm's colours are constants in shaders/held.frag
+  until there is a player skin.
+* **Glowing forest toned down** (owner): glowwood leaves deep sea-teal
+  with light only in specks (some steady, some slowly twinkling) and a
+  faint sheen, dimmer bark veins, pale aqua blooms; more light from the
+  trees, glow plants and moss so the floor is softly lit at night.

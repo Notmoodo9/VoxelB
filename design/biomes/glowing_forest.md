@@ -51,6 +51,14 @@ teal like a bioluminescent sea:
 * The glow layers make all of this read bright now. Real light (the
   forest lighting up the night) comes with M13.
 
+## Changed by the owner (2026-10-14)
+* The trees were too colourful: toned down to look more majestic — deep
+  sea-teal leaves with light only in specks (some steady, some slowly
+  twinkling), dimmer bark veins, pale aqua blooms instead of white.
+* They give off light: glowwood leaves 3/11/10 (blooming 5/12/11), logs
+  2/9/8, glow ferns, flowers and moss raised too, so the floor is softly
+  lit at night.
+
 ## Deferred
 * Fireflies (drifting light particles) wait for the particle milestone
   (M14 or later) and are recorded in BACKLOG.

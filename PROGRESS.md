@@ -1,14 +1,59 @@
 # Progress
 
 ## Current state
-**Milestone 19, part 3a: Animals — sheep, pigs, boars, chickens; hides and drying racks: DONE** (v0.19.3, Windows CI green: run #110)
+**Fixes after v0.19.3** (owner's list): walking artifacts, sprint, cracks,
+glowing forest, the hand and held items (v0.19.4, Windows CI: see below)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
 
-Next: **Milestone 19, part 3b** — deer, rabbit and goat (deer and rabbit
-hides on the drying rack), the bucket and milking, leads, name tags with
-the journal page (design/mobs/passive_animals.md, build order 4).
+Next: **Milestone 19, part 3b** (v0.19.5) — deer, rabbit and goat (deer
+and rabbit hides on the drying rack), the bucket and milking, leads, name
+tags with the journal page (design/mobs/passive_animals.md, build order 4).
+
+---
+
+## Fixes after v0.19.3 — done (2026-10-14): owner's list (D101)
+
+### What was fixed
+1. **Walking: shadows swam, blocks popped.** Occlusion culling now runs in
+   two phases within the frame (near sections first, then a depth pyramid
+   of this frame, then the rest), so nothing appears a frame late. Shadow
+   cascades blend into each other and the shadow light moves in small
+   steps, so edges no longer crawl.
+2. **Sprint.** Ctrl sprint was there; now also double-tap W, sprint stays
+   on while W is held, and the view widens a little while sprinting.
+3. **Breaking looked early.** The cracks were too thin to show at all;
+   they now come in ten Minecraft-like stages, the last one over the last
+   tenth before the block breaks, and move smoothly between ticks. Also
+   found: dropped items were invisible since M19 (the shader table was
+   full) — fixed.
+4. **Glowing forest** toned down: deep sea-teal crowns with glowing
+   specks, softer veins, pale aqua blooms; the trees, glow plants and moss
+   give off more light, so the forest floor is softly lit at night.
+5. **Edges on held sprites** (leather): the icon's dark outline is left
+   out of the held model.
+6. **Held items like Minecraft, with a hand.** An arm in the lower right;
+   items are thin 3D models of their pixels held diagonally in the fist
+   (blocks a small cube), a Minecraft-style swing (also at the air), a
+   dip when switching items; the off hand shows its item lower left.
+
+### Verified (scripted with xdotool)
+* Two-phase culling: same picture, "Hi-Z culled" still counts hidden
+  sections; 7 draws a frame (was 5).
+* Sprint (survival, 4 s): walk 3.6 blocks, Ctrl sprint 5.4.
+* Cracks on placed stone mined by hand: stages grow until it breaks
+  (screens); the dropped stone shows and is picked up.
+* Glowing forest at noon and 23:00 (screens).
+* Held leather, raw leather, pickaxe, poppy, stone, empty hand; swing
+  slowed down for screenshots; off-hand leather.
+* Debug and release headless tests pass.
+
+### Performance
+* Culling: one more cull dispatch, one depth-pyramid build and two more
+  multi-draws per frame (the end-of-frame pyramid is gone).
+* The held model: 9216 vertices for a picture item (empty pixels and
+  inner sides collapse in the vertex shader).
 
 ---
 

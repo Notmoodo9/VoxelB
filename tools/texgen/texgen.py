@@ -140,7 +140,8 @@ WOODS = {
     "mangrove":    ("6e3b2a", "a8483a", "2f6e3a", "rough",  "broad",  ("flowering", ["fff8f0", "f8e8ff"])),
     "willow":      ("6e7560", "bfc08a", "9ccf4a", "furrow", "hanging", ("autumn", ["f2d03a", "e8b828", "f8e868"])),
     "maple":       ("6a5a4c", "d9a25e", "4aa83a", "furrow", "broad",  ("autumn", ["f0401a", "ff7a1a", "d81e1e"])),
-    "glowwood":    ("1e4a4f", "2f8c88", "3fd8a8", "veins",  "broad",  ("blooming", ["c8fff0", "7affd8"])),
+    # glowwood (toned down 2026-10-14, owner): deep sea-teal, light only in specks and veins
+    "glowwood":    ("16363c", "2a7470", "1f6a64", "veins",  "broad",  ("blooming", ["a8e4dc", "7cc8c0"])),
     "crystalwood": ("b8a8d8", "c8a8e8", "8a7cff", "facets", "crystal", ("prismatic", None)),
     "frostwood":   ("c8dcec", "e0eef8", "a8d8f0", "frost",  "broad",  ("frozen", None)),
     "emberwood":   ("2a2424", "6a2a1e", "b8401a", "embers", "broad",  ("smouldering", None)),
@@ -440,7 +441,7 @@ def seasonal(wood, kind, cols, leaf_base, style, r):
             for dx, dy in ((0, -1), (-1, 0), (1, 0), (0, 1)):
                 img[y + dy, x + dx] = p[2]
                 a[y + dy, x + dx] = 1
-            img[y, x] = hexrgb("ffd83a") if kind == "flowering" else hexrgb("ffffff")
+            img[y, x] = hexrgb("ffd83a") if kind == "flowering" else hexrgb("d8f8f0")
             a[y, x] = 1
         return [rgba(img, a)]
     if kind == "fruiting":
@@ -517,11 +518,11 @@ def make_woods(out):
             frames, gframes = [], []
             for f in range(FRAMES):
                 img = side.copy()
-                wave = 0.55 + 0.45 * np.sin(2 * np.pi * (f / FRAMES) + np.arange(N)[:, None] * 0.6)
-                col = hexrgb("4fffd0")
+                wave = 0.6 + 0.4 * np.sin(2 * np.pi * (f / FRAMES) + np.arange(N)[:, None] * 0.6)
+                col = hexrgb("3ec8b0")
                 img[..., :3] = img[..., :3] * (1 - vm[..., None]) + (col * wave)[..., :] * vm[..., None]
                 frames.append(img)
-                gframes.append(glow_layer(vm * wave, "4fffd0", 0.9))
+                gframes.append(glow_layer(vm * wave, "56d8c0", 0.7))
             out[f"{wood}_log"] = frames
             out[f"{wood}_log_glow"] = gframes
         elif bstyle == "embers":
@@ -563,13 +564,17 @@ def make_woods(out):
         elif wood == "glowwood":
             img, a = leaves(leaf_c, lstyle, rng(wood + "l"))
             frames, gframes = [], []
+            # deep teal leaves holding luminous specks: a few always lit,
+            # others slowly twinkling; only a faint sheen on the rest
             sp = np.random.default_rng(3).random((N, N))
+            steady = (sp > 0.93) * a
             for f in range(FRAMES):
                 phase = (sp * 5.0 + f / FRAMES) % 1.0
-                tw = np.clip(1.0 - np.abs(phase - 0.5) * 4.0, 0, 1) * (sp > 0.8) * a
-                fr = img * (1 - tw[..., None]) + hexrgb("e0fff4") * tw[..., None]
+                tw = np.clip(1.0 - np.abs(phase - 0.5) * 3.0, 0, 1) * (sp > 0.82) * a
+                lit = np.maximum(tw, 0.7 * steady)
+                fr = img * (1 - lit[..., None]) + hexrgb("a8f0e0") * lit[..., None]
                 frames.append(rgba(fr, a))
-                gframes.append(glow_layer(np.maximum(tw, 0.25 * a), "7affd8", 1.0))
+                gframes.append(glow_layer(np.maximum(lit, 0.06 * a), "8ae8d8", 0.85))
             out[f"{wood}_leaves"] = frames
             out[f"{wood}_leaves_glow"] = gframes
         else:
@@ -583,8 +588,8 @@ def make_woods(out):
                                     for fr in sframes]
         if skind == "blooming":
             fr = sframes[0]
-            out[sname + "_glow"] = glow_layer(((fr[..., 0] > 0.75) & (fr[..., 1] > 0.9)).astype(float) * 0.9
-                                              + 0.2 * fr[..., 3], "c8fff0", 1.0)
+            out[sname + "_glow"] = glow_layer((fr[..., :3].mean(axis=-1) > 0.7).astype(float) * 0.8
+                                              + 0.06 * fr[..., 3], "b8f0e8", 0.9)
 
 # ---------------------------------------------------------------------------
 # mushrooms

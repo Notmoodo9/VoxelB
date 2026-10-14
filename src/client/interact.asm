@@ -362,7 +362,15 @@ PROC interact_update, 0, rbx
     jmp .done
 .blocks:
     cmp dword [rel g_target_valid], 0
-    je .done
+    jne .has_block
+    ; nothing in reach: a click still swings the arm (like Minecraft)
+    mov ecx, ACT_BREAK_BLOCK
+    call input_pressed
+    test eax, eax
+    jz .done
+    call held_swing
+    jmp .done
+.has_block:
     cmp dword [rel g_world_mode], MODE_CREATIVE
     je .creative_break
     ; Survival: hold to mine (the simulation counts the time; dig.asm)

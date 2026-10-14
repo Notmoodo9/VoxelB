@@ -23,7 +23,7 @@
 global camera_init, camera_update
 global g_cam_pos, g_cam_yaw, g_cam_pitch, g_cam_viewproj
 
-extern sincosf, g_fov
+extern sincosf, g_fov, g_fov_scale
 
 section .rdata
 align 16
@@ -138,6 +138,12 @@ PROC camera_update, 64
     ; f = cot(fov/2), fa = f / aspect
     ; col j<3 = (fa*R_j, f*U_j, 0, F_j)        col3 = (0, 0, near, 0)
     cvtsi2ss xmm0, dword [rel g_fov]    ; vertical FOV in degrees (game.cfg)
+    movss xmm1, [rel g_fov_scale]       ; (sprinting widens it; 0: not set yet)
+    xorps xmm2, xmm2
+    comiss xmm1, xmm2
+    jbe .fov_plain
+    mulss xmm0, xmm1
+.fov_plain:
     mulss xmm0, [rel c_half_deg]
     call sincosf
     divss xmm1, xmm0                    ; xmm1 = f

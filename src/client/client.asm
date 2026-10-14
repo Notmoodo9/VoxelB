@@ -16,7 +16,10 @@
 ;   client_view()                       after sim_update: g_cam_pos, time
 ;   g_cl_player                         the latest PLAYER_PKT (overlay)
 ;   g_dig_pos, g_dig_progress           the block being mined and how far
-;                                       (f32; < 0: none), for the cracks
+;                                       (f32; < 0: none), for the cracks —
+;                                       carried on between ticks at the
+;                                       last tick's rate, so the cracks
+;                                       reach the end as the block breaks
 ;   g_cinv (37 x {u16 item, u16 count, u16 durability, u16 spare}: the
 ;   hotbar 0-8, the inventory 9-35, the carried stack 36), g_csel (the
 ;   hotbar slot in hand): the client's copy of the simulation's inventory
@@ -32,10 +35,10 @@
 
 global client_init, client_input, client_view, g_cl_player, g_cinv, g_csel
 global client_select, client_input_idle, g_dig_pos, g_dig_progress
-global g_cwin, g_cwin_event, g_cinv_ver, g_cfurnace, g_off_block
+global g_cwin, g_cwin_event, g_cinv_ver, g_cfurnace, g_off_block, g_fov_scale
 
 extern g_cam_yaw, g_cam_pitch, g_cam_pos, g_sim_alpha
-extern daycycle_set, timer_elapsed_us
+extern daycycle_set, timer_elapsed_us, g_frame_us
 extern interact_init, interact_update, stream_block_changed
 extern g_held_block, g_item_block, g_dig_want, g_target_valid, g_target
 extern drops_view_packet, drops_view_reset, ents_view_packet, ents_view_reset
@@ -56,6 +59,9 @@ g_cl_flytest:   resd 1
 g_cl_seq:       resd 1
 alignb 8
 g_cl_last_jump: resq 1                  ; time of the last move_up press (us)
+g_cl_last_fwd:  resq 1                  ; time of the last move_forward press (us)
+g_cl_sprint:    resd 1                  ; sprinting: stays on while forward is held
+g_fov_scale:    resd 1                  ; f32 the camera's FOV x this (sprinting widens it)
 g_cinv:         resq INV_ALL
 g_cwin:         resb WIN_PKT_size
 g_cwin_event:   resd 1
@@ -65,12 +71,16 @@ g_off_block:    resd 1                  ; the off hand's block (0: none)
 g_csel:         resd 1
 g_dig_pos:      resd 3
 g_dig_progress: resd 1
+g_dig_last:     resd 1                  ; the tick's reported progress
+g_dig_before:   resd 1                  ; the tick before's (same block)
 g_cl_sel_pkt:   resb INV_PKT_size
 
 section .rdata
 align 16
 c_half_f:       dd -0.5
 c_one_f:        dd 1.0
+c_sprint_fov:   dd 1.12                 ; FOV x this while sprinting
+c_fov_rate:     dd 0.0000067            ; per microsecond (about 0.15 s)
 
 section .text
 
@@ -88,6 +98,8 @@ PROC client_init, 0
     mov [rel g_cl_last_jump], rax
     mov [rel g_csel], eax
     mov dword [rel g_dig_progress], 0xBF800000   ; -1: not mining
+    mov dword [rel g_dig_last], 0xBF800000
+    mov dword [rel g_dig_before], 0xBF800000
     call drops_view_reset
     call ents_view_reset                ; animals (milestone 19)
     xor eax, eax
@@ -237,8 +249,41 @@ PROC client_input, 0, rbx
     mov ebx, eax
     INVOKE button, ACT_MOVE_DOWN, INB_SNEAK
     or ebx, eax
-    INVOKE button, ACT_SPRINT, INB_SPRINT
-    or ebx, eax
+    ; sprint like Minecraft: hold the sprint key or double-tap forward; it
+    ; stays on while forward is held (until sneaking)
+    mov ecx, ACT_MOVE_FORWARD
+    call input_pressed
+    test eax, eax
+    jz .no_tap
+    call timer_elapsed_us
+    mov rcx, rax
+    sub rcx, [rel g_cl_last_fwd]
+    mov [rel g_cl_last_fwd], rax
+    cmp rcx, DOUBLE_TAP_US
+    jae .no_tap
+    mov qword [rel g_cl_last_fwd], 0    ; (a third tap starts a new pair)
+    mov dword [rel g_cl_sprint], 1
+.no_tap:
+    mov ecx, ACT_SPRINT
+    call input_down
+    test eax, eax
+    jz .sprint_key_up
+    mov dword [rel g_cl_sprint], 1
+.sprint_key_up:
+    mov ecx, ACT_MOVE_FORWARD
+    call input_down
+    test eax, eax
+    jnz .fwd_held
+    mov dword [rel g_cl_sprint], 0
+.fwd_held:
+    test ebx, INB_SNEAK
+    jz .not_sneaking
+    mov dword [rel g_cl_sprint], 0
+.not_sneaking:
+    cmp dword [rel g_cl_sprint], 0
+    je .no_sprint
+    or ebx, INB_SPRINT
+.no_sprint:
     INVOKE button, ACT_TIME_FORWARD, INB_TIME_FORWARD
     or ebx, eax
     ; Survival mining: the block being dug
@@ -367,8 +412,16 @@ PROC client_view, 0, rsi, rdi
     mov [rel g_dig_pos + 4], eax
     mov eax, [rel g_cl_pkt + PKT.data + DIG_PKT.pos + 8]
     mov [rel g_dig_pos + 8], eax
-    mov eax, [rel g_cl_pkt + PKT.data + DIG_PKT.progress]
-    mov [rel g_dig_progress], eax
+    ; the progress of the last two ticks (the same dig): the shown one is
+    ; carried on between ticks (client_view)
+    movss xmm0, [rel g_cl_pkt + PKT.data + DIG_PKT.progress]
+    movss xmm1, [rel g_dig_last]
+    comiss xmm0, xmm1
+    jae .dig_on
+    movss xmm1, xmm0                    ; (a new dig, or stopped)
+.dig_on:
+    movss [rel g_dig_before], xmm1
+    movss [rel g_dig_last], xmm0
     jmp .packet
 .not_dig:
     cmp eax, PKT_S_WINDOW
@@ -442,7 +495,38 @@ PROC client_view, 0, rsi, rdi
     cvtss2sd xmm0, xmm0
     addsd xmm0, [rel g_cam_pos + 8]
     movsd [rel g_cam_pos + 8], xmm0
+    ; sprinting: the view widens a little (eased over ~0.15 s)
+    movss xmm1, [rel c_one_f]
+    test dword [rel g_cl_player + PLAYER_PKT.flags], PF_SPRINTING
+    jz .fov_target
+    movss xmm1, [rel c_sprint_fov]
+.fov_target:
+    cvtsi2ss xmm2, qword [rel g_frame_us]
+    mulss xmm2, [rel c_fov_rate]
+    minss xmm2, [rel c_one_f]
+    movss xmm0, [rel g_fov_scale]
+    xorps xmm3, xmm3
+    comiss xmm0, xmm3
+    ja .fov_have
+    movss xmm0, [rel c_one_f]
+.fov_have:
+    subss xmm1, xmm0
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss [rel g_fov_scale], xmm0
 .no_player:
+    ; the cracks: last tick's progress + this frame's share of a tick's gain
+    movss xmm0, [rel g_dig_last]
+    xorps xmm2, xmm2
+    comiss xmm0, xmm2
+    jbe .dig_shown                      ; (not mining: as reported)
+    movss xmm1, xmm0
+    subss xmm1, [rel g_dig_before]
+    mulss xmm1, [rel g_sim_alpha]
+    addss xmm0, xmm1
+    minss xmm0, [rel c_one_f]
+.dig_shown:
+    movss [rel g_dig_progress], xmm0
 
     cmp dword [rel g_cl_time_have], 0
     je .done

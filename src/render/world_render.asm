@@ -16,9 +16,12 @@
 ; culling + a coarse frustum test) writes one 32-byte draw record per
 ; section and layer into a persistent, coherently mapped ring (3 frame
 ; slots, fenced). shaders/cull.comp tests every record (exact AABB frustum
-; test, then Hi-Z occlusion against the previous frame's depth pyramid) and
-; writes its indirect command; each pass is one glMultiDrawArraysIndirect.
-; shaders/hiz.comp then builds the pyramid from this frame's depth.
+; test) and writes its indirect command; each pass is one
+; glMultiDrawArraysIndirect. Occlusion culling runs in two phases in the
+; same frame (D101): the opaque and cutout sections within 48 blocks are
+; drawn first, shaders/hiz.comp builds the depth pyramid from that, and
+; cull.comp tests every other record against it — no reprojection of an
+; older frame, so nothing appears a frame late when the camera moves.
 ; Distant terrain (milestone 12, D80): the ready LOD tiles (lod.asm) add
 ; records too: their land after the walk's opaque records, their water
 ; before the sorted translucent ones. A record's quad count carries the
@@ -95,6 +98,8 @@ endstruc
 %define W_D         28
 %define W_NSY       32
 %define W_CSY       36                  ; camera section y
+%define W_PH        40                  ; culling phase (D101)
+%define W_BUF       44                  ; the indirect commands being drawn
 
 ; uniform locations (shaders/chunk.vert / chunk.frag)
 %define U_VIEWPROJ          0
@@ -153,6 +158,9 @@ endstruc
 %define C_HIZ_LEVELS        9
 %define C_HIZ_SIZE          10
 %define C_STATS             11
+%define C_PHASE             13          ; 0 one pass, 1 near, 2 the rest (D101)
+%define C_SPLIT             14          ; first translucent record
+%define C_NEAR              15          ; phase 1 distance (blocks)
 ; hiz.comp uniforms
 %define H_FROM_DEPTH        0
 %define H_SRC_SIZE          1
@@ -183,6 +191,8 @@ c_fog_lift:     dd 8.0                  ; height fog base above the sea level
 align 16
 c_split:        dd 0.12, 0.38, 1.0, 1.0 ; cascade far distances / shadow distance
 c_mod4096:      dq 4096.0
+c_near_cull:    dd 48.0                 ; phase 1: sections within this (blocks)
+align 8
 align 16
 c_abs_mask:     times 4 dd 0x7FFFFFFF
 align 8
@@ -245,6 +255,7 @@ g_cull_prog:        resd 1              ; shader handles
 g_hiz_prog:         resd 1
 g_ring:             resd 1              ; draw records (persistent, coherent)
 g_cmd_buf:          resd 1              ; indirect commands (written by cull.comp)
+g_cmd_buf2:         resd 1              ; phase 2's (D101: never rewrites what phase 1's draws read)
 g_stats_buf:        resd 1
 g_hiz_tex:          resd 1
 g_hiz_w:            resd 1              ; level 0 size (half the scene)
@@ -571,6 +582,9 @@ PROC gpu_draw_init, 16, rdi
     lea rdx, [rel g_cmd_buf]
     GL glCreateBuffers, 1, rdx
     GL glNamedBufferStorage, [rel g_cmd_buf], MAX_DRAWS * CMD_SIZE, 0, GL_DYNAMIC_STORAGE_BIT
+    lea rdx, [rel g_cmd_buf2]
+    GL glCreateBuffers, 1, rdx
+    GL glNamedBufferStorage, [rel g_cmd_buf2], MAX_DRAWS * CMD_SIZE, 0, GL_DYNAMIC_STORAGE_BIT
     ; stats (read back three frames later)
     lea rdx, [rel g_stats_buf]
     GL glCreateBuffers, 1, rdx
@@ -629,6 +643,8 @@ PROC gpu_draw_shutdown, 0, rbx
     lea rdx, [rel g_ring]
     GL glDeleteBuffers, 1, rdx
     lea rdx, [rel g_cmd_buf]
+    GL glDeleteBuffers, 1, rdx
+    lea rdx, [rel g_cmd_buf2]
     GL glDeleteBuffers, 1, rdx
     lea rdx, [rel g_stats_buf]
     GL glDeleteBuffers, 1, rdx
@@ -723,9 +739,13 @@ add_record:
 
 ; -----------------------------------------------------------------------------
 ; gpu_cull — run cull.comp over this frame's records (writes the commands).
+;   in:  ecx = phase (0 one pass; 1 the near opaque and cutout records; 2
+;        the rest, against this frame's pyramid), edx = command buffer
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC gpu_cull, 32, rbx, rsi, rdi
+    mov [LOCAL(16)], ecx
+    mov [LOCAL(20)], edx
     mov rsi, [rel g_rec_count]
     test rsi, rsi
     jz .done
@@ -778,6 +798,12 @@ PROC gpu_cull, 32, rbx, rsi, rdi
     GL glUseProgram, rbx
     GL glProgramUniform1ui, rbx, C_COUNT, rsi
     GL glProgramUniform1i, rbx, C_CASCADE, 0
+    GL glProgramUniform1i, rbx, C_PHASE, [LOCAL(16)]
+    mov rax, [rel g_n_opaque]
+    add rax, [rel g_n_cutout]
+    GL glProgramUniform1ui, rbx, C_SPLIT, rax
+    movss xmm2, [rel c_near_cull]
+    GL glProgramUniform1f, rbx, C_NEAR
     mov eax, [rel g_slot]
     imul eax, eax, MAX_DRAWS
     GL glProgramUniform1ui, rbx, C_BASE, rax
@@ -802,9 +828,9 @@ PROC gpu_cull, 32, rbx, rsi, rdi
     lea r9, [LOCAL(0)]
     GL glProgramUniform3fv, rbx, C_CAM_DELTA, 1, r9
     xor eax, eax
+    cmp dword [LOCAL(16)], 2
+    jne .levels                         ; (only phase 2 has this frame's pyramid)
     cmp dword [rel g_hiz_valid], 0
-    je .levels
-    cmp dword [rel g_occlusion_culling], 0
     je .levels
     mov eax, [rel g_hiz_levels]
 .levels:
@@ -814,7 +840,7 @@ PROC gpu_cull, 32, rbx, rsi, rdi
     imul eax, eax, STATS_PER_SLOT
     GL glProgramUniform1ui, rbx, C_STATS, rax
     GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 3, [rel g_ring]
-    GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 4, [rel g_cmd_buf]
+    GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 4, [LOCAL(20)]
     GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 5, [rel g_stats_buf]
     cmp dword [rel g_hiz_tex], 0
     je .no_tex
@@ -1394,11 +1420,26 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     call shadow_pass
     lea r9, [rel g_cam_mod]
     GL glProgramUniform3fv, rbx, U_CAM_MOD, 1, r9
+    ; occlusion culling: two phases in this frame (D101) — the near opaque
+    ; and cutout sections first, then a depth pyramid of what they drew,
+    ; then everything else tested against it; else one frustum-only pass
+    mov dword [LOCAL(W_PH)], 0
+    cmp dword [rel g_gpu_culling], 0
+    je .one_phase
+    cmp dword [rel g_occlusion_culling], 0
+    je .one_phase
+    mov dword [LOCAL(W_PH)], 1
+.one_phase:
+    mov eax, [rel g_cmd_buf]
+    mov [LOCAL(W_BUF)], eax
+    mov ecx, [LOCAL(W_PH)]
+    mov edx, eax
     call gpu_cull
+.solid:
     GL glUseProgram, rbx
     GL glBindVertexArray, [rel g_world_vao]
     GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 3, [rel g_ring]
-    GL glBindBuffer, GL_DRAW_INDIRECT_BUFFER, [rel g_cmd_buf]
+    GL glBindBuffer, GL_DRAW_INDIRECT_BUFFER, [LOCAL(W_BUF)]
     ; pass 1: opaque
     mov r9, [rel g_n_opaque]
     test r9, r9
@@ -1418,12 +1459,24 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     GL glEnable, GL_CULL_FACE
     inc qword [rel g_world_draws]
 .p2_done:
+    ; phase 1 drawn: the pyramid from this frame's depth, then phase 2
+    cmp dword [LOCAL(W_PH)], 1
+    jne .phases_done
+    call hiz_build
+    mov dword [LOCAL(W_PH)], 2
+    mov eax, [rel g_cmd_buf2]
+    mov [LOCAL(W_BUF)], eax
+    mov ecx, 2
+    mov edx, eax
+    call gpu_cull
+    jmp .solid
+.phases_done:
     ; the animals (milestone 19), opaque: before the water copies the scene
     call mobs_draw
     GL glUseProgram, rbx
     GL glBindVertexArray, [rel g_world_vao]
     GL glBindBufferBase, GL_SHADER_STORAGE_BUFFER, 3, [rel g_ring]
-    GL glBindBuffer, GL_DRAW_INDIRECT_BUFFER, [rel g_cmd_buf]
+    GL glBindBuffer, GL_DRAW_INDIRECT_BUFFER, [LOCAL(W_BUF)]
     ; pass 3: translucent (blended, no depth writes)
     mov rax, [rel g_rec_count]
     sub rax, [rel g_n_opaque]
@@ -1455,13 +1508,6 @@ PROC world_render_draw, 64, rbx, rsi, rdi, r12, r13, r14, r15
     call outline_draw
     call crack_draw
     call drops_view_draw                ; dropped items (milestone 18)
-    ; the depth pyramid for the next frame's occlusion test
-    cmp dword [rel g_gpu_culling], 0
-    je .no_hiz
-    cmp dword [rel g_occlusion_culling], 0
-    je .no_hiz
-    call hiz_build
-.no_hiz:
     ; the GPU is done with this slot when this fence signals
     GL glFenceSync, GL_SYNC_GPU_COMMANDS_COMPLETE, 0
     mov ecx, [rel g_slot]

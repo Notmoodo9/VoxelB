@@ -51,14 +51,15 @@ templates = seasonal_leaves
 members   = oak_autumn_leaves, birch_autumn_leaves, spruce_snowy_leaves, jungle_flowering_leaves, acacia_flowering_leaves, dark_oak_autumn_leaves, cherry_fruiting_leaves, redwood_snowy_leaves, palm_fruiting_leaves, mangrove_flowering_leaves, willow_autumn_leaves, maple_autumn_leaves, glowwood_blooming_leaves, crystalwood_prismatic_leaves, frostwood_frozen_leaves, emberwood_smouldering_leaves
 
 # --- fantasy woods: light (r, g, b 0..15; used from milestone 13) -----------
+# glowwood: bright enough that the weeping crowns light the forest floor
 [block glowwood_log]
-light = 2, 7, 6
+light = 2, 9, 8
 [block glowwood_bark]
-light = 2, 7, 6
+light = 2, 9, 8
 [block glowwood_leaves]
-light = 3, 8, 7
+light = 3, 11, 10
 [block glowwood_blooming_leaves]
-light = 4, 8, 7
+light = 5, 12, 11
 
 [block crystalwood_leaves]
 render = translucent

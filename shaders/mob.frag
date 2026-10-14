@@ -53,12 +53,8 @@ vec3 sky_color(vec3 d, vec3 sun) {
     return c;
 }
 
-float shadow_at(vec3 n, float dist) {
-    if (u_shadows <= 0) return 1.0;
-    int c = 0;
-    while (c < u_shadows - 1 && dist > sd.splits[c]) ++c;
-    float last = sd.splits[u_shadows - 1];
-    if (dist > last) return 1.0;
+// the light reaching camera-relative point v_rel + n offset in cascade c
+float cascade_lit(int c, vec3 n) {
     float ts = sd.texel[c];
     // into the camera-relative space the cascade was drawn in (it may be a
     // frame old), wrapping the mod-4096 difference
@@ -69,10 +65,29 @@ float shadow_at(vec3 n, float dist) {
     vec2 uv = s.xy * 0.5 + 0.5;
     float ref = s.z + ts * 0.25 / 640.0;          // small constant bias (depth units)
     vec2 o = vec2(0.5) / vec2(textureSize(u_shadow_map, 0).xy);
-    float lit = 0.25 * (texture(u_shadow_map, vec4(uv + vec2(-o.x, -o.y), float(c), ref))
-                      + texture(u_shadow_map, vec4(uv + vec2( o.x, -o.y), float(c), ref))
-                      + texture(u_shadow_map, vec4(uv + vec2(-o.x,  o.y), float(c), ref))
-                      + texture(u_shadow_map, vec4(uv + vec2( o.x,  o.y), float(c), ref)));
+    return 0.25 * (texture(u_shadow_map, vec4(uv + vec2(-o.x, -o.y), float(c), ref))
+                 + texture(u_shadow_map, vec4(uv + vec2( o.x, -o.y), float(c), ref))
+                 + texture(u_shadow_map, vec4(uv + vec2(-o.x,  o.y), float(c), ref))
+                 + texture(u_shadow_map, vec4(uv + vec2( o.x,  o.y), float(c), ref)));
+}
+
+// direct light (sun or moon) reaching this point, 0..1: the cascade by
+// distance (blended into the next one over the last fifth of its range, so
+// no sharp seam slides along the ground as the camera moves), a normal
+// offset against acne, 4 hardware-filtered taps (PCF)
+float shadow_at(vec3 n, float dist) {
+    if (u_shadows <= 0) return 1.0;
+    int c = 0;
+    while (c < u_shadows - 1 && dist > sd.splits[c]) ++c;
+    float last = sd.splits[u_shadows - 1];
+    if (dist > last) return 1.0;
+    float lit = cascade_lit(c, n);
+    if (c < u_shadows - 1) {
+        float lo = c > 0 ? sd.splits[c - 1] : 0.0;
+        float edge = sd.splits[c];
+        float k = smoothstep(edge - 0.2 * (edge - lo), edge, dist);
+        if (k > 0.0) lit = mix(lit, cascade_lit(c + 1, n), k);
+    }
     // fade out over the last tenth of the shadow distance
     return mix(lit, 1.0, smoothstep(last * 0.9, last, dist));
 }
