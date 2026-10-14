@@ -2,7 +2,7 @@
 
 ## Current state
 **Fixes after v0.19.3** (owner's list): walking artifacts, sprint, cracks,
-glowing forest, the hand and held items (v0.19.4, Windows CI: see below)
+glowing forest, the hand and held items (v0.19.4, Windows CI green: run #112)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
