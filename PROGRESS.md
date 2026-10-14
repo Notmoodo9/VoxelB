@@ -2,7 +2,7 @@
 
 ## Current state
 **Milestone 19, part 3b** — deer, rabbits, goats, buckets and milk, leads,
-name tags (v0.19.5, Windows CI: see below)
+name tags (v0.19.5, Windows CI green: run #114)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
