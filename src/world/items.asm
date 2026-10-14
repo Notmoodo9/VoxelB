@@ -30,6 +30,10 @@
 ;     does not wear), g_item_repair / g_item_binding (char*: a tool's repair
 ;     material and binding patterns, 0 = cannot be repaired)
 ;   item_tool_index(name) / item_tier_index(name) -> eax TOOL_* / TIER_*, -1
+;   g_item_leaves (u16: the item left once it is used up, e.g. a bucket of
+;     water leaves the bucket; 0 = nothing; milestone 19 part 3b)
+;   item_fill(ecx = item, edx = block) -> eax the item a container becomes
+;     when it takes that block (a bucket and water: a bucket of water), 0
 ;   g_block_item (u16 per block id: the item of a block, any state)
 ;   tabs: g_tab_count, g_tab_titles, g_tab_icon (u16 item)
 ; =============================================================================
@@ -47,7 +51,8 @@ global g_item_count, g_item_names, g_item_titles, g_item_block, g_item_stack
 global g_item_tab, g_item_tex, g_item_flags, g_block_item
 global g_tab_count, g_tab_titles, g_tab_icon
 global g_item_tool, g_item_tier, g_item_speed, g_item_dur
-global g_item_repair, g_item_binding
+global g_item_repair, g_item_binding, g_item_leaves, item_fill
+global g_fill_count, g_fill_item
 global item_tool_index, item_tier_index, items_match_list
 
 extern str_ieq, str_len, str_copy, str_parse_u64, str_dup, str_parse_float
@@ -83,6 +88,9 @@ k_speed:        db "speed", 0
 k_durability:   db "durability", 0
 k_repair:       db "repair", 0
 k_binding:      db "binding", 0
+k_leaves:       db "leaves", 0
+k_fill:         db "fill", 0
+str_bad_fill:   db "items: a fill line names no block or item: ", 0
 tool_0:         db "none", 0
 tool_1:         db "pickaxe", 0
 tool_2:         db "axe", 0
@@ -129,6 +137,13 @@ g_item_dur:     resw MAX_ITEMS
 alignb 8
 g_item_repair:  resq MAX_ITEMS          ; tools: repair material patterns (0 none)
 g_item_binding: resq MAX_ITEMS          ; tools: the binding a repair needs
+g_leaves_text:  resq MAX_ITEMS          ; `leaves` until all items are read
+g_fill_text:    resq MAX_FILLS          ; `fill` lines until all items are read
+g_item_leaves:  resw MAX_ITEMS
+g_fill_item:    resw MAX_FILLS          ; the container
+g_fill_block:   resw MAX_FILLS          ; the block it takes
+g_fill_result:  resw MAX_FILLS          ; what it becomes
+g_fill_count:   resd 1
 alignb 8
 g_block_item:   resw 65536
 g_tab_titles:   resq MAX_TABS
@@ -689,9 +704,33 @@ PROC items_pair, 0, rbx, rsi, rdi
     lea rdx, [rel k_binding]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
-    jz .i_hid
+    jz .i_leaves
     lea rcx, [rel g_item_binding]
     mov [rcx + rdi * 8], rsi
+    RETURN
+.i_leaves:
+    ; leaves = <item> (resolved when every item is known)
+    lea rdx, [rel k_leaves]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_fill
+    lea rcx, [rel g_leaves_text]
+    mov [rcx + rdi * 8], rsi
+    RETURN
+.i_fill:
+    ; fill = <block>, <item> (resolved later)
+    lea rdx, [rel k_fill]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_hid
+    mov eax, [rel g_fill_count]
+    cmp eax, MAX_FILLS
+    jae .bad
+    inc dword [rel g_fill_count]
+    lea rcx, [rel g_fill_text]
+    mov [rcx + rax * 8], rsi
+    lea rcx, [rel g_fill_item]
+    mov [rcx + rax * 2], di
     RETURN
 .i_hid:
     lea rdx, [rel k_hidden]
@@ -833,6 +872,100 @@ ENDPROC
 ;   out: eax = 1 (0 if there are no items at all)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
+; -----------------------------------------------------------------------------
+; resolve_containers — the `leaves` and `fill` settings name items (and
+; blocks) that may come later in the files: look them up now.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC resolve_containers, 16, rbx, rsi
+    xor ebx, ebx
+.leaves:
+    cmp ebx, [rel g_item_count]
+    jae .fills
+    lea rax, [rel g_leaves_text]
+    mov rcx, [rax + rbx * 8]
+    test rcx, rcx
+    jz .leaves_next
+    mov [LOCAL(0)], rcx
+    call item_find
+    cmp eax, 0
+    jg .leaves_found
+    lea rcx, [rel str_no_item]
+    mov rdx, [LOCAL(0)]
+    call warn
+    jmp .leaves_next
+.leaves_found:
+    lea rcx, [rel g_item_leaves]
+    mov [rcx + rbx * 2], ax
+.leaves_next:
+    inc ebx
+    jmp .leaves
+.fills:
+    xor ebx, ebx
+.fill:
+    cmp ebx, [rel g_fill_count]
+    jae .done
+    lea rax, [rel g_fill_text]
+    mov rcx, [rax + rbx * 8]
+    mov [LOCAL(0)], rcx
+    call cfg_next_token                 ; the block
+    mov rsi, rdx
+    mov rcx, rax
+    call block_find
+    cmp eax, 0
+    jle .bad
+    lea rcx, [rel g_fill_block]
+    mov [rcx + rbx * 2], ax
+    test rsi, rsi
+    jz .bad
+    mov rcx, rsi
+    call cfg_next_token                 ; the item it becomes
+    mov rcx, rax
+    call item_find
+    cmp eax, 0
+    jle .bad
+    lea rcx, [rel g_fill_result]
+    mov [rcx + rbx * 2], ax
+    inc ebx
+    jmp .fill
+.bad:
+    lea rcx, [rel str_bad_fill]
+    mov rdx, [LOCAL(0)]
+    call warn
+    lea rcx, [rel g_fill_item]
+    mov word [rcx + rbx * 2], 0         ; (this line never matches)
+    inc ebx
+    jmp .fill
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; item_fill — what container item ecx becomes when it takes block edx.
+;   out: eax = item, 0 if it does not take that block
+;   clobbers: rax, rcx, r8, r9
+; -----------------------------------------------------------------------------
+item_fill:
+    xor eax, eax
+    xor r8d, r8d
+.f:
+    cmp r8d, [rel g_fill_count]
+    jae .none
+    lea r9, [rel g_fill_item]
+    cmp cx, [r9 + r8 * 2]
+    jne .next
+    lea r9, [rel g_fill_block]
+    cmp dx, [r9 + r8 * 2]
+    jne .next
+    lea r9, [rel g_fill_result]
+    movzx eax, word [r9 + r8 * 2]
+    ret
+.next:
+    inc r8d
+    jmp .f
+.none:
+    ret
+
 PROC items_load, 0, rbx, rsi, rdi, r12
     mov dword [rel g_item_count], 1     ; (0 = no item)
     mov qword [rel g_hide_patterns], 0
@@ -886,6 +1019,7 @@ PROC items_load, 0, rbx, rsi, rdi, r12
     inc ebx
     jmp .file
 .files_done:
+    call resolve_containers
     ; ---- tabs: icons; block items by pattern; the rest to the last tab ----
     xor ebx, ebx
 .tab_icon:

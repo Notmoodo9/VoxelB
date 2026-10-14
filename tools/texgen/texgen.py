@@ -2575,6 +2575,31 @@ def make_animals(out):
         return img
     out["drying_rack_salted"] = hung("c08a7a", "rack_salted", ((5, 6), (8, 9), (7, 5)))
     out["drying_rack_leather"] = hung("9a5a2a", "rack_leather", ((6, 8), (9, 6)))
+    # part 3b: a salted deer hide (paler, speckled with salt), a small rabbit
+    # pelt salted and dried
+    deer = hung("c4a07c", "rack_deer", ((5, 6), (8, 9), (7, 5), (9, 7)))
+    for (y, x) in ((4, 5), (6, 10), (9, 4), (10, 9), (5, 8)):
+        deer[y, x, :3] = hexrgb("f2efe6")
+    out["drying_rack_deer"] = deer
+    def hung_small(base, name, salted):
+        r2 = rng(name)
+        img = frame()
+        hp = ramp(base, 5, spread=0.2)
+        v = noise(r2, 4, 2)
+        for y in range(4, 11):
+            for x in range(5, 11):
+                if (y in (4, 10)) and (x in (5, 10)):
+                    continue
+                k = stretch(v)[y, x] * 0.999
+                img[y, x, :3] = shade(np.array([[k]]), hp)[0, 0]
+                img[y, x, 3] = 1.0
+                if salted and r2.random() < 0.2:
+                    img[y, x, :3] = hexrgb("f2efe6")
+        for (y, x) in ((3, 6), (3, 9)):                            # ties to the bar
+            img[y, x, :3] = hexrgb("d8cfb0"); img[y, x, 3] = 1.0
+        return img
+    out["drying_rack_rabbit"] = hung_small("c8aa88", "rack_rabbit", True)
+    out["drying_rack_rabbit_dried"] = hung_small("9a7448", "rack_rabbit_dried", False)
 
     # natural sheep wool shades (milestone 19 part 3)
     out["cream_wool"] = wool("efe3c2", rng("cream_wool"))

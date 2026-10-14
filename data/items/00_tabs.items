@@ -47,4 +47,4 @@ icon = grass_block
 
 # Placed by the game (a sign against a wall), not picked from the inventory.
 [hidden]
-blocks = *_wall_sign, furnace_lit, blast_furnace_lit, drying_rack_salted, drying_rack_leather
+blocks = *_wall_sign, furnace_lit, blast_furnace_lit, drying_rack_salted, drying_rack_leather, drying_rack_deer, drying_rack_rabbit, drying_rack_rabbit_dried

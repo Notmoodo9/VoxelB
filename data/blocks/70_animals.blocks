@@ -15,3 +15,17 @@ render   = cutout
 [block drying_rack_leather]
 textures = side: drying_rack_leather, end: drying_rack_top
 render   = cutout
+
+# part 3b: a salted deer hide (dries to leather) and a small salted rabbit
+# pelt (dries to a dried rabbit hide)
+[block drying_rack_deer]
+textures = side: drying_rack_deer, end: drying_rack_top
+render   = cutout
+
+[block drying_rack_rabbit]
+textures = side: drying_rack_rabbit, end: drying_rack_top
+render   = cutout
+
+[block drying_rack_rabbit_dried]
+textures = side: drying_rack_rabbit_dried, end: drying_rack_top
+render   = cutout

@@ -10,10 +10,14 @@
 ; land nearby is checked for herds) and are saved and dropped when the
 ; player is far away; every region in memory is saved with the world.
 ; File: <world>\overworld\entities\e.<rx>.<rz>.vxe
-;   "VXEN", u32 version (1), u32 animals, u32 0, 128 bytes of column bits,
-;   then 64 bytes per animal: f64 x, y, z, f32 yaw, u16 health, u16 flags
-;   (1 baby, 2 shorn: part 3), u32 age (ticks), 24 bytes "mob:variant" (zero-padded), u32
-;   herd id (0: none; milestone 19 part 2, in the field that was 0).
+;   "VXEN", u32 version (2), u32 animals, u32 0, 128 bytes of column bits,
+;   then 128 bytes per animal: f64 x, y, z, f32 yaw, u16 health, u16 flags
+;   (1 baby, 2 shorn: part 3, 4 male: part 3b), u32 age (ticks), 24 bytes
+;   "mob:variant" (zero-padded), u32 herd id (0: none; milestone 19 part 2,
+;   in the field that was 0); version 2 (part 3b) adds u32 lead (LEASH_*),
+;   i32 x 3 the fence it is tied to, 24 bytes its name tag (zero-padded),
+;   20 bytes 0. Version 1 files (64-byte records, the first 64 bytes of
+;   these) still load.
 ; A rule's `mix` lines give some of a herd other looks of the same animal
 ; (part 3: a few black sheep in a white flock).
 ; Unknown variants (a removed data file) are dropped with a warning.
@@ -58,9 +62,10 @@ IMPORT CreateFileA, WriteFile, CloseHandle, CreateDirectoryA
 
 %define UNLOAD_DIST     768             ; blocks from the player to a region's edge
 %define TRICKLE_TICKS   600             ; 30 seconds
-%define FILE_VERSION    1
+%define FILE_VERSION    2               ; 2: 128-byte records (leads, names; part 3b)
 %define HEADER_BYTES    144             ; 16 + 128
-%define RECORD_BYTES    64
+%define RECORD_BYTES    128
+%define RECORD_V1       64              ; version 1 files still load
 %define KEY_BYTES       24
 
 section .rdata
@@ -331,6 +336,10 @@ PROC save_region, 32, rbx, rsi, rdi, r12, r13
     jz .flags2
     or eax, 2
 .flags2:
+    test dword [rbx + EntT.flags], EF_MALE
+    jz .flags3
+    or eax, 4
+.flags3:
     mov [rdi + 30], ax
     mov eax, [rbx + EntT.age]
     mov [rdi + 32], eax
@@ -345,6 +354,26 @@ PROC save_region, 32, rbx, rsi, rdi, r12, r13
     mov [rdi + 52], rcx
     mov eax, [rbx + EntT.herd]
     mov [rdi + 60], eax
+    mov eax, [rbx + EntT.leash]
+    mov [rdi + 64], eax
+    mov eax, [rbx + EntT.knot]
+    mov [rdi + 68], eax
+    mov eax, [rbx + EntT.knot + 4]
+    mov [rdi + 72], eax
+    mov eax, [rbx + EntT.knot + 8]
+    mov [rdi + 76], eax
+    xor ecx, ecx
+.name:
+    mov rax, [rbx + EntT.name + rcx]
+    mov [rdi + 80 + rcx], rax
+    add ecx, 8
+    cmp ecx, NAME_MAX
+    jb .name
+    xor eax, eax
+    mov [rdi + 104], rax
+    mov [rdi + 112], rax
+    mov [rdi + 120], eax
+    mov [rdi + 124], eax
     add rdi, RECORD_BYTES
     inc dword [LOCAL(SR_N)]
 .next:
@@ -390,6 +419,7 @@ ENDPROC
 %define LR_N        8
 %define LR_I        12
 %define LR_END      16
+%define LR_REC      20                  ; bytes per record (by the version)
 PROC load_region, 32, rsi, rdi, r12, r13
     cmp dword [rel g_save_enabled], 0
     je .done
@@ -414,11 +444,17 @@ PROC load_region, 32, rsi, rdi, r12, r13
     jb .bad
     cmp dword [r13], 'VXEN'
     jne .bad
+    mov dword [LOCAL(LR_REC)], RECORD_BYTES
     cmp dword [r13 + 4], FILE_VERSION
+    je .version
+    mov dword [LOCAL(LR_REC)], RECORD_V1
+    cmp dword [r13 + 4], 1
     jne .bad
+.version:
     mov eax, [r13 + 8]
     mov [LOCAL(LR_N)], eax
-    imul rax, rax, RECORD_BYTES
+    mov ecx, [LOCAL(LR_REC)]
+    imul rax, rcx
     add rax, HEADER_BYTES
     cmp rdx, rax
     jb .bad
@@ -480,11 +516,39 @@ PROC load_region, 32, rsi, rdi, r12, r13
     mov [rax + EntT.age], ecx
     mov ecx, [rsi + 60]
     mov [rax + EntT.herd], ecx
+    and dword [rax + EntT.flags], ~EF_MALE
+    test word [rsi + 30], 4
+    jz .female
+    or dword [rax + EntT.flags], EF_MALE
+.female:
     test word [rsi + 30], 2
-    jz .next
+    jz .full
     or dword [rax + EntT.flags], EF_SHEARED
+.full:
+    ; version 2: its lead and name
+    cmp dword [LOCAL(LR_REC)], RECORD_BYTES
+    jne .next
+    mov ecx, [rsi + 64]
+    cmp ecx, LEASH_KNOT
+    ja .next                            ; (not a lead kind we know)
+    mov [rax + EntT.leash], ecx
+    mov ecx, [rsi + 68]
+    mov [rax + EntT.knot], ecx
+    mov ecx, [rsi + 72]
+    mov [rax + EntT.knot + 4], ecx
+    mov ecx, [rsi + 76]
+    mov [rax + EntT.knot + 8], ecx
+    xor ecx, ecx
+.name:
+    mov rdx, [rsi + 80 + rcx]
+    mov [rax + EntT.name + rcx], rdx
+    add ecx, 8
+    cmp ecx, NAME_MAX
+    jb .name
+    mov byte [rax + EntT.name + NAME_MAX - 1], 0
 .next:
-    add rsi, RECORD_BYTES
+    mov ecx, [LOCAL(LR_REC)]
+    add rsi, rcx
     inc dword [LOCAL(LR_I)]
     jmp .rec
 .bad:
@@ -899,6 +963,8 @@ PROC populate, 80, rbx, rsi, rdi, r12
     call surface
     test eax, eax
     jz .animal
+    cmp edx, [rbx + SPAWN.altitude]
+    jl .animal                          ; (too low for this rule: goats keep to the heights)
     cvtsi2sd xmm0, esi
     addsd xmm0, [rel c_half]
     movsd [rel g_pos], xmm0

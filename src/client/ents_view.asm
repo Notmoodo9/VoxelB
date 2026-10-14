@@ -14,6 +14,8 @@
 ;   ents_view_update()                  once per frame (mob_render.asm)
 ;   ents_pick(rcx = f64[3] origin, rdx = f64[3] unit direction,
 ;             xmm2 = f64 reach) -> eax id / -1, xmm0 = f64 distance
+;   ents_leading() -> eax 1 if the player leads an animal in sight (part 3b)
+;   ents_view_name(rcx = NAME_PKT*)     PKT_S_ENTITY_NAME: an animal's name
 ;   g_vents, g_ents_shown, g_ent_target (the aimed-at animal, -1)
 ; =============================================================================
 %define ENTS_VIEW_IMPL
@@ -23,7 +25,8 @@
 %include "mobs.inc"
 %include "ents_view.inc"
 
-global ents_view_reset, ents_view_packet, ents_view_update, ents_pick
+global ents_view_reset, ents_view_packet, ents_view_update, ents_pick, ents_leading
+global ents_view_name
 global g_vents, g_ents_shown, g_ent_target, g_vlist
 
 extern g_frame_us, world_block_at, sincosf
@@ -124,6 +127,13 @@ ents_view_packet:
     mov [r8 + VENT.variant], ax
     mov ax, [rdx + ENT_PKT.flags]
     mov [r8 + VENT.flags], ax
+    mov eax, [rdx + ENT_PKT.knot]
+    mov [r8 + VENT.knot], eax
+    mov eax, [rdx + ENT_PKT.knot + 4]
+    mov [r8 + VENT.knot + 4], eax
+    mov eax, [rdx + ENT_PKT.knot + 8]
+    mov [r8 + VENT.knot + 8], eax
+    mov ax, [r8 + VENT.flags]
     test ax, EPF_HURT
     jz .not_hurt
     mov eax, [rel c_one_f]
@@ -145,6 +155,7 @@ ents_view_packet:
     mov eax, [r8 + VENT.pitch_t]
     mov [r8 + VENT.pitch], eax
     xor eax, eax
+    mov [r8 + VENT.name], al            ; (a name follows in its own packet)
     mov [r8 + VENT.phase], eax
     mov [r8 + VENT.amp], eax
     mov [r8 + VENT.roll], eax
@@ -539,3 +550,50 @@ align 4
 c_tiny_f:       dd 0.0001
 side_dx:        dd 2, -2, 0, 0
 side_dz:        dd 0, 0, 2, -2
+
+section .text
+
+; -----------------------------------------------------------------------------
+; ents_leading — eax = 1 if an animal in sight is on the player's lead
+;   clobbers: rax, rcx, rdx, r8
+; -----------------------------------------------------------------------------
+ents_leading:
+    xor ecx, ecx
+    lea rdx, [rel g_vlist]
+.next:
+    cmp ecx, [rel g_ents_shown]
+    jae .none
+    movzx eax, word [rdx + rcx * 2]
+    imul eax, eax, VENT_size
+    lea r8, [rel g_vents]
+    inc ecx
+    test word [r8 + rax + VENT.flags], EPF_LEASH
+    jz .next
+    mov eax, 1
+    ret
+.none:
+    xor eax, eax
+    ret
+
+; -----------------------------------------------------------------------------
+; ents_view_name — PKT_S_ENTITY_NAME: the animal's name tag (part 3b)
+;   in:  rcx = NAME_PKT*
+;   clobbers: rax, rcx, rdx, r8
+; -----------------------------------------------------------------------------
+ents_view_name:
+    mov eax, [rcx + NAME_PKT.id]
+    cmp eax, MAX_ENTITIES
+    jae .done
+    imul eax, eax, VENT_size
+    lea r8, [rel g_vents]
+    add r8, rax
+    xor edx, edx
+.copy:
+    mov rax, [rcx + NAME_PKT.name + rdx]
+    mov [r8 + VENT.name + rdx], rax
+    add edx, 8
+    cmp edx, ENT_NAME_MAX
+    jb .copy
+    mov byte [r8 + VENT.name + ENT_NAME_MAX - 1], 0
+.done:
+    ret

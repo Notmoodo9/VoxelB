@@ -44,13 +44,19 @@
 %include "physics.inc"
 %include "mobs.inc"
 %include "entity.inc"
+%include "items.inc"
+%include "block.inc"
+%include "world.inc"
 
 global behave_reset, behave_tick, behave, behave_hurt, behave_interact
+global lead_tie, lead_drop, g_lead_item, g_give_name, g_lead_test
+global behave_name
 global g_herd_count, g_regrow_count, g_breed_test, g_mob_gallery, g_gallery_name
 
-extern path_find, g_pf_start, g_pf_goal, g_pf_height, g_pf_out
+extern path_find, g_pf_start, g_pf_goal, g_pf_height, g_pf_out, g_pf_climb, g_pf_fall
+extern phys_block, inv_turn_slot, g_block_eat
 extern atan2f, edit_apply, block_find, inv_used_selected, inv_wear_selected
-extern drops_spawn, ent_new, str_ieq
+extern drops_spawn, ent_new, str_ieq, inv_mark
 extern g_pl_pos, g_pl_vel, g_pl_reach, g_inv, g_inv_sel, g_sim_time
 
 %define PATHS_PER_TICK  3
@@ -64,6 +70,10 @@ extern g_pl_pos, g_pl_vel, g_pl_reach, g_inv, g_inv_sel, g_sim_time
 section .rdata
 str_grass:      db "grass_block", 0
 str_dirt:       db "dirt", 0
+str_lead:       db "lead", 0
+str_name_tag:   db "name_tag", 0
+str_test_fence: db "oak_fence", 0
+str_led:        db "entities: --lead-test put animals on the lead: ", 0
 str_fed:        db "entities: --breed-test fed the grown-ups nearby: ", 0
 str_gallery:    db "entities: --mob-gallery placed every look: ", 0
 align 8
@@ -96,6 +106,7 @@ c_moving2:      dq 0.0004
 c_eye_lift:     dq -0.4
 c_night_end:    dq 0.23                 ; sleeps before 5:30 ...
 c_night_start:  dq 0.79                 ; ... and after 19:00
+c_gallery_young: dq 2.0
 c_gallery_z:    dq 3.0
 c_gallery_per:  dq 0.55
 c_charge_mul:   dq 2.4                  ; charging: faster than running away
@@ -105,6 +116,17 @@ c_ram_push:     dq 9.0                  ; the player flies off (blocks per secon
 c_ram_up:       dq 5.5
 c_lay_up:       dq 0.3
 c_shear_up:     dq 0.8
+c_hop:          dq 0.3                  ; a rabbit's hop (blocks per tick)
+c_eat2:         dq 1.0                  ; (1 block)^2: at the food
+c_hundred:      dq 100.0
+c_test_step:    dq 6.0                  ; --lead-test: the player's steps
+c_snap2:        dq 100.0                ; a lead snaps beyond 10 blocks
+c_pull2:        dq 36.0                 ; ... and pulls beyond 6
+c_pull_d:       dq 6.0
+c_pull_k:       dq 0.6                  ; extra pull per block beyond 6
+c_led2:         dq 9.0                  ; a led animal stops 3 blocks from the player
+c_tied2:        dq 2.25                 ; ... 1.5 blocks from its fence post
+c_lift:         dq 0.6                  ; the holder this much higher: it hops up
 align 4
 c_turn:         dd 0.25
 c_head_turn:    dd 0.2
@@ -132,12 +154,18 @@ g_herd_count:   resd 1
 g_breed_test:   resd 1                  ; --breed-test
 g_mob_gallery:  resd 1                  ; --mob-gallery
 g_gallery_name: resb 32                 ; --mob-gallery <animal> (empty: all)
+g_give_name:    resb 32                 ; --give <item>: into the hand (tests)
+g_lead_test:    resd 1                  ; --lead-test
+g_test_pkt:     resb BLOCK_PKT_size
 g_regrow_count: resd 1
 g_btick:        resd 1
 g_rand:         resd 1
 g_budget:       resd 1                  ; paths left this tick
 g_grass:        resd 1                  ; block ids
 g_dirt:         resd 1
+g_lead_item:    resd 1                  ; the lead (part 3b; 0: none in the data)
+g_tag_item:     resd 1                  ; the name tag (part 3b; 0: none)
+g_knot:         resd 3                  ; lead_tie: the fence post
 alignb 8
 g_wx:           resq 1                  ; the wanted velocity this tick
 g_wz:           resq 1
@@ -253,6 +281,18 @@ PROC behave_reset, 0
     lea rcx, [rel str_dirt]
     call block_find
     mov [rel g_dirt], eax
+    lea rcx, [rel str_lead]
+    call item_find
+    xor ecx, ecx
+    test eax, eax
+    cmovs eax, ecx
+    mov [rel g_lead_item], eax
+    lea rcx, [rel str_name_tag]
+    call item_find
+    xor ecx, ecx
+    test eax, eax
+    cmovs eax, ecx
+    mov [rel g_tag_item], eax
     RETURN
 ENDPROC
 
@@ -261,7 +301,8 @@ ENDPROC
 ; animal's looks) in a row north of the player (2 blocks apart; 3 blocks
 ; away and half a block more per animal), at
 ; the player's height (they drop to the ground), turned to the player and
-; resting a while (screenshots, tests).
+; resting a while (screenshots, tests); each with its young 2 blocks nearer,
+; and a male where the animal has sexes.
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC gallery, 32, rbx, rsi, rdi
@@ -306,6 +347,32 @@ PROC gallery, 32, rbx, rsi, rdi
     movsd [LOCAL(16)], xmm0
     mov ecx, esi
     xor edx, edx
+    lea r8, [LOCAL(0)]
+    call ent_new
+    test eax, eax
+    js .next
+    mov ecx, eax
+    call ent_of
+    mov ecx, [rel c_pi_f]
+    mov [rax + EntT.yaw], ecx
+    mov word [rax + EntT.timer], 400
+    ; an animal with sexes shows its male look (antlers)
+    movzx ecx, word [rax + EntT.variant]
+    imul ecx, ecx, VARIANT_size
+    lea rdx, [rel g_variants]
+    mov ecx, [rdx + rcx + VARIANT.mob]
+    imul ecx, ecx, MOB_size
+    lea rdx, [rel g_mobs]
+    cmp dword [rdx + rcx + MOB.sexes], 0
+    je .young
+    or dword [rax + EntT.flags], EF_MALE | EF_DIRTY
+.young:
+    ; and its young, a step nearer
+    movsd xmm0, [LOCAL(16)]
+    addsd xmm0, [rel c_gallery_young]
+    movsd [LOCAL(16)], xmm0
+    mov ecx, esi
+    mov edx, EF_BABY
     lea r8, [LOCAL(0)]
     call ent_new
     test eax, eax
@@ -423,6 +490,104 @@ PROC behave_tick, 0, rbx, rsi, rdi
     jne .no_gallery
     call gallery
 .no_gallery:
+    ; --give <item>: 16 of it into the hand, once (tests)
+    cmp byte [rel g_give_name], 0
+    je .no_give
+    cmp dword [rel g_btick], 40
+    jne .no_give
+    lea rcx, [rel g_give_name]
+    call item_find
+    cmp eax, 0
+    jle .no_give
+    mov ecx, [rel g_inv_sel]
+    lea rdx, [rel g_inv]
+    mov [rdx + rcx * 8], ax
+    mov word [rdx + rcx * 8 + 2], 16
+    mov word [rdx + rcx * 8 + 4], 0
+    call inv_mark
+.no_give:
+    ; --lead-test: 4 s in, the animals within 8 blocks go on the player's
+    ; lead; 15 s in, a fence post 2 blocks east of the player and they are
+    ; tied to it (tests: pulling, snapping, the rope, knots)
+    cmp dword [rel g_lead_test], 0
+    je .no_lead_test
+    cmp dword [rel g_btick], 80
+    jne .no_leash_all
+    lea rbx, [rel g_ents]
+    mov ecx, MAX_ENTITIES
+    xor esi, esi
+.leash_all:
+    mov eax, [rbx + EntT.flags]
+    and eax, EF_ACTIVE | EF_AWAKE | EF_DYING
+    cmp eax, EF_ACTIVE | EF_AWAKE
+    jne .leash_next
+    movsd xmm0, [rbx + EntT.pos]
+    subsd xmm0, [rel g_pl_pos]
+    mulsd xmm0, xmm0
+    movsd xmm1, [rbx + EntT.pos + 16]
+    subsd xmm1, [rel g_pl_pos + 16]
+    mulsd xmm1, xmm1
+    addsd xmm0, xmm1
+    comisd xmm0, [rel c_herd2]
+    jae .leash_next
+    mov dword [rbx + EntT.leash], LEASH_PLAYER
+    or dword [rbx + EntT.flags], EF_DIRTY
+    inc esi
+.leash_next:
+    add rbx, EntT_size
+    dec ecx
+    jnz .leash_all
+    mov ecx, LOG_LEVEL_INFO
+    call log_begin
+    lea rcx, [rel str_led]
+    call log_append_str
+    mov ecx, esi
+    call log_append_dec
+    call log_end
+.no_leash_all:
+    ; 8 s in: the player steps 6 blocks south (the animals are pulled
+    ; along); 20 s in: 12 blocks more (animals still on the player's lead
+    ; snap free; those tied to the fence stay)
+    cmp dword [rel g_btick], 160
+    jne .no_step
+    movsd xmm0, [rel g_pl_pos + 16]
+    addsd xmm0, [rel c_test_step]
+    movsd [rel g_pl_pos + 16], xmm0
+.no_step:
+    cmp dword [rel g_btick], 400
+    jne .no_step2
+    movsd xmm0, [rel g_pl_pos + 16]
+    addsd xmm0, [rel c_test_step]
+    addsd xmm0, [rel c_test_step]
+    movsd [rel g_pl_pos + 16], xmm0
+.no_step2:
+    cmp dword [rel g_btick], 300
+    jne .no_lead_test
+    movsd xmm0, [rel g_pl_pos]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si eax, xmm0
+    add eax, 2
+    mov [rel g_test_pkt + BLOCK_PKT.x], eax
+    movsd xmm0, [rel g_pl_pos + 8]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si eax, xmm0
+    mov [rel g_test_pkt + BLOCK_PKT.y], eax
+    movsd xmm0, [rel g_pl_pos + 16]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si eax, xmm0
+    mov [rel g_test_pkt + BLOCK_PKT.z], eax
+    lea rcx, [rel str_test_fence]
+    call block_find
+    test eax, eax
+    jle .no_lead_test
+    mov r9d, eax
+    mov ecx, [rel g_test_pkt + BLOCK_PKT.x]
+    mov edx, [rel g_test_pkt + BLOCK_PKT.y]
+    mov r8d, [rel g_test_pkt + BLOCK_PKT.z]
+    call edit_apply
+    lea rcx, [rel g_test_pkt]
+    call lead_tie
+.no_lead_test:
     mov eax, [rel g_btick]
     xor edx, edx
     mov ecx, HERD_EVERY
@@ -652,6 +817,28 @@ PROC plan, 0
     mov eax, 3
 .h2:
     mov [rel g_pf_height], eax
+    ; how far up it can jump and down it may drop (part 3b)
+    call mob_of
+    cvttss2si ecx, [rax + MOB.jump]
+    cmp ecx, 1
+    jge .c1
+    mov ecx, 1
+.c1:
+    cmp ecx, 4
+    jle .c2
+    mov ecx, 4
+.c2:
+    mov [rel g_pf_climb], ecx
+    mov ecx, [rax + MOB.fall]
+    cmp ecx, 1
+    jge .f1
+    mov ecx, 1
+.f1:
+    cmp ecx, 8
+    jle .f2
+    mov ecx, 8
+.f2:
+    mov [rel g_pf_fall], ecx
     mov eax, esi
     imul rax, rax, PATH_MAX * WP_BYTES
     lea rcx, [rel g_paths]
@@ -748,7 +935,8 @@ PROC follow_path, 16, rdi
     jb .turn
     test dword [rbx + EntT.flags], EF_GROUND
     jz .turn
-    movsd xmm0, [rel c_jump]
+    call mob_of
+    cvtss2sd xmm0, [rax + MOB.jump_v]   ; (deer leap, goats spring up)
     movsd [rbx + EntT.vel + 8], xmm0
 .turn:
     ; the body turns to where it goes: yaw = atan2(dx, -dz)
@@ -921,6 +1109,33 @@ PROC behave_interact, 0, rbx, rsi
     mulsd xmm1, xmm1
     comisd xmm0, xmm1
     ja .done
+    ; a lead: a led animal is let go (the lead drops), one tied to a fence
+    ; is taken back, and a lead in hand goes on a free one (part 3b)
+    mov eax, [rbx + EntT.leash]
+    cmp eax, LEASH_PLAYER
+    jne .not_led
+    call lead_drop
+    RETURN
+.not_led:
+    cmp eax, LEASH_KNOT
+    jne .no_knot
+    mov dword [rbx + EntT.leash], LEASH_PLAYER
+    or dword [rbx + EntT.flags], EF_DIRTY
+    RETURN
+.no_knot:
+    mov eax, [rel g_lead_item]
+    test eax, eax
+    jz .shears
+    mov ecx, [rel g_inv_sel]
+    lea r8, [rel g_inv]
+    cmp ax, [r8 + rcx * 8]
+    jne .shears
+    mov dword [rbx + EntT.leash], LEASH_PLAYER
+    or dword [rbx + EntT.flags], EF_DIRTY
+    LOG_DEBUG "entities: an animal was put on a lead"
+    call inv_used_selected
+    RETURN
+.shears:
     ; shears: its coat
     call mob_of
     movzx edx, word [rax + MOB.shear_tool]
@@ -933,6 +1148,33 @@ PROC behave_interact, 0, rbx, rsi
     call shear
     RETURN
 .feed:
+    ; a bucket: milk (grown-ups)
+    call mob_of
+    movzx edx, word [rax + MOB.milk_from]
+    test edx, edx
+    jz .no_milk
+    mov ecx, [rel g_inv_sel]
+    lea r8, [rel g_inv]
+    cmp dx, [r8 + rcx * 8]
+    jne .no_milk
+    test dword [rbx + EntT.flags], EF_BABY
+    jnz .done
+    movzx edx, word [rax + MOB.milk_to]
+    mov esi, edx
+    mov ecx, [rel g_inv_sel]
+    call inv_turn_slot
+    test eax, eax
+    jz .milked
+    movsd xmm0, [rel c_shear_up]
+    call spot_above
+    mov ecx, esi
+    mov edx, 1
+    lea r8, [rel g_spot]
+    call drops_spawn
+.milked:
+    LOG_DEBUG "entities: an animal was milked"
+    RETURN
+.no_milk:
     call holds_food
     test eax, eax
     jz .done
@@ -1065,6 +1307,180 @@ PROC ram, 0
     maxsd xmm0, [rel c_ram_up]
     movsd [rel g_pl_vel + 8], xmm0
     LOG_DEBUG "entities: a fierce animal rammed the player"
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; find_food — a block entity rbx (mob rdi) eats within 4 blocks around its
+; feet (its level and one up or down): EntT.food.
+;   out: eax = 1 found
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define FF_X    0
+%define FF_Y    4
+%define FF_Z    8
+%define FF_DX   12
+%define FF_DY   16
+%define FF_DZ   20
+PROC find_food, 32, rsi
+    movsd xmm0, [rbx + EntT.pos]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si eax, xmm0
+    mov [LOCAL(FF_X)], eax
+    movsd xmm0, [rbx + EntT.pos + 8]
+    addsd xmm0, [rel c_tiny]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si eax, xmm0
+    mov [LOCAL(FF_Y)], eax
+    movsd xmm0, [rbx + EntT.pos + 16]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si eax, xmm0
+    mov [LOCAL(FF_Z)], eax
+    mov dword [LOCAL(FF_DY)], -1
+.dy:
+    mov dword [LOCAL(FF_DZ)], -4
+.dz:
+    mov dword [LOCAL(FF_DX)], -4
+.dx:
+    mov ecx, [LOCAL(FF_X)]
+    add ecx, [LOCAL(FF_DX)]
+    mov edx, [LOCAL(FF_Y)]
+    add edx, [LOCAL(FF_DY)]
+    mov r8d, [LOCAL(FF_Z)]
+    add r8d, [LOCAL(FF_DZ)]
+    call phys_block
+    test eax, eax
+    jle .next
+    lea rcx, [rel g_block_eat]
+    movzx ecx, byte [rcx + rax]
+    test ecx, [rdi + MOB.eats]
+    jz .next
+    mov eax, [LOCAL(FF_X)]
+    add eax, [LOCAL(FF_DX)]
+    mov [rbx + EntT.food], eax
+    mov eax, [LOCAL(FF_Y)]
+    add eax, [LOCAL(FF_DY)]
+    mov [rbx + EntT.food + 4], eax
+    mov eax, [LOCAL(FF_Z)]
+    add eax, [LOCAL(FF_DZ)]
+    mov [rbx + EntT.food + 8], eax
+    mov eax, 1
+    RETURN
+.next:
+    inc dword [LOCAL(FF_DX)]
+    cmp dword [LOCAL(FF_DX)], 4
+    jle .dx
+    inc dword [LOCAL(FF_DZ)]
+    cmp dword [LOCAL(FF_DZ)], 4
+    jle .dz
+    inc dword [LOCAL(FF_DY)]
+    cmp dword [LOCAL(FF_DY)], 1
+    jle .dy
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; eat_or_walk — entity rbx (mob rdi) in AI_EAT: at its food it eats it (the
+; block is gone for good), else it walks there.
+;   out: eax = 1 still going (walking or nibbling), 0 done (eaten, gone or
+;        unreachable)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC eat_or_walk, 0
+    ; still something it eats there?
+    mov ecx, [rbx + EntT.food]
+    mov edx, [rbx + EntT.food + 4]
+    mov r8d, [rbx + EntT.food + 8]
+    call phys_block
+    test eax, eax
+    jle .gone
+    lea rcx, [rel g_block_eat]
+    movzx ecx, byte [rcx + rax]
+    test ecx, [rdi + MOB.eats]
+    jz .gone
+    cvtsi2sd xmm0, dword [rbx + EntT.food]
+    addsd xmm0, [rel c_half]
+    movsd [rel g_tx], xmm0
+    cvtsi2sd xmm1, dword [rbx + EntT.food + 8]
+    addsd xmm1, [rel c_half]
+    movsd [rel g_tz], xmm1
+    call dist2_to
+    comisd xmm0, [rel c_eat2]
+    jae .walk
+    ; there: head down, a moment, then it is eaten
+    mov dword [rbx + EntT.look_yaw], 0
+    mov eax, [rel c_graze_pitch]
+    mov [rbx + EntT.look_pitch], eax
+    cmp word [rbx + EntT.timer], 280
+    jbe .bite
+    mov eax, 1
+    RETURN
+.bite:
+    mov ecx, [rbx + EntT.food]
+    mov edx, [rbx + EntT.food + 4]
+    mov r8d, [rbx + EntT.food + 8]
+    xor r9d, r9d
+    call edit_apply
+    LOG_DEBUG "entities: an animal ate a flower"
+.gone:
+    xor eax, eax
+    RETURN
+.walk:
+    ; (the nibbling waits until it gets there)
+    cmp word [rbx + EntT.timer], 290
+    jae .keep
+    mov word [rbx + EntT.timer], 290
+.keep:
+    mov eax, [rbx + EntT.food + 4]
+    mov [rel g_ty], eax
+    mov ecx, 20
+    call go_to
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; maybe_ram — a rammer (goat; mob rdi) with a player within `rams` blocks
+; may start a charge (once a second, `rams` % chance); the charge knocks
+; the player back like a boar's.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC maybe_ram, 0
+    movss xmm0, [rdi + MOB.rams_dist]
+    xorps xmm1, xmm1
+    comiss xmm0, xmm1
+    jbe .done
+    test dword [rbx + EntT.flags], EF_BABY | EF_SLEEP
+    jnz .done
+    movzx eax, byte [rbx + EntT.state]
+    cmp eax, AI_CHARGE
+    je .done
+    cmp eax, AI_FLEE
+    je .done
+    cvtss2sd xmm0, xmm0
+    mulsd xmm0, xmm0
+    comisd xmm0, [rel g_d2]
+    jbe .done
+    ; once a second (spread over the animals)
+    mov eax, [rel g_btick]
+    add eax, esi
+    xor edx, edx
+    mov ecx, 20
+    div ecx
+    test edx, edx
+    jnz .done
+    call rand01
+    mulsd xmm0, [rel c_hundred]
+    cvtss2sd xmm1, [rdi + MOB.rams_pct]
+    comisd xmm0, xmm1
+    jae .done
+    mov byte [rbx + EntT.state], AI_CHARGE
+    mov word [rbx + EntT.timer], CHARGE_TICKS
+    mov byte [rbx + EntT.path_len], 0
+    mov word [rbx + EntT.repath], 0
+    or dword [rbx + EntT.flags], EF_DIRTY
+    LOG_DEBUG "entities: an animal rams the player"
+.done:
     RETURN
 ENDPROC
 
@@ -1306,6 +1722,318 @@ PROC go_to, 16
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; lead_walk — entity rbx (mob rdi) is on a lead: it walks after the player
+; (stopping 3 blocks away) or stays by its fence post; lagging more than 6
+; blocks it is pulled straight along (faster the further), hopping up when
+; the holder is higher; beyond 10 blocks (or with its fence gone) the lead
+; snaps and drops.
+;   out: eax = 1 its move is decided, 0 the lead snapped
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define LW_HX   0                       ; f64 the holder
+%define LW_HY   8
+%define LW_HZ   16
+%define LW_STOP 24                      ; f64 close enough (squared, flat)
+%define LW_DX   32
+%define LW_DY   40
+%define LW_DZ   48
+%define LW_D2   56
+PROC lead_walk, 64
+    cmp dword [rbx + EntT.leash], LEASH_KNOT
+    je .knot
+    mov rax, [rel g_pl_pos]
+    mov [LOCAL(LW_HX)], rax
+    mov rax, [rel g_pl_pos + 8]
+    mov [LOCAL(LW_HY)], rax
+    mov rax, [rel g_pl_pos + 16]
+    mov [LOCAL(LW_HZ)], rax
+    mov rax, [rel c_led2]
+    mov [LOCAL(LW_STOP)], rax
+    jmp .held
+.knot:
+    ; the fence post still there? (not loaded: it waits)
+    mov ecx, [rbx + EntT.knot]
+    mov edx, [rbx + EntT.knot + 4]
+    mov r8d, [rbx + EntT.knot + 8]
+    call phys_block
+    cmp eax, -1
+    je .stand
+    lea rcx, [rel g_block_shape]
+    cmp byte [rcx + rax], SHAPE_FENCE
+    jne .snap
+    cvtsi2sd xmm0, dword [rbx + EntT.knot]
+    addsd xmm0, [rel c_half]
+    movsd [LOCAL(LW_HX)], xmm0
+    cvtsi2sd xmm0, dword [rbx + EntT.knot + 4]
+    movsd [LOCAL(LW_HY)], xmm0
+    cvtsi2sd xmm0, dword [rbx + EntT.knot + 8]
+    addsd xmm0, [rel c_half]
+    movsd [LOCAL(LW_HZ)], xmm0
+    mov rax, [rel c_tied2]
+    mov [LOCAL(LW_STOP)], rax
+.held:
+    movsd xmm0, [LOCAL(LW_HX)]
+    subsd xmm0, [rbx + EntT.pos]
+    movsd [LOCAL(LW_DX)], xmm0
+    movsd xmm1, [LOCAL(LW_HY)]
+    subsd xmm1, [rbx + EntT.pos + 8]
+    movsd [LOCAL(LW_DY)], xmm1
+    movsd xmm2, [LOCAL(LW_HZ)]
+    subsd xmm2, [rbx + EntT.pos + 16]
+    movsd [LOCAL(LW_DZ)], xmm2
+    mulsd xmm0, xmm0
+    mulsd xmm2, xmm2
+    addsd xmm0, xmm2
+    movsd [LOCAL(LW_D2)], xmm0          ; (flat)
+    mulsd xmm1, xmm1
+    addsd xmm1, xmm0
+    comisd xmm1, [rel c_snap2]
+    ja .snap
+    ; held: no sleeping, no running off
+    test dword [rbx + EntT.flags], EF_SLEEP
+    jz .awake
+    and dword [rbx + EntT.flags], ~EF_SLEEP
+    or dword [rbx + EntT.flags], EF_DIRTY
+.awake:
+    mov byte [rbx + EntT.state], AI_FOLLOW
+    movsd xmm0, [LOCAL(LW_D2)]
+    comisd xmm0, [LOCAL(LW_STOP)]
+    jae .walk
+    mov byte [rbx + EntT.path_len], 0
+.stand:
+    movsd xmm0, [rel g_d2]
+    comisd xmm0, [rel c_look2]
+    jae .done
+    call look_at_player
+    jmp .done
+.walk:
+    ; after the holder along a path ...
+    mov rax, [LOCAL(LW_HX)]
+    mov [rel g_tx], rax
+    mov rax, [LOCAL(LW_HZ)]
+    mov [rel g_tz], rax
+    movsd xmm0, [LOCAL(LW_HY)]
+    addsd xmm0, [rel c_tiny]
+    roundsd xmm0, xmm0, 9
+    cvttsd2si eax, xmm0
+    mov [rel g_ty], eax
+    movsd xmm0, [rel g_speed]
+    mulsd xmm0, [rel c_follow_mul]
+    movsd [rel g_speed], xmm0
+    mov ecx, 10
+    call go_to
+    mov dword [rbx + EntT.look_yaw], 0
+    mov dword [rbx + EntT.look_pitch], 0
+    ; ... and lagging behind: pulled straight at it
+    movsd xmm0, [LOCAL(LW_D2)]
+    comisd xmm0, [rel c_pull2]
+    jbe .done
+    sqrtsd xmm0, xmm0
+    movsd xmm3, xmm0
+    subsd xmm3, [rel c_pull_d]
+    mulsd xmm3, [rel c_pull_k]
+    addsd xmm3, [rel c_one]
+    mulsd xmm3, [rel g_speed]           ; the pull (blocks per tick)
+    movsd xmm1, [LOCAL(LW_DX)]
+    divsd xmm1, xmm0
+    mulsd xmm1, xmm3
+    movsd [rel g_wx], xmm1
+    movsd xmm2, [LOCAL(LW_DZ)]
+    divsd xmm2, xmm0
+    mulsd xmm2, xmm3
+    movsd [rel g_wz], xmm2
+    ; the body turns along: yaw = atan2(wx, -wz)
+    cvtsd2ss xmm0, xmm1
+    xorpd xmm2, [rel c_sign_d]
+    cvtsd2ss xmm1, xmm2
+    call atan2f
+    movss xmm1, xmm0
+    movss xmm0, [rbx + EntT.yaw]
+    movss xmm2, [rel c_turn]
+    call turn
+    movss [rbx + EntT.yaw], xmm0
+    ; the holder higher up: a hop
+    movsd xmm0, [LOCAL(LW_DY)]
+    comisd xmm0, [rel c_lift]
+    jbe .done
+    test dword [rbx + EntT.flags], EF_GROUND
+    jz .done
+    call mob_of
+    cvtss2sd xmm0, [rax + MOB.jump_v]
+    movsd [rbx + EntT.vel + 8], xmm0
+.done:
+    mov eax, 1
+    RETURN
+.snap:
+    call lead_drop
+    LOG_DEBUG "entities: a lead snapped"
+    xor eax, eax
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; lead_drop — entity rbx comes off its lead; the lead drops beside it.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC lead_drop, 0
+    cmp dword [rbx + EntT.leash], LEASH_NONE
+    je .done
+    mov dword [rbx + EntT.leash], LEASH_NONE
+    or dword [rbx + EntT.flags], EF_DIRTY
+    mov byte [rbx + EntT.path_len], 0
+    cmp dword [rel g_lead_item], 0
+    je .done
+    movsd xmm0, [rel c_shear_up]
+    call spot_above
+    mov ecx, [rel g_lead_item]
+    mov edx, 1
+    lea r8, [rel g_spot]
+    call drops_spawn
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; lead_tie — PKT_C_TIE: the animals the player leads within 10 blocks of the
+; fence at the packet's block are tied to it.
+;   in:  rcx = BLOCK_PKT*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC lead_tie, 0, rbx, rsi
+    mov eax, [rcx + BLOCK_PKT.x]
+    mov [rel g_knot], eax
+    mov eax, [rcx + BLOCK_PKT.y]
+    mov [rel g_knot + 4], eax
+    mov eax, [rcx + BLOCK_PKT.z]
+    mov [rel g_knot + 8], eax
+    mov ecx, [rel g_knot]
+    mov edx, [rel g_knot + 4]
+    mov r8d, [rel g_knot + 8]
+    call phys_block
+    cmp eax, -1
+    je .done
+    lea rcx, [rel g_block_shape]
+    cmp byte [rcx + rax], SHAPE_FENCE
+    jne .done
+    lea rbx, [rel g_ents]
+    mov esi, MAX_ENTITIES
+.ent:
+    mov eax, [rbx + EntT.flags]
+    and eax, EF_ACTIVE | EF_DYING
+    cmp eax, EF_ACTIVE
+    jne .next
+    cmp dword [rbx + EntT.leash], LEASH_PLAYER
+    jne .next
+    cvtsi2sd xmm0, dword [rel g_knot]
+    addsd xmm0, [rel c_half]
+    cvtsi2sd xmm1, dword [rel g_knot + 8]
+    addsd xmm1, [rel c_half]
+    call dist2_to
+    comisd xmm0, [rel c_snap2]
+    jae .next
+    mov dword [rbx + EntT.leash], LEASH_KNOT
+    mov eax, [rel g_knot]
+    mov [rbx + EntT.knot], eax
+    mov eax, [rel g_knot + 4]
+    mov [rbx + EntT.knot + 4], eax
+    mov eax, [rel g_knot + 8]
+    mov [rbx + EntT.knot + 8], eax
+    or dword [rbx + EntT.flags], EF_DIRTY
+    mov byte [rbx + EntT.path_len], 0
+    LOG_DEBUG "entities: a led animal was tied to a fence"
+.next:
+    add rbx, EntT_size
+    dec esi
+    jnz .ent
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; behave_name — PKT_C_NAME: the name tag in the player's hand names an animal
+; within reach (printable characters, at most 23; used up in Survival); the
+; client is told (PKT_S_ENTITY_NAME). A blank name changes nothing.
+;   in:  rcx = NAME_PKT*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC behave_name, 0, rbx, rsi, rdi
+    mov rdi, rcx
+    mov esi, [rdi + NAME_PKT.id]
+    cmp esi, MAX_ENTITIES
+    jae .done
+    mov eax, [rel g_tag_item]
+    test eax, eax
+    jz .done
+    mov ecx, [rel g_inv_sel]
+    lea r8, [rel g_inv]
+    cmp ax, [r8 + rcx * 8]
+    jne .done                           ; (the tag is not in hand any more)
+    mov ecx, esi
+    call ent_of
+    mov rbx, rax
+    mov eax, [rbx + EntT.flags]
+    and eax, EF_ACTIVE | EF_DYING
+    cmp eax, EF_ACTIVE
+    jne .done
+    movsd xmm0, [rel g_pl_pos]
+    movsd xmm1, [rel g_pl_pos + 16]
+    call dist2_to
+    cvtss2sd xmm1, [rel g_pl_reach]
+    addsd xmm1, [rel c_reach_extra]
+    addsd xmm1, [rel c_reach_extra]     ; (it may have stepped away while typing)
+    mulsd xmm1, xmm1
+    comisd xmm0, xmm1
+    ja .done
+    ; the name: printable ASCII, spaces trimmed at the ends
+    xor ecx, ecx                        ; read
+    xor edx, edx                        ; written
+.skip:
+    cmp byte [rdi + NAME_PKT.name + rcx], ' '
+    jne .copy
+    inc ecx
+    cmp ecx, NAME_MAX - 1
+    jb .skip
+.copy:
+    cmp ecx, NAME_MAX - 1
+    jae .copied
+    movzx eax, byte [rdi + NAME_PKT.name + rcx]
+    test eax, eax
+    jz .copied
+    inc ecx
+    cmp eax, ' '
+    jb .copy
+    cmp eax, '~'
+    ja .copy
+    mov [rbx + EntT.name + rdx], al
+    inc edx
+    jmp .copy
+.copied:
+    test edx, edx
+    jz .done                            ; (blank)
+.trim:
+    cmp byte [rbx + EntT.name + rdx - 1], ' '
+    jne .end
+    dec edx
+    jnz .trim
+.end:
+    mov byte [rbx + EntT.name + rdx], 0
+.clear:
+    inc edx
+    cmp edx, NAME_MAX
+    jae .named
+    mov byte [rbx + EntT.name + rdx], 0
+    jmp .clear
+.named:
+    LOG_DEBUG "entities: an animal was given a name"
+    call inv_used_selected
+    test dword [rbx + EntT.flags], EF_SENT
+    jz .done
+    call ent_send_name
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
 ; behave — see the header.
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
@@ -1348,6 +2076,17 @@ PROC behave, 16, rdi
     or dword [rbx + EntT.flags], EF_DIRTY
 .grown:
     call lay                            ; (eggs; rdi = MOB*)
+
+    ; ---- 0. on a lead: it follows whoever holds it (part 3b) ----
+    cmp dword [rbx + EntT.leash], LEASH_NONE
+    je .free
+    call lead_walk
+    test eax, eax
+    jnz .apply
+.free:
+
+    ; ---- 0. rammers (goats) sometimes go for a player standing close ----
+    call maybe_ram
 
     ; ---- 0. charging the player (fierce, hit) ----
     cmp byte [rbx + EntT.state], AI_CHARGE
@@ -1573,9 +2312,19 @@ PROC behave, 16, rdi
     je .wander
     cmp eax, AI_GRAZE
     je .graze
+    cmp eax, AI_EAT
+    je .eat
     cmp eax, AI_IDLE
     je .idle
     jmp .to_idle                        ; (seek / follow ended)
+.eat:
+    ; to the block it eats; there, it eats it (for good)
+    cmp word [rbx + EntT.timer], 0
+    je .to_idle
+    call eat_or_walk
+    test eax, eax
+    jnz .apply
+    jmp .to_idle
 .wander:
     call follow_path
     test eax, eax
@@ -1592,6 +2341,22 @@ PROC behave, 16, rdi
 .idle:
     cmp word [rbx + EntT.timer], 0
     jne .look
+    ; eaters (rabbits) look for something to eat nearby now and then
+    cmp dword [rdi + MOB.eats], 0
+    je .no_eats
+    mov ecx, 3
+    call rand_below
+    test eax, eax
+    jnz .no_eats
+    call find_food
+    test eax, eax
+    jz .no_eats
+    mov byte [rbx + EntT.state], AI_EAT
+    mov word [rbx + EntT.timer], 300
+    mov word [rbx + EntT.repath], 0
+    mov byte [rbx + EntT.path_len], 0
+    jmp .apply
+.no_eats:
     mov ecx, 10
     call rand_below
     cmp eax, 2
@@ -1712,6 +2477,21 @@ PROC behave, 16, rdi
     mulsd xmm0, xmm2
     addsd xmm0, [rbx + EntT.vel + 16]
     movsd [rbx + EntT.vel + 16], xmm0
+    ; hoppers (rabbits) move in little hops
+    cmp dword [rdi + MOB.hops], 0
+    je .no_hop
+    test dword [rbx + EntT.flags], EF_GROUND
+    jz .no_hop
+    movsd xmm0, [rel g_wx]
+    mulsd xmm0, xmm0
+    movsd xmm1, [rel g_wz]
+    mulsd xmm1, xmm1
+    addsd xmm0, xmm1
+    comisd xmm0, [rel c_moving2]
+    jb .no_hop
+    movsd xmm0, [rel c_hop]
+    movsd [rbx + EntT.vel + 8], xmm0
+.no_hop:
     ; a jump when it walked into a step (on the ground, wanting to move)
     test dword [rbx + EntT.flags], EF_BUMPED
     jz .no_jump
@@ -1726,7 +2506,7 @@ PROC behave, 16, rdi
     jnz .swim_jump
     test dword [rbx + EntT.flags], EF_GROUND
     jz .no_jump
-    movsd xmm0, [rel c_jump]
+    cvtss2sd xmm0, [rdi + MOB.jump_v]
     movsd [rbx + EntT.vel + 8], xmm0
     jmp .no_jump
 .swim_jump:

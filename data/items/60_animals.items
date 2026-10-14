@@ -85,3 +85,96 @@ texture = shears
 stack = 1
 durability = 238
 tab = tools
+
+# part 3b: deer, rabbits, goats; buckets, leads, name tags
+[item venison]
+title = Raw venison
+texture = venison
+tab = food
+
+[item cooked_venison]
+texture = cooked_venison
+tab = food
+
+[item rabbit]
+title = Raw rabbit
+texture = rabbit
+tab = food
+
+[item cooked_rabbit]
+texture = cooked_rabbit
+tab = food
+
+[item raw_deer_hide]
+texture = raw_deer_hide
+tab = items
+
+[item salted_deer_hide]
+texture = salted_deer_hide
+tab = items
+
+[item raw_rabbit_hide]
+texture = raw_rabbit_hide
+tab = items
+
+[item salted_rabbit_hide]
+texture = salted_rabbit_hide
+tab = items
+
+# four dried rabbit hides make a leather (data/recipes/60_animals.recipes)
+[item dried_rabbit_hide]
+texture = dried_rabbit_hide
+tab = items
+
+[item antler]
+texture = antler
+tab = items
+
+[item goat_horn]
+texture = goat_horn
+tab = items
+
+[item rabbits_foot]
+title = Rabbit's foot
+texture = rabbits_foot
+tab = items
+
+# the bucket scoops a water or lava source (fill = source block, filled
+# item) and milks cows and goats (data/mobs: milk); a full bucket pours its
+# block and leaves the empty bucket (leaves)
+[item bucket]
+texture = bucket
+stack = 16
+tab = tools
+fill = water, water_bucket
+fill = lava, lava_bucket
+
+[item water_bucket]
+title = Bucket of water
+texture = water_bucket
+stack = 1
+block = water
+leaves = bucket
+tab = tools
+
+[item lava_bucket]
+title = Bucket of lava
+texture = lava_bucket
+stack = 1
+block = lava
+leaves = bucket
+tab = tools
+
+[item milk_bucket]
+title = Bucket of milk
+texture = milk_bucket
+stack = 1
+tab = food
+
+[item lead]
+texture = lead
+tab = tools
+
+[item name_tag]
+texture = name_tag
+tab = tools

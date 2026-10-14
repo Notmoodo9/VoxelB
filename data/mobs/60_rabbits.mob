@@ -1,0 +1,52 @@
+# Rabbits (milestone 19 part 3b, design/mobs/passive_animals.md). Format:
+# DATA_FORMAT.md "Mob files". Wild: they bolt when you come near, and move
+# in hops. They nibble flowers (`eats`): a flower they eat is gone for good,
+# so fence your garden.
+
+[model rabbit]
+skin_size = 64 64
+part = body,   none, 0 3 0,       -2.5 0 -3.5,  5 5 7,      0 0
+part = head,   head, 0 6 -3.5,    -2 0 -4,      4 4 4,      24 0
+part = ear_l,  head, 0 6 -3.5,    -2 4 -2,      1 4 2,      40 0
+part = ear_r,  head, 0 6 -3.5,    1 4 -2,       1 4 2,      40 0
+part = leg_fl, leg0, -1.5 3 -2.5, -0.5 -3 -0.5, 1 3 1,      46 0
+part = leg_fr, leg1, 1.5 3 -2.5,  -0.5 -3 -0.5, 1 3 1,      46 0
+part = leg_bl, leg1, -2 3 2.5,    -1 -3 -2,     2 3 4,      0 12
+part = leg_br, leg0, 2 3 2.5,     -1 -3 -2,     2 3 4,      0 12
+part = tail,   tail, 0 6 3.5,     -1 -1 0,      2 2 2,      12 12
+
+[mob rabbit]
+health = 3
+size = 0.4 0.5
+speed = 1.7
+temper = wild
+food = carrot, berries
+hops = 1
+eats = poppy, dandelion, cornflower, oxeye_daisy, allium, *_tulip, clover, buttercup, lily_of_the_valley, bluebell, wood_anemone, edelweiss, gentian, alpine_aster
+drop = rabbit, 1, 1
+drop = raw_rabbit_hide, 0, 1
+drop = rabbits_foot, 1, 1, 10%
+variant = brown, rabbit_brown, rabbit
+variant = sandy, rabbit_sandy, rabbit
+variant = white, rabbit_white, rabbit
+
+[spawn]
+mob = rabbit
+variant = brown
+biomes = plains, meadow, forest
+chance = 5
+herd = 2, 3
+
+[spawn]
+mob = rabbit
+variant = sandy
+biomes = desert, badlands, savanna
+chance = 4
+herd = 1, 3
+
+[spawn]
+mob = rabbit
+variant = white
+biomes = snowy_taiga, snowy_tundra, ice_spikes
+chance = 5
+herd = 2, 3

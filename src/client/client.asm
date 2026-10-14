@@ -42,6 +42,7 @@ extern daycycle_set, timer_elapsed_us, g_frame_us
 extern interact_init, interact_update, stream_block_changed
 extern g_held_block, g_item_block, g_dig_want, g_target_valid, g_target
 extern drops_view_packet, drops_view_reset, ents_view_packet, ents_view_reset
+extern ents_view_name
 
 %define DOUBLE_TAP_US   300000          ; move_up twice within this: fly
 
@@ -459,6 +460,12 @@ PROC client_view, 0, rsi, rdi
     call ents_view_packet               ; animals (milestone 19)
     jmp .packet
 .not_entity:
+    cmp eax, PKT_S_ENTITY_NAME
+    jne .not_name
+    lea rcx, [rel g_cl_pkt + PKT.data]
+    call ents_view_name                 ; (part 3b: a name tag)
+    jmp .packet
+.not_name:
     cmp eax, PKT_S_TIME
     jne .packet
     mov eax, [rel g_cl_pkt + PKT.data + TIME_PKT.time]

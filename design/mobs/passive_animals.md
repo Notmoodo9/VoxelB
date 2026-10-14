@@ -82,6 +82,15 @@ leather:
   into 1 leather);
 * only salted hides can be hung; the rack holds one hide.
 
+## Part 3b details (owner, 2026-10-14)
+| Topic | Decision |
+|---|---|
+| Bucket | like Minecraft: scoops a water or lava source and pours it elsewhere; milks cows and goats (milk bucket) |
+| Rabbits and flowers | rabbits eat flowers for good (they slowly thin out flowers; fence your garden) |
+| Leads | Minecraft-like: right-click an animal to leash it; it follows within ~6 blocks, is pulled along, the lead snaps (drops) beyond ~10; right-click a fence to tie it there; several animals per player |
+| Deer | each deer is born a buck (antlers, may drop an antler) or a doe |
+| Goats | now and then ram a player standing within ~2 blocks: a knock-back like the boar's |
+
 ## Build order
 1. Entity framework: storage, physics, rendering of cuboid models, hits, drops, saving per region, spawning — with the **cow** (all variants).
 2. Pathfinding + behaviours: wander, flee, follow food, herds, grazing, sleep, breeding, babies.
@@ -111,7 +120,18 @@ leather:
   fierce wild boars; chickens that flutter down and lay eggs; seeds from
   grass, wild carrots, berries; cream and russet wool. My own choice to
   check: the drying rack recipe (6 sticks: `SSS / S.S / S.S`).
+* **Part 3b (v0.19.5)**: deer (red, white-tailed, reindeer; bucks with
+  antlers and does; spotted fawns), rabbits (brown, sandy, white; hop,
+  eat flowers for good), mountain goats (climb and jump 3, ram now and
+  then, give milk); buckets for water, lava and milk; deer and rabbit
+  hides on the drying rack; leads (follow, pull, snap, fence knots, a
+  rope); name tags with a journal page and names over the heads; yellow
+  chicks. My own choices to check: the recipes (bucket `I.I / .I.` iron
+  bars; lead `LL. / LI. / ..L` leather and an iron bar; name tag leather
+  + iron bar), the rabbit's foot at 10%, goats above y 160 in the cold
+  forests and tundra besides the alpine meadow, the looks of the skins.
 * See them all: `voxelb.exe --mob-gallery --pos 41.5 108 -36 --look 0 -20`
-  (or `--mob-gallery sheep`, `pig`, `boar`, `chicken`, `ram`).
+  (or `--mob-gallery sheep`, `pig`, `boar`, `chicken`, `ram`, `deer`,
+  `rabbit`, `goat`, `reindeer`; each look comes with its young).
 * See them: the plains around spawn of the default seed (20261009),
   e.g. `voxelb.exe --pos 41.5 106 -36 --look 0 -25`.

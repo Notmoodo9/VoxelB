@@ -24,11 +24,14 @@ struc VENT
     .active     resd 1
     .sky_wait   resd 1                  ; frames until the sky is looked at again
     .sleep      resd 1                  ; f32 lying down 0 .. 1 (part 2)
-    .pad        resb 20
-endstruc                                ; 128 bytes
+    .knot       resd 3                  ; i32 the fence its lead is tied to (EPF_KNOT; part 3b)
+    .name       resb ENT_NAME_MAX       ; its name tag (empty: none; part 3b)
+    .pad        resb 8
+endstruc                                ; 160 bytes
 
 %ifndef ENTS_VIEW_IMPL
-extern ents_view_reset, ents_view_packet, ents_view_update, ents_pick
+extern ents_view_reset, ents_view_packet, ents_view_update, ents_pick, ents_leading
+extern ents_view_name
 extern g_vents, g_ents_shown, g_ent_target, g_vlist
 %endif
 %endif

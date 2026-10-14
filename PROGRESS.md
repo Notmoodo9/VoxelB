@@ -1,15 +1,93 @@
 # Progress
 
 ## Current state
-**Fixes after v0.19.3** (owner's list): walking artifacts, sprint, cracks,
-glowing forest, the hand and held items (v0.19.4, Windows CI green: run #112)
+**Milestone 19, part 3b** — deer, rabbits, goats, buckets and milk, leads,
+name tags (v0.19.5, Windows CI: see below)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
 
-Next: **Milestone 19, part 3b** (v0.19.5) — deer, rabbit and goat (deer
-and rabbit hides on the drying rack), the bucket and milking, leads, name
-tags with the journal page (design/mobs/passive_animals.md, build order 4).
+Next: **Milestone 20** 🎨 DESIGN — survival: health, hunger, damage,
+death, the difficulties Peaceful → Ultra and Hardcore (an interview
+first). Milestone 19's design list is done; open animal ideas stay in
+design/mobs/passive_animals.md ("Still open").
+
+---
+
+## Milestone 19, part 3b — done (2026-10-14): deer, rabbits, goats, buckets, leads, name tags (D102)
+
+### What was built
+* **Deer** in three looks: red deer (forest, old growth, dark forest),
+  white-tailed deer (birch grove) and reindeer (taiga, snowy taiga,
+  tundra). Each is born a **buck** with antlers or a **doe**; only bucks
+  drop an antler. Reindeer of both sexes have wide antlers and a pale
+  ruff. Wild (they bolt), leap 2 blocks, graze, follow berries.
+  Venison 1–3, raw deer hide 0–2. **Fawns are spotted** (the reindeer
+  calf plain); the young of every animal can have their own skin, and
+  **chicks are yellow fluff**.
+* **Rabbits** (brown: plains, meadow, forest; sandy: desert, badlands,
+  savanna; white: snowy places): wild, move in little hops, and **nibble
+  flowers for good** (poppies, tulips, daisies, clover, the meadow and
+  spring flowers …). Carrot / berries; raw rabbit 1, raw rabbit hide 0–1,
+  a rabbit's foot 10% of the time.
+* **Mountain goats** (alpine meadow; taiga, snowy taiga, tundra and
+  meadow above y 160): shaggy white with black horns, climb and jump 3
+  blocks, plan paths down drops of 6. Now and then one **rams** a player
+  standing within 2 blocks (a charge and knock-back). Wheat; mutton 1–2,
+  a goat horn sometimes. **Milk** them with a bucket.
+* **Buckets** (3 iron bars, workbench): scoop a water or lava source
+  (right click looking at it, through plants), pour it by placing;
+  **milk** cows and goats. Water, lava and milk buckets.
+* Deer hides and rabbit hides: salt them and hang them on the drying rack
+  (deer hide → leather; rabbit hide → dried rabbit hide, 4 of those craft
+  1 leather). Cooked venison and rabbit in the furnace.
+* **Leads** (4 leather and an iron bar, workbench): right click an animal to
+  put it on a lead; it follows you, stopping 3 blocks away, is pulled
+  straight along when more than 6 blocks behind (hopping up after you),
+  and the lead **snaps and drops** beyond 10. Right click a **fence**
+  while leading animals to tie them all to it; right click a tied animal
+  to take it back, a led one to let it go. A thin sagging **rope** is
+  drawn from its neck to your hand or the fence post. Several animals per
+  player.
+* **Name tags** (leather and an iron bar): right click an animal and a
+  small **journal page** asks for its name (up to 23 characters; Enter or
+  "Name it"); the **name floats over its head** within 24 blocks.
+* Leads, fence knots and names are saved (entity region files version 2;
+  older files still load).
+
+### Verified (scripted with xdotool)
+* `--mob-gallery deer / rabbit / goat`: bucks with antlers, does, the
+  reindeer, spotted fawns (screens); rabbits and goats render.
+* `--lead-test`: animals put on the lead, ropes from the hand (screen);
+  after a 6-block step a goat was pulled up to the player (screen), those
+  more than 10 blocks behind snapped (log, leads dropped); tied to a fence
+  (log, ropes to the post); after a reload the region file holds lead 2
+  and the post's position.
+* Name tag: the journal page, typing "Daisy", Enter → "Daisy" over the
+  cow (screens); still there after a reload.
+* `--use-test --give bucket`: a cow was milked, a milk bucket in the
+  inventory (player.dat).
+* With the data turned up for the test (calm rabbits; goats ram within 5
+  blocks at 50%, then restored): a rabbit ate a flower; goats rammed the
+  player twice (log).
+* Bucket scoop and pour (earlier in this part): water and lava.
+* Debug and release builds; headless tests pass.
+
+### Performance (llvmpipe test VM, release)
+* 146 animals in memory, 86 awake, 73 drawn: 820 boxes, prep 53 µs;
+  animal tick 81 µs; sim tick 100 µs average (196 max). Frame 1106 ms
+  (software GL). Ropes are 12 boxes per lead; names one text line per
+  named animal in range. The flower scan runs only for idle eaters (a
+  64 K table lookup per block, 243 blocks).
+
+### Deferred
+* Milk, antlers, goat horns, rabbit's feet have no use yet (milk:
+  drinking/cures with hunger M20; the rest crafting / magic M27).
+* Goats' rams do no damage (player health: M20). Goats are not hurt by
+  falls — animals take no fall damage at all yet.
+* Leads stay on the animal when the player goes too far to keep it
+  awake; it snaps when the animal wakes up again near nobody.
+* Names show through walls (like Minecraft's); no way to remove a name.
 
 ---
 

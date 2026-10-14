@@ -1,0 +1,53 @@
+# Mountain goats (milestone 19 part 3b, design/mobs/passive_animals.md).
+# Format: DATA_FORMAT.md "Mob files". They climb and jump 3 blocks, take
+# no harm from falls of up to 6, now and then ram a player standing within
+# 2 blocks (a knock-back, like a boar's charge) and give milk to a bucket.
+
+[model goat]
+skin_size = 64 64
+part = body,   none, 0 11 0,      -4 0 -6.5,    8 8 13,     0 0
+part = head,   head, 0 17 -6,     -2.5 0 -6,    5 5 6,      0 21
+part = muzzle, head, 0 17 -6,     -1.5 0 -8,    3 3 2,      22 21
+part = beard,  head, 0 17 -6,     -1 -3 -7,     2 3 1,      32 21
+part = horn_l, head, 0 17 -6,     -2 4 -2,      1 4 1,      38 21
+part = horn_r, head, 0 17 -6,     1 4 -2,       1 4 1,      38 21
+part = tip_l,  head, 0 17 -6,     -2 7 -1,      1 1 2,      42 21
+part = tip_r,  head, 0 17 -6,     1 7 -1,       1 1 2,      42 21
+part = ear_l,  head, 0 17 -6,     -4.5 3 -3,    2 1 1,      48 21
+part = ear_r,  head, 0 17 -6,     2.5 3 -3,     2 1 1,      48 21
+part = leg_fl, leg0, -2.5 11 -4.5, -1.5 -11 -1.5, 3 11 3,   0 32
+part = leg_fr, leg1, 2.5 11 -4.5,  -1.5 -11 -1.5, 3 11 3,   0 32
+part = leg_bl, leg1, -2.5 11 4.5,  -1.5 -11 -1.5, 3 11 3,   0 32
+part = leg_br, leg0, 2.5 11 4.5,   -1.5 -11 -1.5, 3 11 3,   0 32
+part = tail,   tail, 0 18 6.5,    -1 -3 0,      2 3 1,      12 32
+
+[mob goat]
+title = mountain goat
+health = 10
+size = 0.8 1.2
+speed = 1.4
+temper = calm
+food = wheat
+graze = 1
+jump = 3
+fall = 6
+# rams = distance (blocks), % chance a second
+rams = 2, 5
+milk = bucket, milk_bucket
+drop = mutton, 1, 2
+drop = goat_horn, 0, 1
+variant = white, goat_white, goat
+
+[spawn]
+mob = goat
+biomes = alpine_meadow
+chance = 8
+herd = 2, 4
+
+# higher slopes of the cold forests and the tundra
+[spawn]
+mob = goat
+biomes = taiga, snowy_taiga, snowy_tundra, meadow
+chance = 6
+herd = 2, 4
+altitude = 160

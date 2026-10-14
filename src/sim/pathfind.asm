@@ -7,9 +7,11 @@
 ; (no collision, no lava), and the block below holds it up (it collides) or
 ; the feet are in water (swimming). From a cell an animal can go to the 8
 ; cells around it on the same level (diagonals only if both sides are
-; open, so it never cuts corners), up 1 (a jump: room above its head
-; first) or down by up to 3. Costs: 10 straight, 14 diagonal, +6 up, +2 per
-; block down, +20 in water. Distances guide the search (octile + height).
+; open, so it never cuts corners), up by up to g_pf_climb (a jump: room
+; above its head first; 1 for most animals, 2 for deer, 3 for goats) or down
+; by up to g_pf_fall (3; goats 6). Costs: 10 straight, 14 diagonal, +6 per
+; block up, +2 per block down, +20 in water. Distances guide the search
+; (octile + height).
 ;
 ; The search stops at NODE_MAX cells or SEARCH_R blocks from the start; if
 ; the goal was not reached the path leads to the cell that got closest to
@@ -19,6 +21,7 @@
 ;   path_find() -> eax waypoints (0: nowhere to go)
 ;     in:  g_pf_start (i32 x, y, z: the feet's block), g_pf_goal (i32 x, y, z),
 ;          g_pf_height (blocks of room the body needs, 1..3),
+;          g_pf_climb (blocks it can jump up, 1..4), g_pf_fall (1..8),
 ;          g_pf_out (WP* room for PATH_MAX waypoints)
 ;     out: the waypoints (i32 x, y, z each), first step first; g_pf_nodes
 ;   g_pf_calls, g_pf_us (statistics)
@@ -26,7 +29,7 @@
 %include "macros.inc"
 %include "physics.inc"
 
-global path_find, g_pf_start, g_pf_goal, g_pf_height, g_pf_out
+global path_find, g_pf_start, g_pf_goal, g_pf_height, g_pf_out, g_pf_climb, g_pf_fall
 global g_pf_nodes, g_pf_calls, g_pf_us
 
 extern timer_elapsed_us
@@ -63,6 +66,8 @@ g_rev:          resd NODE_MAX               ; the path, goal first
 g_pf_start:     resd 3
 g_pf_goal:      resd 3
 g_pf_height:    resd 1
+g_pf_climb:     resd 1
+g_pf_fall:      resd 1
 g_pf_nodes:     resd 1
 g_heap_n:       resd 1
 g_best:         resd 1
@@ -503,26 +508,38 @@ PROC path_find, 48, rbx, rsi, rdi, r12, r13
 .not_level:
     cmp dword [LOCAL(F_D)], 4
     jae .next_dir                       ; (diagonals: no climbing or dropping)
-    ; up one: room above the head first, then the cell above the neighbour
+    ; up 1 .. g_pf_climb: room above the head for the jump, then the first
+    ; height where the neighbour can be stood on
+    mov dword [LOCAL(F_DROP)], 1
+.up:
     mov ecx, [LOCAL(F_X)]
     mov edx, [LOCAL(F_Y)]
     add edx, [rel g_pf_height]
+    add edx, [LOCAL(F_DROP)]
+    dec edx
     mov r8d, [LOCAL(F_Z)]
     call open_at
     test eax, eax
     jz .down
     mov ecx, [LOCAL(F_NX)]
     mov edx, [LOCAL(F_Y)]
-    inc edx
+    add edx, [LOCAL(F_DROP)]
     mov r8d, [LOCAL(F_NZ)]
     call stand_at
     test eax, eax
-    jz .down
-    mov r9d, r12d
-    add r9d, COST_UP
+    jnz .climbed
+    inc dword [LOCAL(F_DROP)]
+    mov eax, [LOCAL(F_DROP)]
+    cmp eax, [rel g_pf_climb]
+    jbe .up
+    jmp .down
+.climbed:
+    mov r9d, [LOCAL(F_DROP)]
+    imul r9d, r9d, COST_UP
+    add r9d, r12d
     mov ecx, [LOCAL(F_NX)]
     mov edx, [LOCAL(F_Y)]
-    inc edx
+    add edx, [LOCAL(F_DROP)]
     mov r8d, [LOCAL(F_NZ)]
     call try_move
     jmp .next_dir
@@ -544,7 +561,8 @@ PROC path_find, 48, rbx, rsi, rdi, r12, r13
     test eax, eax
     jnz .landed
     inc dword [LOCAL(F_DROP)]
-    cmp dword [LOCAL(F_DROP)], 3
+    mov eax, [LOCAL(F_DROP)]
+    cmp eax, [rel g_pf_fall]
     jbe .drop
     jmp .next_dir
 .landed:

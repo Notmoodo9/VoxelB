@@ -70,6 +70,8 @@ food = wheat
 graze = 1
 drop = beef, 1, 3
 drop = raw_leather, 0, 2
+# a bucket milks it
+milk = bucket, milk_bucket
 # variant = name, skin (assets/textures/mobs/<skin>.png), model
 variant = spotted, cow_spotted, cow
 variant = brown, cow_brown, cow

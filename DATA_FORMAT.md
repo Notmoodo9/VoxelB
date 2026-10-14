@@ -539,6 +539,8 @@ name and a title made from it ("stone_bricks" → "Stone bricks"). Records:
 | | `durability` | uses before it breaks (0 = never wears); each block a tool breaks (not ones that break at once) wears it by one |
 | | `repair` | a tool's repair material (item patterns), used at a station with `repair = 1` (the Tinker's table) |
 | | `binding` | the binding (item patterns) each repair also needs |
+| | `fill` | `<block>, <item>` (Milestone 19 part 3b, up to 16 in all items): right click with this item on that block (looked at, plants and other liquids in between are looked through) takes the block away and the item becomes `<item>` — an empty bucket scoops a water source (`fill = water, water_bucket`). In Survival one item of a stack turns; the new one goes into the inventory (dropped if there is no room) |
+| | `leaves` | the item left in hand once this one is used up (placed): a water bucket places water and leaves the bucket |
 
 An `[item]` with an existing item's name (a block's, too) changes that item.
 
@@ -614,18 +616,26 @@ animal never needs assembly. Records:
 | Record | Key | Meaning |
 |---|---|---|
 | `[model <name>]` | `skin_size` | `64 64` (every skin is 64 × 64; one texture array) |
-| | `part` | `name, motion, pivot x y z, box x y z, size w h d, u v` — one box (up to 32 per model). Pixels: 16 = one block; the model faces north (−Z), y up from the feet centre. `box` is the box's low corner from the pivot (halves allowed), `size` whole pixels, `u v` its place in the skin. `motion`: `none`, `head` (turns and tilts with the look), `leg0` / `leg1` (swing in opposite phases when walking), `tail` (sways), `coat` (part 3: still; not drawn while the animal is shorn), `wing0` / `wing1` (part 3: left and right wings, beating while off the ground) |
+| | `part` | `name, motion, pivot x y z, box x y z, size w h d, u v` — one box (up to 32 per model). Pixels: 16 = one block; the model faces north (−Z), y up from the feet centre. `box` is the box's low corner from the pivot (halves allowed), `size` whole pixels, `u v` its place in the skin. `motion`: `none`, `head` (turns and tilts with the look), `leg0` / `leg1` (swing in opposite phases when walking), `tail` (sways), `coat` (part 3: still; not drawn while the animal is shorn), `wing0` / `wing1` (part 3: left and right wings, beating while off the ground), `head_male` (part 3b: turns with the head, shown only on grown males — antlers) |
 | `[mob <name>]` | `title` | the shown name |
 | | `health` | hit points (a hit takes 1 until combat, milestone 21) |
 | | `size` | `width height` of its body box, in blocks (babies half) |
 | | `speed` | walking speed, blocks per second (running away: 2.2 ×) |
 | | `temper` | `calm` (runs when hurt), `wild` (also runs from a player within 12 blocks) or `fierce` (part 3: when hit it charges the player for up to 6 s and knocks them back; its herd stays) |
-| | `drop` | `item, min, max` — loot when it dies (up to 4; babies drop nothing). Item `coat`: the variant's coat item, not dropped by a shorn animal |
+| | `drop` | `item, min, max [, male] [, N%]` — loot when it dies (up to 4; babies drop nothing). Item `coat`: the variant's coat item, not dropped by a shorn animal. `male` (part 3b): only males drop it (antlers); `N%`: dropped at all only that often (rabbit's foot) |
 | | `shear` | `tool, min, max` (part 3): right click with the tool takes the coat of a grown-up (min–max of its variant's coat item); the coat grows back when it grazes. The tool wears in Survival |
 | | `glide` | fastest fall in blocks per second (part 3: chickens flutter down; their `wing0`/`wing1` parts beat while off the ground) |
 | | `lays` | `item, min, max` (part 3): a grown-up drops the item every min–max seconds (eggs) |
 | | `food` | items (up to 4): it follows a player holding one; feeding a grown-up makes it look for a mate, feeding a baby helps it grow (Milestone 19 part 2) |
 | | `graze` | `1`: it eats grass (the grass block turns to dirt for 1–3 minutes) |
+| | `sexes` | `1` (part 3b): each animal is born male or female (half each; saved); males show `head_male` parts and drop `male` loot |
+| | `jump` | blocks it can jump up (part 3b, 1–4, default 1: a step; deer 2, goats 3); its paths may climb that high |
+| | `fall` | blocks its paths may drop down (part 3b, 1–8, default 3; goats 6) |
+| | `hops` | `1` (part 3b): it moves in little hops (rabbits) |
+| | `eats` | block name patterns (part 3b, up to 8 animals): now and then it walks to such a block within 4 blocks and eats it — the block is gone for good (rabbits and flowers) |
+| | `rams` | `distance, percent` (part 3b): a player standing within `distance` blocks gets rammed (a charge and knock-back, like a boar's) with `percent` % chance a second |
+| | `milk` | `item, item` (part 3b): right click on a grown-up with the first item (a bucket) turns it into the second (a milk bucket) |
+| | `baby_skin` | `variant, skin` (part 3b, after the `variant` line): the young of that look wear this skin (spotted fawns, yellow chicks) |
 | | `variant` | `name, skin, model [, coat]` — a look (`assets/textures/mobs/<skin>.png`); `coat` is the item its coat gives (sheep: its wool) |
 | `[spawn]` | `mob` | the animal |
 | | `variant` | one of its variants (default its first) |
@@ -633,11 +643,20 @@ animal never needs assembly. Records:
 | | `chance` | % of those biomes' chunk columns that get a herd when first generated (the rules of a biome add up; above 100 every column) |
 | | `herd` | `min, max` animals (1–16) |
 | | `mix` | `variant, percent` (part 3, up to 4): that many % of the herd's animals get this other look of the same animal (a few black sheep in a white flock) |
+| | `altitude` | the lowest ground (y) for this rule's herds (part 3b: goats on the higher slopes) |
 
 Skin layout of a box with size w × h × d at (u, v), in pixels: top
 (u+d, v) w × d, bottom (u+d+w, v) w × d, west side (u, v+d) d × h, front
 (−Z) (u+d, v+d) w × h, east side (u+d+w, v+d) d × h, back (u+2d+w, v+d)
-w × h — `tools/texgen/mobgen.py` paints skins from the same parts.
+w × h — `tools/texgen/mobgen.py` paints skins from the same parts (and
+`lead_rope`, the texture of the leads, part 3b).
+
+Leads and name tags (part 3b) are items the game knows by name: `lead`
+(right click on an animal: it follows the player, pulled along when more
+than 6 blocks behind, the lead snaps and drops beyond 10; right click on a
+fence ties every animal the player leads within 10 blocks to it) and
+`name_tag` (right click on an animal opens a page to type its name, up to
+23 characters, shown over its head within 24 blocks).
 
 ## Saved worlds (`saves/<name>/`, Milestone 17)
 
@@ -702,12 +721,15 @@ Binary, little endian, 4096-byte sectors. One file holds 32 × 32 columns
 The animals, by region of 32 × 32 chunk columns (blocks `rx * 1024` …
 `rx * 1024 + 1023`). Binary, little endian:
 
-* Header (144 bytes): `VXEN`, u32 version (1), u32 animal count, u32 0, then
+* Header (144 bytes): `VXEN`, u32 version (2), u32 animal count, u32 0, then
   128 bytes: a bit per column (`(cx & 31) + (cz & 31) * 32`), set once the
   column had its herd roll (it never gets another from generation).
-* Then 64 bytes per animal: f64 x, y, z (feet centre), f32 yaw, u16 health,
-  u16 flags (1 = baby, 2 = shorn: part 3), u32 age in ticks, 24 bytes `mob:variant`
-  (zero-padded), u32 herd id (0 = none; part 2 — files from part 1 have 0
-  there). An unknown `mob:variant` (a removed data file) is dropped with a
-  warning.
+* Then 128 bytes per animal: f64 x, y, z (feet centre), f32 yaw, u16 health,
+  u16 flags (1 = baby, 2 = shorn: part 3, 4 = male: part 3b), u32 age in
+  ticks, 24 bytes `mob:variant` (zero-padded), u32 herd id (0 = none; part
+  2 — files from part 1 have 0 there); then (part 3b) u32 lead (0 none, 1
+  held by the player, 2 tied to a fence), i32 × 3 the fence post, 24 bytes
+  its name (zero-padded), 20 bytes 0. Version 1 files (64-byte records:
+  the first 64 bytes of these) still load. An unknown `mob:variant` (a
+  removed data file) is dropped with a warning.
 

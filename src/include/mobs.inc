@@ -24,6 +24,7 @@
 %define MOTION_COAT     5               ; part 3: still; hidden while sheared (wool)
 %define MOTION_WING0    6               ; part 3: flaps in the air (left wing)
 %define MOTION_WING1    7               ; part 3: flaps in the air (right wing)
+%define MOTION_MALE     8               ; part 3b: turns with the head, males only (antlers)
 
 ; tempers
 %define TEMPER_CALM     0               ; wanders, runs when hurt
@@ -32,6 +33,7 @@
 
 %define DROP_COAT       0xFFFF          ; drop item: the variant's coat (its wool)
 %define MAX_MIX         4               ; spawn: other looks mixed into a herd
+%define MAX_EAT_LISTS   8               ; mobs with `eats` (a bit each in g_block_eat)
 
 ; a box of a model, in pixels (16 = a block); the model faces north (-Z)
 struc MPART
@@ -64,6 +66,7 @@ struc MOB
     .drop_item  resw MAX_MOB_DROPS
     .drop_min   resb MAX_MOB_DROPS
     .drop_max   resb MAX_MOB_DROPS
+    .drop_pct   resb MAX_MOB_DROPS      ; part 3b: % chance it drops at all (100)
     .foods      resd 1                  ; part 2: what it follows and eats to breed
     .food       resw MAX_MOB_FOODS
     .graze      resd 1                  ; 1: eats grass (grass turns to dirt a while)
@@ -76,6 +79,18 @@ struc MOB
     .lay_pad    resw 1
     .lay_min    resd 1                  ; ticks between two
     .lay_max    resd 1
+    ; part 3b
+    .sexes      resd 1                  ; 1: born male or female (EF_MALE)
+    .drop_male  resd 1                  ; bit per drop: males only
+    .jump       resd 1                  ; f32 blocks it can jump up (1: a step)
+    .jump_v     resd 1                  ; f32 the jump's speed (blocks per tick)
+    .fall       resd 1                  ; blocks its paths may drop (3)
+    .hops       resd 1                  ; 1: moves in hops (rabbits)
+    .eats       resd 1                  ; bit in g_block_eat of the blocks it eats (0 none)
+    .rams_dist  resd 1                  ; f32 rams a player this close (0: never)
+    .rams_pct   resd 1                  ; f32 % chance per second
+    .milk_from  resw 1                  ; item that milks it (a bucket; 0 none)
+    .milk_to    resw 1                  ; what that item becomes
 endstruc
 
 struc VARIANT
@@ -84,7 +99,7 @@ struc VARIANT
     .mob        resd 1
     .model      resd 1
     .coat       resd 1                  ; part 3: item its coat gives (0: none)
-    .coat_pad   resd 1
+    .baby_layer resd 1                  ; part 3b: skin layer of its young (0: the same)
 endstruc
 
 struc SPAWN
@@ -96,11 +111,13 @@ struc SPAWN
     .mixes      resd 1                  ; part 3: other looks in the herd
     .mix_var    resd MAX_MIX            ; variant
     .mix_pct    resd MAX_MIX            ; f32 % of the animals with that look
+    .altitude   resd 1                  ; part 3b: lowest ground for a herd (y)
 endstruc
 
 %ifndef MOBS_IMPL
 extern mobs_load
 extern g_models, g_model_count, g_parts, g_part_count
 extern g_mobs, g_mob_count, g_variants, g_variant_count, g_spawns, g_spawn_count
+extern g_block_eat, g_baby_skins, g_baby_skin_count
 %endif
 %endif

@@ -33,6 +33,7 @@ global g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us, g_sim_time
 extern player_load, player_spawn, player_tick, player_toggle_fly, player_fill
 extern edit_request, edit_tick, fluid_tick
 extern inv_init, inv_packet, inv_selected_block, inv_used_selected, inv_flush
+extern use_item, lead_tie, behave_name
 extern inv_place_block, inv_used_slot, inv_swap_hands, inv_drag
 extern dig_reset, dig_tick, drops_reset, drops_tick, g_world_mode
 extern craft_reset, craft_window, craft_recipe, craft_tick, furnace_tick
@@ -216,6 +217,24 @@ PROC sim_tick, 16, rbx, rsi, rdi
     call behave_interact                ; (milestone 19 part 2: feeding)
     jmp .packet
 .not_interact:
+    cmp eax, PKT_C_USE
+    jne .not_use
+    lea rcx, [rel g_input]
+    call use_item                       ; (part 3b: a bucket scoops a liquid)
+    jmp .packet
+.not_use:
+    cmp eax, PKT_C_TIE
+    jne .not_tie
+    lea rcx, [rel g_pkt + PKT.data]
+    call lead_tie                       ; (part 3b: led animals to a fence)
+    jmp .packet
+.not_tie:
+    cmp eax, PKT_C_NAME
+    jne .not_name
+    lea rcx, [rel g_pkt + PKT.data]
+    call behave_name                    ; (part 3b: a name tag)
+    jmp .packet
+.not_name:
     cmp eax, PKT_C_TOGGLE_FLY
     jne .packet                         ; (unknown packets are ignored)
     call player_toggle_fly

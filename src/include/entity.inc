@@ -23,6 +23,7 @@
 %define EF_BUMPED       256             ; walked into something last tick
 %define EF_SLEEP        512             ; lying down for the night
 %define EF_SHEARED      1024            ; part 3: its coat was shorn (saved)
+%define EF_MALE         2048            ; part 3b: a male (bucks: antlers; saved)
 
 ; AI states
 %define AI_IDLE         0
@@ -33,12 +34,18 @@
 %define AI_GRAZE        5               ; eating grass
 %define AI_SLEEP        6
 %define AI_CHARGE       7               ; part 3: a fierce animal after the player
+%define AI_EAT          8               ; part 3b: to a block it eats (a flower), then eats it
 
 %define PATH_MAX        16              ; waypoints kept (pathfind.asm)
 %define WP_BYTES        12              ; i32 x, y, z
 %define GROW_TICKS      24000           ; babies grow up in 20 minutes
 %define LOVE_TICKS      600             ; fed: looks for a mate for 30 s
 %define BREED_COOLDOWN  6000            ; 5 minutes between babies
+
+%define LEASH_NONE      0
+%define LEASH_PLAYER    1               ; held by the player
+%define LEASH_KNOT      2               ; tied to a fence post (EntT.knot)
+%define NAME_MAX        ENT_NAME_MAX    ; a name tag: 23 characters + 0 (packet.inc)
 
 struc EntT
     .pos        resq 3                  ; f64 feet centre
@@ -69,7 +76,11 @@ struc EntT
     .path_len   resb 1
     .path_i     resb 1                  ; the next waypoint
     .lay        resd 1                  ; part 3: ticks until it lays (0: not counting yet)
-    .pad        resb 68
+    .food       resd 3                  ; part 3b: the block it goes to eat (i32 x, y, z)
+    .leash      resd 1                  ; part 3b: LEASH_* (on a lead: who holds it)
+    .knot       resd 3                  ; the fence it is tied to (i32 x, y, z)
+    .name       resb NAME_MAX           ; its name tag (0-terminated; empty: none)
+    .pad        resb 16
 endstruc                                ; 192 bytes
 
 ; an entity region: 32 x 32 columns, saved as overworld\entities\e.<rx>.<rz>.vxe
@@ -83,10 +94,11 @@ endstruc
 
 %ifndef ENTITIES_IMPL
 extern ents_reset, ents_tick, ents_attack, ent_new, ent_remove, g_ents, g_ent_count
-extern g_ent_awake, g_ent_tick_us, g_ent_sent, g_paths
+extern g_ent_awake, g_ent_tick_us, g_ent_sent, g_paths, ent_send_name
 %endif
 %ifndef BEHAVE_IMPL
 extern behave_reset, behave_tick, behave, behave_hurt, behave_interact
+extern lead_tie, lead_drop, g_lead_item, behave_name
 extern g_herd_count, g_regrow_count
 %endif
 %ifndef ENT_STORE_IMPL

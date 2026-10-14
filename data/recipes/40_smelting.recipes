@@ -75,3 +75,13 @@ seconds = 8
 input = chicken
 result = cooked_chicken
 seconds = 8
+
+[smelt cooked_venison]
+input = venison
+result = cooked_venison
+seconds = 8
+
+[smelt cooked_rabbit]
+input = rabbit
+result = cooked_rabbit
+seconds = 8

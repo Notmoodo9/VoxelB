@@ -319,6 +319,141 @@ class Chicken:
         return (*shade(pal, light + (n - 0.5) * 0.6), 1.0)
 
 
+class Deer:
+    """Deer, reindeer and their young: a coat with a pale belly, rump and
+    throat, a dark muzzle, antlers; `spots` paints a fawn's white dapples."""
+    def __init__(self, coat, belly, muzzle="#2a2220", antler="#d8c8a4", hoof="#2a221c",
+                 tail=None, spots=False, ruff=None, shaggy=False, seed=1):
+        self.coat = ramp(coat, 6, 0.10)
+        self.belly = ramp(belly, 6, 0.08)
+        self.muzzle = ramp(muzzle, 4, 0.10)
+        self.antler = ramp(antler, 5, 0.12)
+        self.hoof = hexrgb(hoof)
+        self.tail = ramp(tail, 6, 0.08) if tail else self.belly
+        self.spots = spots
+        self.ruff = ramp(ruff, 6, 0.08) if ruff else None
+        self.shaggy = shaggy
+        self.seed = seed
+
+    def __call__(self, part, face, p, s, t):
+        name = part["name"]
+        light = {"top": 0.64, "bottom": 0.3, "front": 0.52, "back": 0.5,
+                 "west": 0.52, "east": 0.52}[face]
+        if name[:4] in ("beam", "tine", "brow") or name.startswith("top_"):
+            ridge = 0.1 * np.sin(p[1] * 3.1 + p[0])
+            return (*shade(self.antler, 0.62 + ridge - 0.2 * t), 1.0)
+        if name.startswith("leg") and p[1] < 1.6:
+            return (*self.hoof, 1.0)
+        if name == "snout":
+            if face == "front" and t > 0.3:
+                return (*shade(self.muzzle, 0.4 + 0.2 * (1 - t)), 1.0)
+            return (*shade(self.coat, light - 0.05), 1.0)
+        if name == "head" and face == "front" and 0.3 < t < 0.55 and (s < 0.2 or s > 0.8):
+            return (0.05, 0.04, 0.04, 1.0)                                  # eyes
+        if name == "head" and face in ("west", "east") and 0.25 < t < 0.5 and \
+                ((face == "west" and s < 0.3) or (face == "east" and s > 0.7)):
+            return (0.05, 0.04, 0.04, 1.0)                                  # eyes, from the side
+        if name.startswith("ear") and face == "front":
+            return (*shade(self.belly, 0.45), 1.0)
+        pal = self.coat
+        if name == "tail":
+            pal = self.tail
+            if face == "back" or face == "bottom":
+                pal = self.belly
+        elif name == "ruff":
+            pal = self.ruff if self.ruff is not None else self.belly
+        elif name == "body" and (p[1] < 14.5 or (face == "back" and abs(p[0]) < 2.6 and p[1] < 20)):
+            pal = self.belly                                                # belly and rump patch
+        elif name == "neck" and face == "front" and t > 0.45:
+            pal = self.belly                                                # the throat
+        n = fbm(p, 3.0, self.seed, 2)
+        if self.shaggy:
+            q = np.array([p[0] * 1.8, p[1] * 0.3, p[2] * 1.8])
+            n = 0.4 * n + 0.8 * (vnoise(q, 1.0, self.seed + 5) - 0.5) + 0.5
+        if self.spots and name == "body" and pal is self.coat and p[1] > 15.5 and \
+                vnoise(p * 1.3, 1.0, self.seed + 31) > 0.7:
+            return (*shade(self.belly, light + 0.12), 1.0)                  # a fawn's dapples
+        if name == "body" and face == "top" and pal is self.coat and abs(p[0]) < 0.6:
+            n -= 0.25                                                       # a dark line down the back
+        return (*shade(pal, light + (n - 0.5) * 0.55), 1.0)
+
+
+class Rabbit:
+    def __init__(self, coat, belly, ear="#e8b0a8", tail="#f4f2ec", seed=1):
+        self.coat = ramp(coat, 6, 0.10)
+        self.belly = ramp(belly, 6, 0.08)
+        self.ear = ramp(ear, 4, 0.08)
+        self.tail = ramp(tail, 4, 0.06)
+        self.seed = seed
+
+    def __call__(self, part, face, p, s, t):
+        name = part["name"]
+        light = {"top": 0.66, "bottom": 0.32, "front": 0.52, "back": 0.5,
+                 "west": 0.52, "east": 0.52}[face]
+        if name == "tail":
+            return (*shade(self.tail, light + 0.1), 1.0)
+        if name.startswith("ear") and face == "front":
+            return (*shade(self.ear, 0.55), 1.0)
+        if name == "head" and face == "front":
+            if 0.25 < t < 0.5 and (s < 0.25 or s > 0.75):
+                return (0.05, 0.04, 0.04, 1.0)                              # eyes
+            if t > 0.65 and 0.35 < s < 0.65:
+                return (*shade(self.ear, 0.4), 1.0)                         # the nose
+        if name == "head" and face in ("west", "east") and 0.25 < t < 0.5 and \
+                ((face == "west" and s < 0.35) or (face == "east" and s > 0.65)):
+            return (0.05, 0.04, 0.04, 1.0)
+        pal = self.coat
+        if name == "body" and (face == "bottom" or p[1] < 4.2):
+            pal = self.belly
+        n = fbm(p * 1.6, 2.0, self.seed, 2)
+        return (*shade(pal, light + (n - 0.5) * 0.55), 1.0)
+
+
+class Goat:
+    """The white mountain goat: a shaggy coat, black horns, hooves and nose."""
+    def __init__(self, coat, horn="#2a2624", hoof="#262220", nose="#3a3230", seed=1):
+        self.coat = ramp(coat, 6, 0.09)
+        self.horn = ramp(horn, 4, 0.12)
+        self.hoof = hexrgb(hoof)
+        self.nose = ramp(nose, 4, 0.10)
+        self.seed = seed
+
+    def __call__(self, part, face, p, s, t):
+        name = part["name"]
+        light = {"top": 0.68, "bottom": 0.34, "front": 0.54, "back": 0.52,
+                 "west": 0.54, "east": 0.54}[face]
+        if name.startswith("horn") or name.startswith("tip"):
+            ridge = 0.12 * np.sin(p[1] * 3.4)
+            return (*shade(self.horn, 0.55 + ridge), 1.0)
+        if name.startswith("leg") and p[1] < 1.6:
+            return (*self.hoof, 1.0)
+        if name == "muzzle" and face == "front" and t > 0.4:
+            return (*shade(self.nose, 0.5), 1.0)
+        if name == "head" and face in ("west", "east") and 0.3 < t < 0.5 and \
+                ((face == "west" and s < 0.35) or (face == "east" and s > 0.65)):
+            return (0.12, 0.09, 0.04, 1.0)                                  # amber-dark eyes
+        if name == "head" and face == "front" and 0.3 < t < 0.5 and (s < 0.2 or s > 0.8):
+            return (0.12, 0.09, 0.04, 1.0)
+        n = fbm(p, 2.5, self.seed, 2)
+        if name in ("body", "beard") or (name.startswith("leg") and p[1] > 6):
+            # long shaggy hair: streaks hanging down
+            q = np.array([p[0] * 1.9, p[1] * 0.28, p[2] * 1.9])
+            n = 0.35 * n + 0.9 * (vnoise(q, 1.0, self.seed + 5) - 0.5) + 0.5
+        return (*shade(self.coat, light + (n - 0.5) * 0.5), 1.0)
+
+
+class Chick(Chicken):
+    """A chick: soft yellow fluff all over, small dark eyes."""
+    def __init__(self, fluff, wing=None, seed=1):
+        super().__init__(fluff, wing=wing, comb="#f0c860", beak="#e89a2a", leg="#e8a838",
+                         seed=seed)
+
+    def __call__(self, part, face, p, s, t):
+        if part["name"] in ("comb", "wattle"):
+            return super().__call__({**part, "name": "body"}, face, p, s, t)
+        return super().__call__(part, face, p, s, t)
+
+
 SKINS = {
     # black-and-white spotted, plains and meadows
     "cow_spotted": ("cow", Cow("#f2efe6", dark="#26232a", spots=0.42, muzzle="#e3a79c",
@@ -351,6 +486,25 @@ SKINS = {
                                             seed=83)),
     "chicken_jungle": ("chicken", Chicken("#9a3e1e", wing="#5a2a16", tail="#1e5a3a",
                                           neck="#e8902a", seed=85)),
+    # deer: the red deer of the forests, the white-tailed deer of the birch
+    # groves, the reindeer of the cold forests and tundra; fawns spotted
+    "deer_red": ("deer", Deer("#9a5430", belly="#e0c8a4", tail="#9a5430", seed=91)),
+    "deer_whitetail": ("deer", Deer("#a8784a", belly="#efe6d6", tail="#efe8dc", seed=93)),
+    "deer_reindeer": ("reindeer", Deer("#7a6654", belly="#e4dccc", ruff="#ece6da",
+                                       antler="#c8b48c", shaggy=True, seed=95)),
+    "fawn_red": ("deer", Deer("#b0643a", belly="#f0e2c8", tail="#b0643a", spots=True, seed=97)),
+    "fawn_whitetail": ("deer", Deer("#b88a5a", belly="#f4ecdc", tail="#f4ece0", spots=True,
+                                    seed=99)),
+    "fawn_reindeer": ("reindeer", Deer("#5e4e40", belly="#9a8a78", ruff="#a89a88", seed=101)),
+    # rabbits: brown, sandy, white
+    "rabbit_brown": ("rabbit", Rabbit("#8a6a4a", belly="#d8c4a8", seed=111)),
+    "rabbit_sandy": ("rabbit", Rabbit("#d8b47c", belly="#f0e2c4", seed=113)),
+    "rabbit_white": ("rabbit", Rabbit("#f2f0ea", belly="#e6e2da", ear="#f0b8b0", seed=115)),
+    # the mountain goat
+    "goat_white": ("goat", Goat("#f0ece0", seed=121)),
+    # chicks: yellow fluff (the jungle fowl's chick striped brown)
+    "chick": ("chicken", Chick("#f6dc5a", wing="#f0cc48", seed=131)),
+    "chick_jungle": ("chicken", Chick("#c8a050", wing="#8a6030", seed=133)),
 }
 
 
@@ -393,15 +547,32 @@ def save(name, img):
     Image.fromarray(a, "RGBA").save(os.path.join(OUT, name + ".png"))
 
 
+def rope():
+    """The lead's rope (drawn as thin boxes, src/render/mob_render.asm): a
+    twisted brown cord over the whole 64 x 64 layer, so every face of any
+    box finds rope wherever it samples."""
+    pal = ramp("#8a6038", 6, 0.12)
+    img = np.zeros((64, 64, 4))
+    for y in range(64):
+        for x in range(64):
+            k = 0.45 + 0.35 * np.sin((x + y) * 1.6) + 0.1 * (hash3(x, y, 0, 7) - 0.5)
+            img[y, x] = (*shade(pal, k), 1.0)
+    return img
+
+
 def main(args):
     if "--list" in args:
-        print("\n".join(sorted(SKINS)))
+        print("\n".join(sorted(SKINS) + ["lead_rope"]))
         return
     models = load_models()
     for mname, model in models.items():
         check_layout(mname, model)
-    names = [a for a in args if not a.startswith("-")] or sorted(SKINS)
+    names = [a for a in args if not a.startswith("-")] or sorted(SKINS) + ["lead_rope"]
     for name in names:
+        if name == "lead_rope":
+            save(name, rope())
+            print("skin", name)
+            continue
         model_name, painter = SKINS[name]
         save(name, paint(models[model_name], painter))
         print("skin", name)

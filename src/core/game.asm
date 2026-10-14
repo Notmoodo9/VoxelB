@@ -35,6 +35,8 @@ extern stream_update, stream_reset, lod_update, lod_reset, fluid_reset, edit_res
 extern thumb_update, thumb_reset, menu_screen, g_show_hud
 extern inv_screen_open, inv_screen_close, inv_screen_frame, inv_screen_typing
 extern client_input_idle, held_draw, g_cwin, g_cwin_event
+extern name_screen_open, name_screen_frame, names_draw, g_name_request
+extern use_test_frame
 extern g_world_mode, g_world_difficulty, g_world_hardcore
 extern g_new_mode, g_new_difficulty, g_new_hardcore
 extern renderer_frame, hud_draw, overlay_draw, menu_frame, menu_open, menu_back
@@ -81,6 +83,7 @@ g_game_state:   resd 1
 g_game_paused:  resd 1
 g_save_allowed: resd 1                  ; not --nosave
 g_inv_open:     resd 1                  ; the inventory screen is open
+g_name_open:    resd 1                  ; the name tag page is open (part 3b)
 g_default_seed: resd 1
 g_menu_loaded:  resd 1
 g_fly_n:        resd 1
@@ -502,6 +505,8 @@ PROC game_frame, 16, rbx, rsi, rdi
     jne .menu_keys
     cmp dword [rel g_game_paused], 0
     jne .paused_keys
+    cmp dword [rel g_name_open], 0
+    jne .name_keys
     cmp dword [rel g_inv_open], 0
     jne .inv_keys
     cmp dword [LOCAL(0)], 0
@@ -528,6 +533,12 @@ PROC game_frame, 16, rbx, rsi, rdi
     jz .keys_done
 .inv_close:
     call close_inventory
+    jmp .keys_done
+.name_keys:
+    ; Esc closes the name tag page (typing goes to its field)
+    cmp dword [LOCAL(0)], 0
+    je .keys_done
+    call close_name
     jmp .keys_done
 .click_capture:
     cmp dword [rel g_mouse_captured], 0
@@ -579,11 +590,18 @@ PROC game_frame, 16, rbx, rsi, rdi
     cmp dword [rel g_game_paused], 0
     jne .stream
     cmp dword [rel g_inv_open], 0
+    jne .idle_input
+    cmp dword [rel g_name_open], 0
     je .live_input
+.idle_input:
     call client_input_idle              ; (the inventory is open: stand still)
     jmp .sim
 .live_input:
     call client_input
+    call use_test_frame                ; (--use-test)
+    cmp dword [rel g_name_request], 0
+    je .sim
+    call open_name                      ; (a name tag used on an animal)
 .sim:
     call sim_update
     call client_view
@@ -606,6 +624,9 @@ PROC game_frame, 16, rbx, rsi, rdi
     je .inventory
     mov ecx, esi
     mov edx, edi
+    call names_draw                     ; named animals (part 3b)
+    mov ecx, esi
+    mov edx, edi
     call held_draw                      ; the item in hand
     cmp dword [rel g_inv_open], 0
     jne .inventory                      ; (the inventory screen shows the hotbar)
@@ -613,6 +634,16 @@ PROC game_frame, 16, rbx, rsi, rdi
     mov edx, edi
     call hud_draw
 .inventory:
+    cmp dword [rel g_name_open], 0
+    je .no_name_page
+    mov ecx, esi
+    mov edx, edi
+    call name_screen_frame
+    test eax, eax
+    jz .overlay
+    call close_name
+    jmp .overlay
+.no_name_page:
     cmp dword [rel g_inv_open], 0
     je .overlay
     mov ecx, esi
@@ -684,6 +715,29 @@ PROC window_events, 0
     cmp dword [rel g_inv_open], 0
     je .done
     call close_inventory
+.done:
+    RETURN
+ENDPROC
+
+; open_name / close_name — the name tag page (part 3b): the mouse is free
+; while it is open
+PROC open_name, 0
+    mov ecx, [rel g_name_request]
+    mov dword [rel g_name_request], 0
+    dec ecx
+    call name_screen_open
+    mov dword [rel g_name_open], 1
+    xor ecx, ecx
+    call input_set_capture
+    RETURN
+ENDPROC
+
+PROC close_name, 0
+    mov dword [rel g_name_open], 0
+    cmp dword [rel g_window_active], 0
+    je .done
+    mov ecx, 1
+    call input_set_capture
 .done:
     RETURN
 ENDPROC

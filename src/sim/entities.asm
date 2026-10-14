@@ -38,7 +38,7 @@
 %include "entity.inc"
 
 global ents_reset, ents_tick, ents_attack, ent_new, ent_remove, g_ents, g_ent_count
-global g_ent_awake, g_ent_tick_us, g_ent_sent, g_paths
+global g_ent_awake, g_ent_tick_us, g_ent_sent, g_paths, ent_send_name
 
 extern pkt_send, g_to_client, drops_spawn, sincosf, atan2f, timer_elapsed_us
 extern g_pl_pos, g_pl_eye, g_pl_reach
@@ -103,6 +103,7 @@ g_move:         resq 3
 g_res:          resq 3
 g_lower:        resq 6
 g_out:          resb ENT_PKT_size
+g_name_out:     resb NAME_PKT_size
 alignb 4
 g_ent_count:    resd 1
 g_ent_awake:    resd 1                  ; this tick
@@ -285,6 +286,17 @@ PROC ent_new, 16, rbx, rsi, rdi, r12, r13
     and edi, EF_BABY
     or edi, EF_ACTIVE | EF_DIRTY
     mov [rbx + EntT.flags], edi
+    ; born male or female (animals with `sexes`; a saved one gets its own back)
+    movzx eax, word [rbx + EntT.mob]
+    imul eax, eax, MOB_size
+    lea rcx, [rel g_mobs]
+    cmp dword [rcx + rax + MOB.sexes], 0
+    je .sexed
+    call rand
+    test eax, 0x100
+    jz .sexed
+    or dword [rbx + EntT.flags], EF_MALE
+.sexed:
     ; a random heading, a short rest first
     call rand01
     cvtsd2ss xmm0, xmm0
@@ -382,15 +394,62 @@ PROC send, 0
     jz .not_shorn
     or eax, EPF_SHEARED
 .not_shorn:
+    test ecx, EF_MALE
+    jz .not_male
+    or eax, EPF_MALE
+.not_male:
+    ; on a lead: who holds it (part 3b)
+    xor edx, edx
+    mov [rel g_out + ENT_PKT.knot], edx
+    mov [rel g_out + ENT_PKT.knot + 4], edx
+    mov [rel g_out + ENT_PKT.knot + 8], edx
+    cmp dword [rbx + EntT.leash], LEASH_PLAYER
+    jne .not_led
+    or eax, EPF_LEASH
+.not_led:
+    cmp dword [rbx + EntT.leash], LEASH_KNOT
+    jne .not_tied
+    or eax, EPF_KNOT
+    mov edx, [rbx + EntT.knot]
+    mov [rel g_out + ENT_PKT.knot], edx
+    mov edx, [rbx + EntT.knot + 4]
+    mov [rel g_out + ENT_PKT.knot + 4], edx
+    mov edx, [rbx + EntT.knot + 8]
+    mov [rel g_out + ENT_PKT.knot + 8], edx
+.not_tied:
     mov [rel g_out + ENT_PKT.flags], ax
-    test ecx, EF_SENT
-    jnz .known
-    or dword [rbx + EntT.flags], EF_SENT
-    inc dword [rel g_ent_sent]
-.known:
     lea rcx, [rel g_to_client]
     lea r8, [rel g_out]
     INVOKE pkt_send, rcx, PKT_S_ENTITY, r8, ENT_PKT_size
+    test dword [rbx + EntT.flags], EF_SENT
+    jnz .known
+    or dword [rbx + EntT.flags], EF_SENT
+    inc dword [rel g_ent_sent]
+    call ent_send_name                  ; (new to the client: its name too)
+.known:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; ent_send_name — PKT_S_ENTITY_NAME for entity rbx (id esi), if it has a
+; name (part 3b)   clobbers: volatile
+; -----------------------------------------------------------------------------
+PROC ent_send_name, 0
+    cmp byte [rbx + EntT.name], 0
+    je .done
+    mov [rel g_name_out + NAME_PKT.id], esi
+    xor ecx, ecx
+    lea rdx, [rel g_name_out + NAME_PKT.name]
+.copy:
+    mov rax, [rbx + EntT.name + rcx]
+    mov [rdx + rcx], rax
+    add ecx, 8
+    cmp ecx, NAME_MAX
+    jb .copy
+    lea rcx, [rel g_to_client]
+    lea r8, [rel g_name_out]
+    INVOKE pkt_send, rcx, PKT_S_ENTITY_NAME, r8, NAME_PKT_size
+.done:
     RETURN
 ENDPROC
 
@@ -565,6 +624,18 @@ PROC die, 32, rdi, r12
 .drop:
     cmp edi, [r12 + MOB.drops]
     jae .gone
+    bt dword [r12 + MOB.drop_male], edi
+    jnc .any_sex
+    test dword [rbx + EntT.flags], EF_MALE
+    jz .next                            ; (antlers: bucks only)
+.any_sex:
+    cmp byte [r12 + MOB.drop_pct + rdi], 100
+    jae .sure
+    mov ecx, 100
+    call rand_below
+    cmp al, [r12 + MOB.drop_pct + rdi]
+    jae .next                           ; (a rare drop: not this time)
+.sure:
     movzx ecx, byte [r12 + MOB.drop_max + rdi]
     movzx eax, byte [r12 + MOB.drop_min + rdi]
     sub ecx, eax
@@ -594,6 +665,7 @@ PROC die, 32, rdi, r12
     inc edi
     jmp .drop
 .gone:
+    call lead_drop                      ; (on a lead: the lead drops too)
     mov ecx, esi
     call ent_remove
     RETURN

@@ -48,7 +48,7 @@ global inv_init, inv_packet, inv_selected_block, inv_used_selected, inv_add
 global inv_wear_selected, inv_add_dur, inv_place_block, inv_used_slot
 global inv_swap_hands, inv_drag
 global inv_flush, g_inv, g_inv_sel, inv_mark, inv_stack_of, inv_room
-global inv_cursor_back
+global inv_cursor_back, inv_turn_slot
 
 extern craft_update, craft_take, g_win_grid, g_win_slots, g_win_kind
 extern smelt_find, fuel_ticks, g_station_blast, g_win_station
@@ -336,12 +336,55 @@ PROC inv_used_slot, 0
     SLOT_PTR rax, rcx
     cmp word [rax + SLOT_COUNT], 0
     je .done
+    ; an item that leaves something (a bucket of water: the bucket)
+    movzx edx, word [rax + SLOT_ITEM]
+    lea r8, [rel g_item_leaves]
+    movzx edx, word [r8 + rdx * 2]
+    test edx, edx
+    jz .plain
+    call inv_turn_slot
+    RETURN
+.plain:
     dec word [rax + SLOT_COUNT]
     jnz .marked
     mov qword [rax], 0
 .marked:
     call mark
 .done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; inv_turn_slot — one of slot ecx's items becomes item edx (a bucket filled,
+; a bucket of water poured): a single item changes in place, otherwise one
+; is taken and the new one added to the slots. In Creative the slot keeps
+; its item and the new one is added (milestone 19 part 3b).
+;   out: eax = 1 if the new item did not fit (the caller drops it)
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC inv_turn_slot, 0, rbx, rsi
+    mov ebx, ecx
+    mov esi, edx
+    cmp dword [rel g_world_mode], MODE_CREATIVE
+    je .add
+    SLOT_PTR rax, rbx
+    cmp word [rax + SLOT_COUNT], 1
+    ja .split
+    mov word [rax + SLOT_ITEM], si
+    mov word [rax + SLOT_COUNT], 1
+    mov word [rax + SLOT_DUR], 0
+    mov ecx, ebx
+    call mark
+    xor eax, eax
+    RETURN
+.split:
+    dec word [rax + SLOT_COUNT]
+    mov ecx, ebx
+    call mark
+.add:
+    mov ecx, esi
+    mov edx, 1
+    call inv_add
     RETURN
 ENDPROC
 

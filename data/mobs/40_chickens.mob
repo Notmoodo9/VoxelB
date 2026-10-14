@@ -29,6 +29,10 @@ lays = egg, 300, 600
 variant = white, chicken_white, chicken
 variant = speckled, chicken_speckled, chicken
 variant = jungle, chicken_jungle, chicken
+# the young: chicks in yellow fluff
+baby_skin = white, chick
+baby_skin = speckled, chick
+baby_skin = jungle, chick_jungle
 
 [spawn]
 mob = chicken

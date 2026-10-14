@@ -14,12 +14,17 @@
 ;                   drop = item, min, max (up to 4; item "coat": the
 ;                   variant's coat), food, graze, shear = tool, min, max,
 ;                   glide = fastest fall (blocks per second),
-;                   lays = item, min, max (seconds),
+;                   lays = item, min, max (seconds), sexes, jump (blocks),
+;                   fall (blocks), hops, eats = block patterns,
+;                   rams = distance, % per second, milk = item, item,
+;                   baby_skin = variant, skin (part 3b; drop lines may end
+;                   in `male` and / or a chance `N%`),
 ;                   variant = name, skin, model [, coat item] (skin: a
 ;                   64 x 64 picture in assets/textures/mobs/)
 ;   [spawn]         mob, variant (default: the mob's first), biomes = list,
 ;                   chance = % of those biomes' columns with a herd,
-;                   herd = min, max, mix = variant, % (up to 4)
+;                   herd = min, max, mix = variant, % (up to 4),
+;                   altitude = lowest ground (part 3b)
 ; Models come before the mobs that use them (file order). Adding an animal
 ; never needs assembly.
 ;
@@ -36,13 +41,15 @@
 %include "cfg.inc"
 %include "items.inc"
 %include "biome.inc"
+%include "block.inc"
 %include "mobs.inc"
 
 global mobs_load
 global g_models, g_model_count, g_parts, g_part_count
 global g_mobs, g_mob_count, g_variants, g_variant_count, g_spawns, g_spawn_count
+global g_block_eat, g_baby_skins, g_baby_skin_count
 
-extern str_ieq, str_copy, str_parse_float, str_parse_u64, str_dup
+extern str_ieq, str_copy, str_parse_float, str_parse_u64, str_dup, items_match_list
 
 IMPORT FindFirstFileA, FindNextFileA, FindClose
 
@@ -83,6 +90,17 @@ k_glide:        db "glide", 0
 k_lays:         db "lays", 0
 k_mix:          db "mix", 0
 k_coat:         db "coat", 0
+k_male:         db "male", 0
+k_sexes:        db "sexes", 0
+k_jump:         db "jump", 0
+k_fall:         db "fall", 0
+k_hops:         db "hops", 0
+k_eats:         db "eats", 0
+k_rams:         db "rams", 0
+k_milk:         db "milk", 0
+k_baby_skin:    db "baby_skin", 0
+k_altitude:     db "altitude", 0
+str_eat_full:   db "mobs: too many animals with `eats` (8 at most): ", 0
 m_0:            db "none", 0
 m_1:            db "head", 0
 m_2:            db "leg0", 0
@@ -91,9 +109,10 @@ m_4:            db "tail", 0
 m_5:            db "coat", 0
 m_6:            db "wing0", 0
 m_7:            db "wing1", 0
+m_8:            db "head_male", 0
 align 8
-motion_names:   dq m_0, m_1, m_2, m_3, m_4, m_5, m_6, m_7
-%define MOTION_NAMES 8
+motion_names:   dq m_0, m_1, m_2, m_3, m_4, m_5, m_6, m_7, m_8
+%define MOTION_NAMES 9
 str_unknown:    db "unknown setting: ", 0
 str_bad:        db "bad value for: ", 0
 str_full:       db "too many models, parts, mobs, variants or spawns at: ", 0
@@ -122,6 +141,12 @@ g_model_count:  resd 1
 g_mob_count:    resd 1
 g_variant_count: resd 1
 g_spawn_count:  resd 1
+g_eat_text:     resq MAX_MOBS           ; `eats` until every block is known
+alignb 8
+g_baby_skins:   resq MAX_VARIANTS       ; texture names of the young's skins
+g_baby_skin_count: resd 1
+alignb 16
+g_block_eat:    resb 65536              ; bit per eats list: animals eat this block
 g_kind:         resd 1
 g_cur:          resd 1
 g_file_count:   resd 1
@@ -286,6 +311,8 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     mov dword [rcx + MOB.width], __?float32?__(0.9)
     mov dword [rcx + MOB.height], __?float32?__(1.0)
     mov dword [rcx + MOB.speed], __?float32?__(1.2)
+    mov dword [rcx + MOB.jump], __?float32?__(1.0)
+    mov dword [rcx + MOB.fall], 3
     mov eax, [rel g_variant_count]
     mov [rcx + MOB.first_var], eax
     mov dword [rel g_kind], REC_MOB
@@ -305,6 +332,7 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     mov dword [rcx + SPAWN.herd_min], 2
     mov dword [rcx + SPAWN.herd_max], 4
     mov dword [rcx + SPAWN.mixes], 0
+    mov dword [rcx + SPAWN.altitude], -100000
     mov dword [rel g_kind], REC_SPAWN
     RETURN
 .full:
@@ -527,6 +555,7 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     mov [r12 + MOB.drop_item + rdi * 2], ax
     mov byte [r12 + MOB.drop_min + rdi], 1
     mov byte [r12 + MOB.drop_max + rdi], 1
+    mov byte [r12 + MOB.drop_pct + rdi], 100
     mov rcx, [LOCAL(0)]
     test rcx, rcx
     jz .drop_done
@@ -544,6 +573,7 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     test rcx, rcx
     jz .drop_done
     call cfg_next_token
+    mov [LOCAL(0)], rdx                 ; (`male` may follow)
     mov rcx, rax
     call str_parse_u64
     test r8, r8
@@ -553,6 +583,29 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     cmp al, [r12 + MOB.drop_min + rdi]
     jb .bad
     mov [r12 + MOB.drop_max + rdi], al
+    ; then `male` (only males drop it: antlers) and / or a chance `N%`
+.drop_opt:
+    mov rcx, [LOCAL(0)]
+    test rcx, rcx
+    jz .drop_done
+    call cfg_next_token
+    mov [LOCAL(0)], rdx
+    mov [LOCAL(8)], rax
+    lea rdx, [rel k_male]
+    INVOKE str_ieq, rax, rdx
+    test eax, eax
+    jz .drop_pct
+    bts dword [r12 + MOB.drop_male], edi
+    jmp .drop_opt
+.drop_pct:
+    mov rcx, [LOCAL(8)]
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    cmp rax, 100
+    ja .bad
+    mov [r12 + MOB.drop_pct + rdi], al
+    jmp .drop_opt
 .drop_done:
     inc dword [r12 + MOB.drops]
     RETURN
@@ -656,7 +709,7 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     lea rdx, [rel k_lays]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
-    jz .b_variant
+    jz .b_sexes
     mov rcx, rsi
     call cfg_next_token
     mov [LOCAL(0)], rdx
@@ -679,6 +732,151 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     mov eax, [rel g_vals + 4]
     imul eax, eax, 20
     mov [r12 + MOB.lay_max], eax
+    RETURN
+.b_sexes:
+    ; sexes = 1: born male or female; hops = 1: moves in hops
+    lea rdx, [rel k_sexes]
+    INVOKE str_ieq, rbx, rdx
+    mov edi, MOB.sexes
+    test eax, eax
+    jnz .b_flag
+    lea rdx, [rel k_hops]
+    INVOKE str_ieq, rbx, rdx
+    mov edi, MOB.hops
+    test eax, eax
+    jnz .b_flag
+    lea rdx, [rel k_fall]
+    INVOKE str_ieq, rbx, rdx
+    mov edi, MOB.fall
+    test eax, eax
+    jz .b_jump
+.b_flag:
+    mov rcx, rsi
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    cmp rax, 16
+    ja .bad
+    mov [r12 + rdi], eax
+    RETURN
+.b_jump:
+    ; jump = blocks it can jump up (deer 2, goats 3)
+    lea rdx, [rel k_jump]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .b_eats
+    mov rcx, rsi
+    call str_parse_float
+    test eax, eax
+    jz .bad
+    comiss xmm0, [rel c_one_f]
+    jb .bad
+    comiss xmm0, [rel c_four_f]
+    ja .bad
+    movss [r12 + MOB.jump], xmm0
+    RETURN
+.b_eats:
+    ; eats = block patterns (resolved when every mob is read)
+    lea rdx, [rel k_eats]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .b_rams
+    mov eax, [rel g_cur]
+    lea rcx, [rel g_eat_text]
+    mov [rcx + rax * 8], rsi
+    RETURN
+.b_rams:
+    ; rams = distance (blocks), % chance per second
+    lea rdx, [rel k_rams]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .b_milk
+    mov rcx, rsi
+    call cfg_next_token
+    mov [LOCAL(0)], rdx
+    mov rcx, rax
+    call str_parse_float
+    test eax, eax
+    jz .bad
+    movss [r12 + MOB.rams_dist], xmm0
+    mov rcx, [LOCAL(0)]
+    test rcx, rcx
+    jz .bad
+    call str_parse_float
+    test eax, eax
+    jz .bad
+    movss [r12 + MOB.rams_pct], xmm0
+    RETURN
+.b_milk:
+    ; milk = the item that milks it, what that item becomes
+    lea rdx, [rel k_milk]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .b_baby
+    mov rcx, rsi
+    call cfg_next_token
+    mov [LOCAL(0)], rdx
+    mov [LOCAL(8)], rax
+    mov rcx, rax
+    call item_find
+    cmp eax, 0
+    jle .no_item
+    mov [r12 + MOB.milk_from], ax
+    mov rcx, [LOCAL(0)]
+    test rcx, rcx
+    jz .bad
+    call cfg_next_token
+    mov [LOCAL(8)], rax
+    mov rcx, rax
+    call item_find
+    cmp eax, 0
+    jle .no_item
+    mov [r12 + MOB.milk_to], ax
+    RETURN
+.b_baby:
+    ; baby_skin = variant, skin: the young of that look wear this skin
+    lea rdx, [rel k_baby_skin]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .b_variant
+    mov rcx, rsi
+    call cfg_next_token
+    mov [LOCAL(0)], rdx
+    mov [LOCAL(8)], rax
+    ; the variant among this mob's
+    mov edi, [r12 + MOB.first_var]
+    mov r13d, [r12 + MOB.var_count]
+    add r13d, edi
+.bv:
+    cmp edi, r13d
+    jae .no_variant8
+    imul eax, edi, VARIANT_size
+    lea rcx, [rel g_variants]
+    INVOKE str_ieq, [rcx + rax + VARIANT.name], [LOCAL(8)]
+    test eax, eax
+    jnz .bv_found
+    inc edi
+    jmp .bv
+.bv_found:
+    mov rcx, [LOCAL(0)]
+    test rcx, rcx
+    jz .bad
+    call cfg_next_token
+    mov ecx, [rel g_baby_skin_count]
+    cmp ecx, MAX_VARIANTS
+    jae .full_mob
+    lea rdx, [rel g_baby_skins]
+    mov [rdx + rcx * 8], rax
+    inc dword [rel g_baby_skin_count]
+    inc ecx                             ; (1 + index until the layers are known)
+    imul eax, edi, VARIANT_size
+    lea rdx, [rel g_variants]
+    mov [rdx + rax + VARIANT.baby_layer], ecx
+    RETURN
+.no_variant8:
+    lea rcx, [rel str_no_variant]
+    mov rdx, [LOCAL(8)]
+    call warn
     RETURN
 .b_variant:
     lea rdx, [rel k_variant]
@@ -885,7 +1083,7 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     lea rdx, [rel k_mix]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
-    jz .unknown
+    jz .s_altitude
     mov eax, [r12 + SPAWN.mixes]
     cmp eax, MAX_MIX
     jae .full_spawn
@@ -917,6 +1115,19 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     lea rcx, [rel str_no_variant]
     mov rdx, [LOCAL(8)]
     call warn
+    RETURN
+.s_altitude:
+    ; altitude = the lowest ground a herd of this rule stands on
+    lea rdx, [rel k_altitude]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .unknown
+    mov rcx, rsi
+    call str_parse_float
+    test eax, eax
+    jz .bad
+    cvttss2si eax, xmm0
+    mov [r12 + SPAWN.altitude], eax
     RETURN
 .full_spawn:
     lea rcx, [rel str_full]
@@ -1005,6 +1216,103 @@ PROC variant_of_mob, 0, rbx, rsi, rdi
     RETURN
 .none:
     mov eax, -1
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; resolve_part3b — once every mob is read: jump speeds, the blocks each
+; `eats` list names (a bit per list in g_block_eat), the young's skin
+; layers (after the variants' own).
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC resolve_part3b, 16, rbx, rsi, rdi, r12
+    ; jump speed: 0.42 blocks per tick lifts about a block; v ~ sqrt(height)
+    xor ebx, ebx
+.jump:
+    cmp ebx, [rel g_mob_count]
+    jae .eats
+    imul eax, ebx, MOB_size
+    lea rsi, [rel g_mobs]
+    add rsi, rax
+    movss xmm0, [rsi + MOB.jump]
+    sqrtss xmm0, xmm0
+    mulss xmm0, [rel c_jump_v]
+    movss [rsi + MOB.jump_v], xmm0
+    inc ebx
+    jmp .jump
+.eats:
+    lea rdi, [rel g_block_eat]
+    xor eax, eax
+    mov ecx, 65536 / 8
+    rep stosq
+    xor ebx, ebx
+    xor r12d, r12d                      ; lists so far
+    mov dword [LOCAL(8)], 0             ; blocks some animal eats
+.eat_mob:
+    cmp ebx, [rel g_mob_count]
+    jae .babies
+    lea rax, [rel g_eat_text]
+    mov rsi, [rax + rbx * 8]
+    test rsi, rsi
+    jz .eat_next
+    cmp r12d, MAX_EAT_LISTS
+    jb .eat_room
+    lea rcx, [rel str_eat_full]
+    imul eax, ebx, MOB_size
+    lea rdx, [rel g_mobs]
+    mov rdx, [rdx + rax + MOB.name]
+    call warn
+    jmp .eat_next
+.eat_room:
+    mov eax, 1
+    mov ecx, r12d
+    shl eax, cl
+    mov [LOCAL(0)], eax
+    imul ecx, ebx, MOB_size
+    lea rdx, [rel g_mobs]
+    mov [rdx + rcx + MOB.eats], eax
+    inc r12d
+    mov edi, 1                          ; every block (id 0 is air)
+.eat_block:
+    cmp edi, [rel g_block_count]
+    jae .eat_next
+    lea rax, [rel g_block_names]
+    mov rdx, [rax + rdi * 8]
+    test rdx, rdx
+    jz .eat_skip
+    mov rcx, rsi
+    call items_match_list
+    test eax, eax
+    jz .eat_skip
+    mov eax, [LOCAL(0)]
+    lea rcx, [rel g_block_eat]
+    or [rcx + rdi], al
+    inc dword [LOCAL(8)]
+.eat_skip:
+    inc edi
+    jmp .eat_block
+.eat_next:
+    inc ebx
+    jmp .eat_mob
+.babies:
+    mov eax, [LOCAL(8)]
+    LOG_VAL LOG_LEVEL_INFO, "mobs: blocks animals eat (`eats`): ", rax
+    xor ebx, ebx
+.baby:
+    cmp ebx, [rel g_variant_count]
+    jae .done
+    imul eax, ebx, VARIANT_size
+    lea rcx, [rel g_variants]
+    mov edx, [rcx + rax + VARIANT.baby_layer]
+    test edx, edx
+    jz .baby_next
+    dec edx
+    add edx, [rel g_variant_count]
+    mov [rcx + rax + VARIANT.baby_layer], edx
+.baby_next:
+    inc ebx
+    jmp .baby
+.done:
     RETURN
 ENDPROC
 
@@ -1117,6 +1425,7 @@ PROC mobs_load, 0, rbx, rsi, rdi
     mov [rel g_mob_count], eax
     mov [rel g_variant_count], eax
     mov [rel g_spawn_count], eax
+    mov [rel g_baby_skin_count], eax
     call collect_files
     xor ebx, ebx
 .file:
@@ -1128,6 +1437,7 @@ PROC mobs_load, 0, rbx, rsi, rdi
     inc ebx
     jmp .file
 .files_done:
+    call resolve_part3b
     ; keep only the spawn rules with a variant and some biomes
     lea rsi, [rel g_spawns]
     mov rdi, rsi
@@ -1193,3 +1503,6 @@ section .rdata
 align 4
 c_skin:         dd 64.0
 c_per_tick:     dd 0.05
+c_one_f:        dd 1.0
+c_four_f:       dd 4.0
+c_jump_v:       dd 0.42                 ; jump speed for 1 block (blocks per tick)

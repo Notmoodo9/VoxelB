@@ -1960,3 +1960,59 @@ Owner's list of six issues (2026-10-14).
   with light only in specks (some steady, some slowly twinkling) and a
   faint sheen, dimmer bark veins, pale aqua blooms; more light from the
   trees, glow plants and moss so the floor is softly lit at night.
+
+## D102 — Deer, rabbits, goats, buckets, leads, name tags (M19 part 3b)
+Owner's answers (2026-10-14): buckets for water, lava and milk; rabbits
+eat flowers for good; Minecraft-like leads; deer bucks and does; goats
+that sometimes ram (design/mobs/passive_animals.md).
+* **Everything new is a data key, not code per animal**: `sexes`,
+  `jump`, `fall`, `hops`, `eats`, `rams`, `milk`, `baby_skin`, drop
+  options `male` / `N%`, the `head_male` motion, spawn `altitude`; items
+  get `fill` / `leaves`. Any later animal can use them.
+* **Sexes** are a flag per animal (EF_MALE, saved as flag 4, sent as
+  EPF_MALE); the renderer hides `head_male` boxes on females and the
+  young. The reindeer's antlers are plain `head` boxes (both sexes).
+* **Jumps**: the jump speed is worked out once from the height
+  (0.42 · √height blocks per tick, a 1-block jump at 1); the pathfinder
+  gets the animal's climb and drop limits per path (g_pf_climb,
+  g_pf_fall), so deer and goats plan over ledges others walk around.
+* **Eating blocks**: one bit per `eats` list in a 64 K table by block id
+  (built once by name patterns), so the scan around a rabbit (9 × 9 × 3,
+  only while idle, one chance in three) is a table lookup per block. The
+  eaten block becomes air through the normal edit path (remesh, saving).
+* **Young skins** are extra layers of the skin array after the variants'
+  (variant → layer index); no shader change.
+* **Buckets**: PKT_C_USE (no payload: the simulation knows the view) —
+  the simulation follows the view in 0.05-block steps from the eyes and
+  takes the first block an item has a `fill` line for. The client only
+  sends it when the held item has a fill line. Pouring is plain placing
+  (`block = water`), and `leaves` turns the used-up item back.
+* **Leads** live on the animal (EntT.leash: none / player / fence post +
+  the post's position) — no separate rope objects. Each tick a led animal
+  walks after its holder along a path (stops 3 blocks from the player,
+  1.5 from a post); beyond 6 blocks the wanted velocity is overridden by a
+  straight pull that grows with the distance, with a hop when the holder
+  is higher; beyond 10 blocks (or with the post gone) the lead snaps and
+  drops as an item. A dying animal drops its lead too. PKT_C_TIE (block
+  position) ties every animal the player leads within 10 blocks of a
+  fence to it; the client sends it instead of placing when the player
+  right-clicks a fence while leading something (EPF_LEASH on an animal in
+  sight). The rope is drawn by the animal renderer as 12 thin boxes along
+  a sagging curve (less slack as it nears snapping), from the neck to the
+  player's hand or the post, with a rope texture layer
+  (`assets/textures/mobs/lead_rope.png`); ENT_PKT grew a fence position
+  (56 bytes, the packet's limit).
+* **Names**: a separate packet each way (NAME_PKT: id + 24 bytes), sent
+  when an animal becomes known to the client and when it is renamed, so
+  the per-tick ENT_PKT stays small. The journal page (src/ui/
+  name_screen.asm) is opened on the client by a right click with a
+  `name_tag` in hand; the simulation checks the tag is still in hand and
+  the animal near, keeps printable ASCII only, and uses the tag up in
+  Survival. Names are drawn as UI text: the point above the head
+  projected with the camera matrix, on a dark band, sized by distance,
+  within 24 blocks, without occlusion (like Minecraft's).
+* **Entity region files version 2**: 128-byte records (lead, post, name);
+  version 1 files still load.
+* **Test switches**: `--give <item>`, `--lead-test` (leash, pull, tie,
+  snap without aiming), `--use-test` (a right click on the nearest animal with what is in hand: the name page, milking …);
+  the gallery now also places each look's young and males.

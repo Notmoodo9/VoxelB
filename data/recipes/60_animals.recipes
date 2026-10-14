@@ -22,4 +22,39 @@ result = drying_rack
 [rack drying_rack]
 block = drying_rack
 hang = salted_leather, drying_rack_salted, leather, drying_rack_leather
+hang = salted_deer_hide, drying_rack_deer, leather, drying_rack_leather
+hang = salted_rabbit_hide, drying_rack_rabbit, dried_rabbit_hide, drying_rack_rabbit_dried
 seconds = 120
+
+# part 3b (design/mobs/passive_animals.md "Recipes")
+[recipe bucket]
+shape = I.I / .I.
+I = iron_bar
+result = bucket
+station = workbench
+
+[recipe lead]
+shape = LL. / LI. / ..L
+L = leather
+I = iron_bar
+result = lead
+station = workbench
+
+[recipe name_tag]
+ingredients = leather, iron_bar
+result = name_tag
+station = workbench
+
+[recipe salted_deer_hide]
+ingredients = raw_deer_hide, salt
+result = salted_deer_hide
+
+[recipe salted_rabbit_hide]
+ingredients = raw_rabbit_hide, salt
+result = salted_rabbit_hide
+
+# four dried rabbit hides make one leather
+[recipe leather_from_rabbit]
+shape = HH / HH
+H = dried_rabbit_hide
+result = leather

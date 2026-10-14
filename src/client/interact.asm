@@ -15,6 +15,7 @@
 ; Public API:
 ;   interact_init()                     after blocks_load
 ;   interact_update()                   once per frame (client_input)
+;   use_on_animal(ecx = id)             a right click on an animal (part 3b)
 ;   g_target_valid, g_target (3 x i32), g_target_face (0..5: -X +X -Y +Y
 ;   -Z +Z), g_target_id, g_held_block
 ; =============================================================================
@@ -23,9 +24,10 @@
 %include "packet.inc"
 %include "block.inc"
 %include "world_api.inc"
+%include "world.inc"
 %include "save.inc"
 
-global interact_init, interact_update
+global interact_init, interact_update, use_on_animal
 extern held_swing
 global g_dig_want
 extern g_world_mode
@@ -33,13 +35,15 @@ global g_target_valid, g_target, g_target_face, g_target_id, g_held_block
 
 extern g_cam_pos, g_cam_yaw, g_cam_pitch, g_mouse_captured, g_cl_player
 extern sincosf, timer_elapsed_us, g_block_station, g_off_block
-extern ents_pick, g_ent_target
+extern str_ieq, g_item_names, g_name_request
+extern ents_pick, ents_leading, g_ent_target, g_fill_count, g_fill_item, g_cinv, g_csel
 
 %define REPEAT_US       250000          ; holding a button: one action per this
 %define MAX_STEPS       64
 
 section .rdata
 str_stone:      db "stone", 0
+str_name_tag:   db "name_tag", 0
 align 8
 c_big:          dq 1.0e30
 c_one_d:        dq 1.0
@@ -318,6 +322,64 @@ PROC pick_animal, 0
     RETURN
 ENDPROC
 
+; send_use — PKT_C_USE: the simulation uses the item in hand on what is
+; looked at (it knows the view); the hand swings if the item can take
+; something   clobbers: volatile registers
+PROC send_use, 0
+    mov eax, [rel g_csel]
+    lea rcx, [rel g_cinv]
+    movzx ecx, word [rcx + rax * 8]
+    test ecx, ecx
+    jz .done
+    xor edx, edx                        ; (any fill line for it?)
+.f:
+    cmp edx, [rel g_fill_count]
+    jae .done
+    lea rax, [rel g_fill_item]
+    cmp cx, [rax + rdx * 2]
+    je .send
+    inc edx
+    jmp .f
+.send:
+    lea rcx, [rel g_to_sim]
+    INVOKE pkt_send, rcx, PKT_C_USE, 0, 0
+    call held_swing
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; use_on_animal — a right click on animal ecx: with a name tag in hand the
+; page that names it opens (name_screen.asm, part 3b); otherwise the
+; simulation is told (PKT_C_INTERACT: feed, shear, milk, lead) and the hand
+; swings.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC use_on_animal, 0, rbx
+    mov ebx, ecx
+    mov eax, [rel g_csel]
+    lea rcx, [rel g_cinv]
+    movzx eax, word [rcx + rax * 8]
+    test eax, eax
+    jz .not_tag
+    lea rcx, [rel g_item_names]
+    mov rcx, [rcx + rax * 8]
+    lea rdx, [rel str_name_tag]
+    call str_ieq
+    test eax, eax
+    jz .not_tag
+    lea eax, [ebx + 1]
+    mov [rel g_name_request], eax
+    RETURN
+.not_tag:
+    mov [rel g_attack + ENT_PKT.id], ebx
+    lea rcx, [rel g_to_sim]
+    lea r8, [rel g_attack]
+    INVOKE pkt_send, rcx, PKT_C_INTERACT, r8, ENT_PKT_size
+    call held_swing
+    RETURN
+ENDPROC
+
 ; -----------------------------------------------------------------------------
 ; interact_update — target, then break / place / pick.
 ;   clobbers: volatile registers
@@ -341,12 +403,8 @@ PROC interact_update, 0, rbx
     call input_pressed
     test eax, eax
     jz .no_use
-    mov eax, [rel g_ent_target]
-    mov [rel g_attack + ENT_PKT.id], eax
-    lea rcx, [rel g_to_sim]
-    lea r8, [rel g_attack]
-    INVOKE pkt_send, rcx, PKT_C_INTERACT, r8, ENT_PKT_size
-    call held_swing
+    mov ecx, [rel g_ent_target]
+    call use_on_animal
     jmp .done
 .no_use:
     mov ecx, ACT_BREAK_BLOCK
@@ -363,7 +421,14 @@ PROC interact_update, 0, rbx
 .blocks:
     cmp dword [rel g_target_valid], 0
     jne .has_block
-    ; nothing in reach: a click still swings the arm (like Minecraft)
+    ; nothing in reach: a click still swings the arm (like Minecraft); a
+    ; right click uses the item (a bucket can scoop a liquid in view)
+    mov ecx, ACT_PLACE_BLOCK
+    call input_pressed
+    test eax, eax
+    jz .no_air_use
+    call send_use
+.no_air_use:
     mov ecx, ACT_BREAK_BLOCK
     call input_pressed
     test eax, eax
@@ -401,6 +466,27 @@ PROC interact_update, 0, rbx
     call action_due
     test eax, eax
     jz .no_place
+    ; a fence while leading animals: they are tied to it (part 3b)
+    mov eax, [rel g_target_id]
+    lea rcx, [rel g_block_shape]
+    cmp byte [rcx + rax], SHAPE_FENCE
+    jne .not_fence
+    call ents_leading
+    test eax, eax
+    jz .not_fence
+    mov eax, [rel g_target]
+    mov [rel g_req + BLOCK_PKT.x], eax
+    mov eax, [rel g_target + 4]
+    mov [rel g_req + BLOCK_PKT.y], eax
+    mov eax, [rel g_target + 8]
+    mov [rel g_req + BLOCK_PKT.z], eax
+    mov dword [rel g_req + BLOCK_PKT.id], 0
+    lea rcx, [rel g_to_sim]
+    lea r8, [rel g_req]
+    INVOKE pkt_send, rcx, PKT_C_TIE, r8, BLOCK_PKT_size
+    call held_swing
+    jmp .no_place
+.not_fence:
     ; a crafting station (or later a chest): use it; sneaking places
     mov eax, [rel g_target_id]
     lea rcx, [rel g_block_station]
@@ -427,7 +513,9 @@ PROC interact_update, 0, rbx
     jnz .placeable
     mov r8d, [rel g_off_block]          ; (else from the off hand)
     test r8d, r8d
-    jz .no_place                        ; (nothing placeable in hand)
+    jnz .placeable
+    call send_use                       ; (nothing to place: use the item)
+    jmp .no_place
 .placeable:
     mov ecx, PKT_C_PLACE
     mov edx, 1

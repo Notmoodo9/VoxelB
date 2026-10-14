@@ -30,7 +30,7 @@
 global mobs_render_init, mobs_prepare, mobs_draw, mobs_shadow
 global g_mobs_drawn, g_mob_boxes, g_mob_prep_us
 
-extern shader_create, shader_program, png_decode, sincosf, timer_elapsed_us
+extern shader_create, shader_program, png_decode, sincosf, atan2f, timer_elapsed_us
 extern scene_uniforms, str_copy
 extern g_cam_pos, g_cam_yaw, g_cam_pitch, g_cam_viewproj, g_cam_mod
 
@@ -42,6 +42,7 @@ extern g_cam_pos, g_cam_yaw, g_cam_pitch, g_cam_viewproj, g_cam_mod
 %define U_VIEWPROJ      0
 %define U_CASCADE       16
 %define U_CAM_MOD       18
+%define ROPE_SEGS       12              ; boxes per lead
 
 section .rdata
 str_vs:         db "shaders/mob.vert", 0
@@ -49,6 +50,7 @@ str_fs:         db "shaders/mob.frag", 0
 str_sfs:        db "shaders/mob_shadow.frag", 0
 str_dir:        db "assets\textures\mobs\", 0
 str_png:        db ".png", 0
+str_rope:       db "lead_rope", 0
 str_bad_skin:   db "mobs: a skin is missing or not 64 x 64 (drawn checkered): ", 0
 align 8
 c_us:           dq 0.000001
@@ -69,6 +71,24 @@ c_love_amp:     dd 0.17
 c_flap_rate:    dd 22.0                 ; part 3: wings in the air
 c_flap_base:    dd 0.55
 c_flap_amp:     dd 0.45
+c_rope_fwd:     dd 0.45                 ; the lead's end: forward of the body's middle (x width)
+c_rope_up:      dd 0.8                  ; ... and up (x height)
+c_hand_fwd:     dd 0.5                  ; the player's end: in front of the eyes ...
+c_hand_right:   dd 0.4
+c_hand_down:    dd -0.55
+c_sag:          dd 0.12                 ; slack per block of rope
+c_sag_min:      dd 0.15
+c_tenth:        dd 0.1
+c_four:         dd 4.0
+c_px:           dd 16.0
+c_thick:        dd 0.8                  ; pixels
+c_half_thick:   dd -0.4
+c_inv_segs:     dd 0.083333333          ; 1 / ROPE_SEGS
+align 8
+c_half_d:       dq 0.5
+c_knot_up:      dq 0.7
+align 16
+c_neg:          dd 0x80000000, 0, 0, 0
 
 section .bss
 alignb 16
@@ -77,6 +97,7 @@ g_ssbo:         resd RING
 g_prog:         resd 1                  ; shader handles
 g_shadow_prog:  resd 1
 g_skins:        resd 1
+g_rope_layer:   resd 1                  ; the lead's rope in the skin array
 g_vao:          resd 1
 g_ok:           resd 1
 g_frame:        resd 1
@@ -112,10 +133,9 @@ PROC mobs_render_init, 16, rbx, rsi, rdi
     mov [rel g_shadow_prog], eax
     ; skins
     mov ebx, [rel g_variant_count]
-    test ebx, ebx
-    jnz .layers
-    mov ebx, 1
-.layers:
+    add ebx, [rel g_baby_skin_count]
+    mov [rel g_rope_layer], ebx         ; (the last layer: the lead's rope)
+    inc ebx
     lea r8, [rel g_skins]
     GL glCreateTextures, GL_TEXTURE_2D_ARRAY, 1, r8
     GL glTextureStorage3D, [rel g_skins], 1, GL_RGBA8, SKIN_PX, SKIN_PX, rbx
@@ -129,10 +149,29 @@ PROC mobs_render_init, 16, rbx, rsi, rdi
     cmp esi, [rel g_variant_count]
     jae .skins_done
     mov ecx, esi
+    imul eax, esi, VARIANT_size
+    lea rdx, [rel g_variants]
+    mov rdx, [rdx + rax + VARIANT.skin]
     call load_skin
     inc esi
     jmp .skin
 .skins_done:
+    ; then the young's own skins (part 3b), after the variants' layers
+    xor esi, esi
+.baby_skin:
+    cmp esi, [rel g_baby_skin_count]
+    jae .babies_done
+    mov ecx, esi
+    add ecx, [rel g_variant_count]
+    lea rdx, [rel g_baby_skins]
+    mov rdx, [rdx + rsi * 8]
+    call load_skin
+    inc esi
+    jmp .baby_skin
+.babies_done:
+    mov ecx, [rel g_rope_layer]
+    lea rdx, [rel str_rope]
+    call load_skin
     ; instance buffers
     xor esi, esi
 .buf:
@@ -156,17 +195,16 @@ PROC mobs_render_init, 16, rbx, rsi, rdi
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; load_skin — variant ecx's skin into its layer (a checkerboard if missing).
+; load_skin — a skin into a layer of the array (a checkerboard if missing).
+;   in:  ecx = layer, rdx = skin name (assets/textures/mobs/<name>.png)
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
 PROC load_skin, 16, rbx, rsi, rdi
     mov ebx, ecx
+    mov rsi, rdx
     lea rcx, [rel g_arena_scratch]
     call arena_mark
     mov [LOCAL(0)], rax
-    imul eax, ebx, VARIANT_size
-    lea rcx, [rel g_variants]
-    mov rsi, [rcx + rax + VARIANT.skin]
     lea rcx, [rel g_rel]
     lea rdx, [rel str_dir]
     call str_copy
@@ -422,16 +460,24 @@ PROC prepare, 96, rbx, rsi, rdi, r12, r13
 .part:
     mov eax, [LOCAL(P_PART)]
     cmp eax, [LOCAL(P_END)]
-    jae .next
+    jae .lead
     inc dword [LOCAL(P_PART)]
     imul eax, eax, MPART_size
     lea r12, [rel g_parts]
     add r12, rax
     ; a shorn coat is not drawn
     cmp dword [r12 + MPART.motion], MOTION_COAT
-    jne .shown
+    jne .not_coat
     test word [rbx + VENT.flags], EPF_SHEARED
     jnz .part
+.not_coat:
+    ; antlers and the like only on males (and not on the young)
+    cmp dword [r12 + MPART.motion], MOTION_MALE
+    jne .shown
+    test word [rbx + VENT.flags], EPF_BABY
+    jnz .part
+    test word [rbx + VENT.flags], EPF_MALE
+    jz .part
 .shown:
     ; a: position, body yaw
     mov eax, [LOCAL(P_REL)]
@@ -459,6 +505,14 @@ PROC prepare, 96, rbx, rsi, rdi, r12, r13
     mov eax, [r12 + MPART.box + 8]
     mov [rdi + 40], eax
     movzx eax, word [rbx + VENT.variant]
+    test word [rbx + VENT.flags], EPF_BABY
+    jz .layer
+    imul ecx, eax, VARIANT_size         ; the young may wear their own skin
+    lea rdx, [rel g_variants]
+    mov ecx, [rdx + rcx + VARIANT.baby_layer]
+    test ecx, ecx
+    cmovnz eax, ecx
+.layer:
     cvtsi2ss xmm0, eax
     movss [rdi + 44], xmm0
     ; d: size, pitch
@@ -475,7 +529,10 @@ PROC prepare, 96, rbx, rsi, rdi, r12, r13
     xor r9d, r9d                        ; roll (wings)
     mov eax, [r12 + MPART.motion]
     cmp eax, MOTION_HEAD
+    je .head
+    cmp eax, MOTION_MALE
     jne .not_head
+.head:
     mov ecx, [rbx + VENT.pitch]
     mov edx, [rbx + VENT.head]
     mov r8d, [LOCAL(P_HEADS)]
@@ -534,6 +591,8 @@ PROC prepare, 96, rbx, rsi, rdi, r12, r13
     add rdi, INST_BYTES
     inc dword [rel g_mob_boxes]
     jmp .part
+.lead:
+    call rope                           ; (on a lead: the rope; part 3b)
 .next:
     inc r13d
     jmp .ent
@@ -554,6 +613,241 @@ PROC prepare, 96, rbx, rsi, rdi, r12, r13
     imul r8, r8, INST_BYTES
     lea r9, [rel g_inst]
     GL glNamedBufferSubData, [rel g_cur_ssbo], 0, r8, r9
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; rope — the lead of animal rbx (VENT*; EPF_LEASH or EPF_KNOT), if any: from
+; its neck to the player's hand or its fence post, ROPE_SEGS thin boxes
+; sagging less the more it is stretched. Written at rdi, which advances.
+;   clobbers: volatile registers, rdi (the next record)
+; -----------------------------------------------------------------------------
+%define R_A     0                       ; f32 x 3: the animal's end
+%define R_B     12                      ; f32 x 3: the holder's end
+%define R_SAG   24
+%define R_I     28
+%define R_P0    32                      ; f32 x 3: this segment's start
+%define R_P1    44                      ; f32 x 3: its end
+%define R_D     56                      ; f32 x 3: P1 - P0
+%define R_LEN   68
+%define R_YAW   72
+%define R_H     76
+PROC rope, 96, rsi
+    test word [rbx + VENT.flags], EPF_LEASH | EPF_KNOT
+    jz .done
+    mov eax, [rel g_mob_boxes]
+    add eax, ROPE_SEGS
+    cmp eax, MAX_INST
+    ja .done
+    movzx eax, word [rbx + VENT.variant]
+    cmp eax, [rel g_variant_count]
+    jae .done
+    imul eax, eax, VARIANT_size
+    lea rcx, [rel g_variants]
+    mov eax, [rcx + rax + VARIANT.mob]
+    imul eax, eax, MOB_size
+    lea rsi, [rel g_mobs]
+    add rsi, rax
+    ; the animal's end: at its neck
+    movss xmm0, [rbx + VENT.yaw]
+    call sincosf
+    movss xmm2, [rsi + MOB.width]
+    mulss xmm2, [rel c_rope_fwd]
+    movss xmm3, [rsi + MOB.height]
+    mulss xmm3, [rel c_rope_up]
+    test word [rbx + VENT.flags], EPF_BABY
+    jz .adult
+    mulss xmm2, [rel c_baby]
+    mulss xmm3, [rel c_baby]
+.adult:
+    mulss xmm0, xmm2                    ; forward: (sin yaw, 0, -cos yaw)
+    mulss xmm1, xmm2
+    movsd xmm4, [rbx + VENT.shown]
+    subsd xmm4, [rel g_cam_pos]
+    cvtsd2ss xmm4, xmm4
+    addss xmm4, xmm0
+    movss [LOCAL(R_A)], xmm4
+    movsd xmm4, [rbx + VENT.shown + 8]
+    subsd xmm4, [rel g_cam_pos + 8]
+    cvtsd2ss xmm4, xmm4
+    addss xmm4, xmm3
+    movss [LOCAL(R_A + 4)], xmm4
+    movsd xmm4, [rbx + VENT.shown + 16]
+    subsd xmm4, [rel g_cam_pos + 16]
+    cvtsd2ss xmm4, xmm4
+    subss xmm4, xmm1
+    movss [LOCAL(R_A + 8)], xmm4
+    ; the holder's end: the fence post's top, or the player's hand
+    test word [rbx + VENT.flags], EPF_KNOT
+    jz .hand
+    cvtsi2sd xmm0, dword [rbx + VENT.knot]
+    addsd xmm0, [rel c_half_d]
+    subsd xmm0, [rel g_cam_pos]
+    cvtsd2ss xmm0, xmm0
+    movss [LOCAL(R_B)], xmm0
+    cvtsi2sd xmm0, dword [rbx + VENT.knot + 4]
+    addsd xmm0, [rel c_knot_up]
+    subsd xmm0, [rel g_cam_pos + 8]
+    cvtsd2ss xmm0, xmm0
+    movss [LOCAL(R_B + 4)], xmm0
+    cvtsi2sd xmm0, dword [rbx + VENT.knot + 8]
+    addsd xmm0, [rel c_half_d]
+    subsd xmm0, [rel g_cam_pos + 16]
+    cvtsd2ss xmm0, xmm0
+    movss [LOCAL(R_B + 8)], xmm0
+    jmp .ends
+.hand:
+    ; forward (sin, 0, -cos) and right (cos, 0, sin) of the view's yaw
+    movss xmm0, [rel g_cam_yaw]
+    call sincosf
+    movss xmm2, xmm0
+    mulss xmm2, [rel c_hand_fwd]
+    movss xmm3, xmm1
+    mulss xmm3, [rel c_hand_right]
+    addss xmm2, xmm3
+    movss [LOCAL(R_B)], xmm2
+    mov eax, [rel c_hand_down]
+    mov [LOCAL(R_B + 4)], eax
+    mulss xmm1, [rel c_hand_fwd]
+    mulss xmm0, [rel c_hand_right]
+    subss xmm0, xmm1
+    movss [LOCAL(R_B + 8)], xmm0
+.ends:
+    ; the slack: 0.12 a block, less as it nears 10 blocks (snapping)
+    movss xmm0, [LOCAL(R_B)]
+    subss xmm0, [LOCAL(R_A)]
+    mulss xmm0, xmm0
+    movss xmm1, [LOCAL(R_B + 4)]
+    subss xmm1, [LOCAL(R_A + 4)]
+    mulss xmm1, xmm1
+    addss xmm0, xmm1
+    movss xmm1, [LOCAL(R_B + 8)]
+    subss xmm1, [LOCAL(R_A + 8)]
+    mulss xmm1, xmm1
+    addss xmm0, xmm1
+    sqrtss xmm0, xmm0                   ; its length
+    movss xmm1, xmm0
+    mulss xmm1, [rel c_tenth]
+    movss xmm2, [rel c_one]
+    subss xmm2, xmm1
+    maxss xmm2, [rel c_sag_min]
+    mulss xmm0, [rel c_sag]
+    mulss xmm0, xmm2
+    movss [LOCAL(R_SAG)], xmm0
+    mov eax, [LOCAL(R_A)]
+    mov [LOCAL(R_P0)], eax
+    mov eax, [LOCAL(R_A + 4)]
+    mov [LOCAL(R_P0 + 4)], eax
+    mov eax, [LOCAL(R_A + 8)]
+    mov [LOCAL(R_P0 + 8)], eax
+    mov dword [LOCAL(R_I)], 1
+.seg:
+    ; P1 = A + (B - A) t, sagging 4 t (1 - t) of the slack
+    cvtsi2ss xmm0, dword [LOCAL(R_I)]
+    mulss xmm0, [rel c_inv_segs]        ; t
+    xor ecx, ecx
+.axis:
+    movss xmm1, [LOCAL(R_B) + rcx * 4]
+    subss xmm1, [LOCAL(R_A) + rcx * 4]
+    mulss xmm1, xmm0
+    addss xmm1, [LOCAL(R_A) + rcx * 4]
+    movss [LOCAL(R_P1) + rcx * 4], xmm1
+    inc ecx
+    cmp ecx, 3
+    jb .axis
+    movss xmm1, [rel c_one]
+    subss xmm1, xmm0
+    mulss xmm1, xmm0
+    mulss xmm1, [rel c_four]
+    mulss xmm1, [LOCAL(R_SAG)]
+    movss xmm2, [LOCAL(R_P1 + 4)]
+    subss xmm2, xmm1
+    movss [LOCAL(R_P1 + 4)], xmm2
+    ; the box along P0 -> P1: yaw = atan2(-dx, dz), pitch = atan2(-dy, flat)
+    xor ecx, ecx
+.d:
+    movss xmm1, [LOCAL(R_P1) + rcx * 4]
+    subss xmm1, [LOCAL(R_P0) + rcx * 4]
+    movss [LOCAL(R_D) + rcx * 4], xmm1
+    inc ecx
+    cmp ecx, 3
+    jb .d
+    movss xmm0, [LOCAL(R_D)]
+    mulss xmm0, xmm0
+    movss xmm1, [LOCAL(R_D + 8)]
+    mulss xmm1, xmm1
+    addss xmm0, xmm1
+    sqrtss xmm0, xmm0
+    movss [LOCAL(R_H)], xmm0
+    movss xmm1, [LOCAL(R_D + 4)]
+    mulss xmm1, xmm1
+    mulss xmm0, xmm0
+    addss xmm0, xmm1
+    sqrtss xmm0, xmm0
+    movss [LOCAL(R_LEN)], xmm0
+    movss xmm0, [LOCAL(R_D)]
+    xorps xmm0, [rel c_neg]
+    movss xmm1, [LOCAL(R_D + 8)]
+    call atan2f
+    movss [LOCAL(R_YAW)], xmm0
+    movss xmm0, [LOCAL(R_D + 4)]
+    xorps xmm0, [rel c_neg]
+    movss xmm1, [LOCAL(R_H)]
+    call atan2f                         ; (the pitch)
+    ; the record
+    movss [rdi + 60], xmm0
+    mov eax, [LOCAL(R_P0)]
+    mov [rdi], eax
+    mov eax, [LOCAL(R_P0 + 4)]
+    mov [rdi + 4], eax
+    mov eax, [LOCAL(R_P0 + 8)]
+    mov [rdi + 8], eax
+    xor eax, eax
+    mov [rdi + 12], eax                 ; (no body yaw)
+    mov [rdi + 16], eax                 ; pivot 0
+    mov [rdi + 20], eax
+    mov [rdi + 24], eax
+    mov edx, [rel c_one]
+    mov [rdi + 28], edx                 ; scale 1
+    mov ecx, [rel c_half_thick]
+    mov [rdi + 32], ecx                 ; corner: centred on the line
+    mov [rdi + 36], ecx
+    mov [rdi + 40], eax
+    cvtsi2ss xmm0, dword [rel g_rope_layer]
+    movss [rdi + 44], xmm0
+    mov ecx, [rel c_thick]
+    mov [rdi + 48], ecx
+    mov [rdi + 52], ecx
+    movss xmm0, [LOCAL(R_LEN)]
+    mulss xmm0, [rel c_px]
+    movss [rdi + 56], xmm0              ; its length in pixels
+    mov ecx, [LOCAL(R_YAW)]
+    mov [rdi + 64], ecx
+    mov [rdi + 68], eax
+    mov [rdi + 72], eax
+    mov [rdi + 76], eax
+    mov ecx, [rbx + VENT.sky]
+    mov [rdi + 80], ecx
+    mov [rdi + 84], eax
+    mov [rdi + 88], edx                 ; box scale 1
+    mov [rdi + 92], eax
+    mov [rdi + 96], eax
+    mov [rdi + 100], eax
+    mov [rdi + 104], eax
+    mov [rdi + 108], eax
+    add rdi, INST_BYTES
+    inc dword [rel g_mob_boxes]
+    ; on to the next
+    mov eax, [LOCAL(R_P1)]
+    mov [LOCAL(R_P0)], eax
+    mov eax, [LOCAL(R_P1 + 4)]
+    mov [LOCAL(R_P0 + 4)], eax
+    mov eax, [LOCAL(R_P1 + 8)]
+    mov [LOCAL(R_P0 + 8)], eax
+    inc dword [LOCAL(R_I)]
+    cmp dword [LOCAL(R_I)], ROPE_SEGS
+    jbe .seg
 .done:
     RETURN
 ENDPROC

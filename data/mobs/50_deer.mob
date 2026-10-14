@@ -1,0 +1,90 @@
+# Deer (milestone 19 part 3b, design/mobs/passive_animals.md). Format:
+# DATA_FORMAT.md "Mob files". Wild: they bolt when you come near and leap
+# 2 blocks. Each deer is born a buck or a doe (`sexes`); `head_male` parts
+# (the antlers) show on bucks only, and only bucks drop an antler. The
+# reindeer's antlers are plain `head` parts: both sexes wear them.
+
+[model deer]
+skin_size = 64 64
+part = body,   none,      0 13 0,     -4 0 -7,      8 9 14,     0 0
+part = neck,   head,      0 20 -6,    -2 0 -3,      4 7 4,      44 0
+part = head,   head,      0 20 -6,    -2.5 6 -7,    5 5 6,      0 23
+part = snout,  head,      0 20 -6,    -1.5 6 -10,   3 3 3,      22 23
+part = ear_l,  head,      0 20 -6,    -5 9 -4,      3 2 1,      34 23
+part = ear_r,  head,      0 20 -6,    2 9 -4,       3 2 1,      34 23
+part = beam_l, head_male, 0 20 -6,    -3 11 -4,     1 5 1,      12 34
+part = beam_r, head_male, 0 20 -6,    2 11 -4,      1 5 1,      12 34
+part = tine_l, head_male, 0 20 -6,    -5 14 -4,     2 1 1,      16 34
+part = tine_r, head_male, 0 20 -6,    3 14 -4,      2 1 1,      16 34
+part = brow_l, head_male, 0 20 -6,    -3 13 -6,     1 1 2,      16 37
+part = brow_r, head_male, 0 20 -6,    2 13 -6,      1 1 2,      16 37
+part = leg_fl, leg0,      -2.5 13 -5, -1.5 -13 -1.5, 3 13 3,    0 34
+part = leg_fr, leg1,      2.5 13 -5,  -1.5 -13 -1.5, 3 13 3,    0 34
+part = leg_bl, leg1,      -2.5 13 5,  -1.5 -13 -1.5, 3 13 3,    0 34
+part = leg_br, leg0,      2.5 13 5,   -1.5 -13 -1.5, 3 13 3,    0 34
+part = tail,   tail,      0 21 7,     -1 -3 0,      2 3 1,      42 23
+
+# the reindeer: stockier, a pale ruff under the neck, wide antlers on both sexes
+[model reindeer]
+skin_size = 64 64
+part = body,   none,      0 12 0,     -4 0 -7,      8 9 14,     0 0
+part = neck,   head,      0 20 -6,    -2 0 -3,      4 7 4,      44 0
+part = ruff,   head,      0 20 -6,    -2.5 -2 -4,   5 5 2,      48 23
+part = head,   head,      0 20 -6,    -2.5 6 -7,    5 5 6,      0 23
+part = snout,  head,      0 20 -6,    -1.5 6 -10,   3 3 3,      22 23
+part = ear_l,  head,      0 20 -6,    -5 9 -4,      3 2 1,      34 23
+part = ear_r,  head,      0 20 -6,    2 9 -4,       3 2 1,      34 23
+part = beam_l, head,      0 20 -6,    -3 11 -4,     1 5 1,      12 34
+part = beam_r, head,      0 20 -6,    2 11 -4,      1 5 1,      12 34
+part = tine_l, head,      0 20 -6,    -5 14 -4,     2 1 1,      16 34
+part = tine_r, head,      0 20 -6,    3 14 -4,      2 1 1,      16 34
+part = brow_l, head,      0 20 -6,    -3 13 -6,     1 1 2,      16 37
+part = brow_r, head,      0 20 -6,    2 13 -6,      1 1 2,      16 37
+part = top_l,  head,      0 20 -6,    -6 16 -4,     2 1 1,      16 34
+part = top_r,  head,      0 20 -6,    4 16 -4,      2 1 1,      16 34
+part = leg_fl, leg0,      -2.5 12 -5, -1.5 -12 -1.5, 3 12 3,    0 34
+part = leg_fr, leg1,      2.5 12 -5,  -1.5 -12 -1.5, 3 12 3,    0 34
+part = leg_bl, leg1,      -2.5 12 5,  -1.5 -12 -1.5, 3 12 3,    0 34
+part = leg_br, leg0,      2.5 12 5,   -1.5 -12 -1.5, 3 12 3,    0 34
+part = tail,   tail,      0 21 7,     -1 -3 0,      2 3 1,      42 23
+
+[mob deer]
+health = 10
+size = 0.8 1.5
+speed = 1.6
+temper = wild
+food = berries
+graze = 1
+sexes = 1
+jump = 2
+drop = venison, 1, 3
+drop = raw_deer_hide, 0, 2
+drop = antler, 0, 1, male
+variant = red, deer_red, deer
+variant = whitetail, deer_whitetail, deer
+variant = reindeer, deer_reindeer, reindeer
+# the young: fawns are spotted (the reindeer calf is plain)
+baby_skin = red, fawn_red
+baby_skin = whitetail, fawn_whitetail
+baby_skin = reindeer, fawn_reindeer
+
+[spawn]
+mob = deer
+variant = red
+biomes = forest, old_growth_forest, dark_forest
+chance = 4
+herd = 2, 4
+
+[spawn]
+mob = deer
+variant = whitetail
+biomes = birch_grove
+chance = 6
+herd = 2, 4
+
+[spawn]
+mob = deer
+variant = reindeer
+biomes = taiga, snowy_taiga, snowy_tundra
+chance = 5
+herd = 3, 6

@@ -43,6 +43,9 @@ endstruc
 %define PKT_C_INV_DRAG      12          ; DRAG_PKT: a stack spread over slots (Shift+drag / right-drag)
 %define PKT_C_ATTACK        13          ; ENT_PKT .id: hit an animal (milestone 19)
 %define PKT_C_INTERACT      14          ; ENT_PKT .id: use the item in hand on an animal (feed it)
+%define PKT_C_USE           15          ; use the item in hand on what is looked at (a bucket scoops; part 3b)
+%define PKT_C_TIE           16          ; BLOCK_PKT: tie the animals the player leads to this fence
+%define PKT_C_NAME          17          ; NAME_PKT: the name tag in hand names this animal
 
 ; inventory (milestone 18): slots 0-8 are the hotbar, 9-35 the inventory
 struc INV_PKT
@@ -128,7 +131,14 @@ endstruc
 %define PKT_S_FURNACE       73          ; FURNACE_PKT: the open furnace's progress (every tick)
 %define PKT_S_ENTITY        74          ; ENT_PKT: an animal appeared / moved / changed (milestone 19)
 %define PKT_S_ENTITY_GONE   75          ; ENT_PKT .id: out of sight, dead or unloaded
+%define PKT_S_ENTITY_NAME   76          ; NAME_PKT: an animal's name tag (after its PKT_S_ENTITY)
 
+; an animal's name (milestone 19 part 3b): both ways
+%define ENT_NAME_MAX        24          ; 23 characters + 0
+struc NAME_PKT
+    .id         resd 1
+    .name       resb ENT_NAME_MAX       ; zero-terminated
+endstruc
 ; animals (milestone 19): the simulation's entity table slot is the id
 struc ENT_PKT
     .pos        resq 3                  ; f64 feet centre
@@ -138,6 +148,7 @@ struc ENT_PKT
     .head_pitch resd 1                  ; f32 + up
     .variant    resw 1
     .flags      resw 1                  ; EPF_*
+    .knot       resd 3                  ; i32: the fence it is tied to (EPF_KNOT; part 3b)
 endstruc
 %define EPF_BABY            1
 %define EPF_HURT            2           ; flashes red
@@ -147,6 +158,9 @@ endstruc
 %define EPF_LOVE            32          ; fed, looking for a mate (part 2)
 %define EPF_AIR             64          ; off the ground (wings flap; part 3)
 %define EPF_SHEARED         128         ; its coat was shorn (part 3)
+%define EPF_MALE            256         ; a male: antler parts shown (part 3b)
+%define EPF_LEASH           512         ; on a lead the player holds (part 3b)
+%define EPF_KNOT            1024        ; on a lead tied to a fence (.knot)
 %define MAX_ENTITIES        8192
 
 struc FURNACE_PKT

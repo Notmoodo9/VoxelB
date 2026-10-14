@@ -22,6 +22,14 @@
 ;   --mob-gallery [name]  one animal of every look (or of this animal's,
 ;                      or just this look) in a row in front of the player (milestone 19
 ;                      part 3: looking at the animals)
+;   --give <item>     16 of that item in hand once the world runs (tests; part 3b)
+;   --lead-test        4 s in the animals within 8 blocks go on the lead;
+;                      8 s in the player steps 6 blocks south (pull); 15 s in
+;                      they are tied to a fence 2 blocks east of the player;
+;                      20 s in the player steps 12 blocks more (part 3b)
+;   --use-test         once a grown-up animal is within 4 blocks, it is right-clicked
+;                      with what is in hand (with --give: name_tag, bucket,
+;                      lead ...; part 3b)
 ;   --time <0..24>     start at this hour (overrides world.cfg's start_time)
 ;   --daylight <0..100>  sky light strength in percent (preview of night
 ;                      lighting until the day/night cycle, milestone 14)
@@ -61,6 +69,7 @@ extern camera_init, camera_update
 extern overlay_draw, overlay_toggle, hud_draw
 extern cpu_detect, selftest_run
 extern world_init, world_render_init, world_render_shutdown, g_breed_test, g_mob_gallery, g_gallery_name
+extern g_give_name, g_lead_test, g_use_test
 extern terrain_survey
 extern world_spawn, g_seed_override, g_seed_override_set, g_force_flat
 extern stream_init, stream_update, stream_shutdown, settings_load
@@ -114,6 +123,9 @@ opt_breed_test:     db "--breed-test", 0
 opt_mob_gallery:    db "--mob-gallery", 0
 opt_daylight:       db "--daylight ", 0
 opt_time:           db "--time ", 0
+opt_give:           db "--give ", 0
+opt_lead_test:      db "--lead-test", 0
+opt_use_test:      db "--use-test", 0
 align 4
 c_deg_to_rad:       dd 0.0174532925
 align 4
@@ -394,6 +406,35 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     cmp ecx, 31
     jb .gallery_copy
 .no_gallery:
+    ; --give <item>: that item in hand once the world runs (tests)
+    lea rdx, [rel opt_give]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .no_give
+    lea rsi, [rax + 7]
+    lea rdi, [rel g_give_name]
+    xor ecx, ecx
+.give_copy:
+    mov al, [rsi + rcx]
+    cmp al, ' '
+    jbe .no_give
+    mov [rdi + rcx], al
+    inc ecx
+    cmp ecx, 31
+    jb .give_copy
+.no_give:
+    lea rdx, [rel opt_lead_test]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .no_lead_test
+    mov dword [rel g_lead_test], 1      ; (part 3b test: leads)
+.no_lead_test:
+    lea rdx, [rel opt_use_test]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .no_use_test
+    mov dword [rel g_use_test], 12      ; (part 3b test: a right click on an animal)
+.no_use_test:
     xor esi, esi                        ; world name (0: default)
     lea rdx, [rel opt_world]
     INVOKE str_find, rbx, rdx

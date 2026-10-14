@@ -683,6 +683,184 @@ def feather():
     return outline(img, (0.35, 0.32, 0.3))
 
 
+def bucket(fill):
+    """An iron pail with a handle; filled with water, lava or milk."""
+    m = shape_mask([
+        "................",
+        "....44444444....",
+        "...4........4...",
+        "..455555555554..",
+        "..5999999999935.",
+        "..4999999999924.",
+        "..34444444444...",
+        "...4444444443...",
+        "...3444444433...",
+        "...3344444433...",
+        "....33444433....",
+        "....33344333....",
+        "....23333332....",
+        ".....222222.....",
+        "................",
+        "................",
+    ])
+    pal = list(ramp("b8c0c8", n=6, spread=0.24))
+    fills = {None: None, "water": "3060d0", "lava": "f06018", "milk": "f0eee4"}
+    fc = fills[fill]
+    inside = ramp(fc, 4, spread=0.12) if fc else ramp("3a3e46", 4, spread=0.1)
+    pal += [inside[1], inside[2], inside[3], inside[2]]
+    img = paint(m, np.array(pal))
+    # a glint on the liquid
+    if fc:
+        img[4, 5, :3] = np.minimum(inside[3] * 1.2, 1.0)
+        img[4, 6, :3] = np.minimum(inside[3] * 1.2, 1.0)
+    return outline(img, (0.1, 0.1, 0.12))
+
+
+def small_hide(base, salted, name):
+    """A small stretched pelt (rabbit)."""
+    r = rng(name)
+    m = shape_mask([
+        "................",
+        "................",
+        "................",
+        "................",
+        "....33....33....",
+        "....345..543....",
+        ".....455554.....",
+        ".....345543.....",
+        ".....344543.....",
+        "....23445432....",
+        "....22.33.22....",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+    ])
+    pal = ramp(base, n=6, spread=0.2)
+    img = paint(m, pal, r, jitter=1)
+    if salted:
+        for y in range(16):
+            for x in range(16):
+                if img[y, x, 3] > 0 and r.random() < 0.2:
+                    img[y, x, :3] = (0.95, 0.94, 0.9)
+    return outline(img, (0.16, 0.08, 0.06))
+
+
+def antler():
+    m = shape_mask([
+        "................",
+        "..4.....4.......",
+        "..4..4..4..4....",
+        "...4.4...4.4....",
+        "...44.....44....",
+        "....4.4....4..4.",
+        "....44.....4.4..",
+        ".....4.....44...",
+        ".....44...44....",
+        "......4..44.....",
+        "......4444......",
+        ".......43.......",
+        ".......32.......",
+        ".......22.......",
+        "................",
+        "................",
+    ])
+    pal = ramp("d8c8a0", n=6, spread=0.2)
+    return outline(paint(m, pal), (0.25, 0.2, 0.12))
+
+
+def goat_horn():
+    m = shape_mask([
+        "................",
+        "................",
+        "..........55....",
+        ".........5445...",
+        "........54..4...",
+        ".......544..4...",
+        "......5443..3...",
+        ".....5443...3...",
+        "....5443...3....",
+        "...4443...3.....",
+        "..4433..33......",
+        "..33.333........",
+        "..22............",
+        "................",
+        "................",
+        "................",
+    ])
+    pal = ramp("b8a888", n=6, spread=0.24)
+    return outline(paint(m, pal), (0.2, 0.17, 0.12))
+
+
+def rabbits_foot():
+    m = shape_mask([
+        "................",
+        "................",
+        "................",
+        "......55........",
+        ".....5445.......",
+        ".....4444.......",
+        ".....3443.......",
+        "......33........",
+        "......33........",
+        ".....3443.......",
+        "....344443......",
+        "....3444433.....",
+        ".....22.22......",
+        "................",
+        "................",
+        "................",
+    ])
+    pal = ramp("b08a60", n=6, spread=0.2)
+    img = paint(m, pal, rng("rabbits_foot"), jitter=1)
+    for (y, x) in ((7, 6), (8, 7)):          # the cord
+        img[y, x, :3] = (0.7, 0.18, 0.15)
+    return outline(img, (0.2, 0.12, 0.06))
+
+
+def lead():
+    """A coiled rope with a loop."""
+    img = np.zeros((16, 16, 4))
+    pal = ramp("c89a5a", n=5, spread=0.22)
+    for i, (cy, cx, rr) in enumerate(((8, 7, 4.5), (8, 7, 3.0))):
+        for a in np.linspace(0, 2 * np.pi, 48, endpoint=False):
+            y = int(round(cy + rr * np.sin(a))); x = int(round(cx + rr * np.cos(a)))
+            img[y, x, :3] = pal[2 + ((int(a * 3)) % 2)]; img[y, x, 3] = 1
+    for i in range(5):                        # the loose end
+        img[11 + i // 2, 11 + i // 2 + (i % 2), :3] = pal[3]; img[11 + i // 2, 11 + i // 2 + (i % 2), 3] = 1
+    img[4, 7, :3] = (0.6, 0.62, 0.66)         # the iron clip
+    img[3, 7, :3] = (0.8, 0.82, 0.86); img[3, 7, 3] = 1
+    return outline(img, (0.18, 0.12, 0.06))
+
+
+def name_tag():
+    m = shape_mask([
+        "................",
+        "................",
+        "................",
+        "...........44...",
+        "..........4..4..",
+        ".........45..4..",
+        "........4554.4..",
+        ".......455554...",
+        "......45555554..",
+        ".....45555554...",
+        "....4555555.....",
+        "...455555.......",
+        "...45554........",
+        "....444.........",
+        "................",
+        "................",
+    ])
+    pal = list(ramp("d8a868", n=6, spread=0.2))
+    img = paint(m, np.array(pal))
+    for (y, x) in ((9, 7), (9, 8), (10, 6), (8, 9)):     # writing lines
+        img[y, x, :3] = pal[1]
+    img[6, 9, :3] = (0.55, 0.57, 0.62)                    # the eyelet
+    return outline(img, (0.2, 0.12, 0.05))
+
+
 ITEMS = {
     "coal": coal,
     "diamond": lambda: gem("diamond", "37d6e0"),
@@ -719,6 +897,25 @@ ITEMS = {
     "cooked_chicken": lambda: drumstick(False),
     "egg": egg,
     "feather": feather,
+    # part 3b
+    "venison": lambda: chunk_meat("a82a30", True, "venison_raw"),
+    "cooked_venison": lambda: chunk_meat("703a22", False, "venison_cooked"),
+    "rabbit": lambda: chunk_meat("e8a098", True, "rabbit_raw"),
+    "cooked_rabbit": lambda: chunk_meat("b87848", False, "rabbit_cooked"),
+    "raw_deer_hide": lambda: hide("b07850", False, "raw_deer_hide"),
+    "salted_deer_hide": lambda: hide("b07850", True, "salted_deer_hide"),
+    "raw_rabbit_hide": lambda: small_hide("c0a080", False, "raw_rabbit_hide"),
+    "salted_rabbit_hide": lambda: small_hide("c0a080", True, "salted_rabbit_hide"),
+    "dried_rabbit_hide": lambda: small_hide("9a7448", False, "dried_rabbit_hide"),
+    "antler": antler,
+    "goat_horn": goat_horn,
+    "rabbits_foot": rabbits_foot,
+    "bucket": lambda: bucket(None),
+    "water_bucket": lambda: bucket("water"),
+    "lava_bucket": lambda: bucket("lava"),
+    "milk_bucket": lambda: bucket("milk"),
+    "lead": lead,
+    "name_tag": name_tag,
 }
 for _tier in TIER_COLOURS:
     for _kind in ("pickaxe", "axe", "shovel", "hoe"):
