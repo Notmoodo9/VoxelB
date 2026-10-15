@@ -33,6 +33,10 @@ blocks = *_ore, *_crystal, *_crystal_sprout, *_veined_stone, deep_stone, bedrock
 title = Tools
 icon = iron_pickaxe
 
+[tab combat]
+title = Combat
+icon = iron_sword
+
 [tab items]
 title = Items
 icon = diamond

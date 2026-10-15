@@ -159,6 +159,13 @@ boss that drops it.
 4. **Runes**: runestones, the 14 runes, sockets and the Tinker's table
    page, the effects; the named-weapon record.
 
+## Built
+* **Part 1 (v0.21.1)**: the swing meter (a bar under the crosshair),
+  swords, spears and maces in the 8 tiers and the axes as weapons, crits,
+  sweeps, knock-back, wear, the hit pause, camera shake, sparks and dust
+  (data/combat/combat.cfg). Try it: hit a cow with a sword, wait for the
+  bar; jump and hit as you fall.
+
 ## Still open
 * What the armor looks like on the player (no third-person view yet).
 * Rune glyph art and colours (my choice unless the owner wants to pick).

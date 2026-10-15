@@ -230,6 +230,58 @@ def tool(kind, tier):
     return outline(img, (0.1, 0.07, 0.06))
 
 
+# ---- weapons (milestone 21): the same diagonal as the tools, coloured by
+# tier; a sword's blade with a cross-guard, a spear's long shaft and leaf
+# head, a mace's studded ball.
+def weapon(kind, tier):
+    metal = ramp(TIER_COLOURS[tier], n=6, spread=0.2)
+    wood = ramp("8a5a30", n=6, spread=0.18)
+    grip = ramp("5a3a28", n=6, spread=0.18)
+    img = np.zeros((N, N, 4))
+    for y in range(N):
+        for x in range(N):
+            r, a = polar(x, y)
+            d = (a - 45) * r / 57.3                  # across the line
+            col = None
+            if kind == "sword":
+                if 4.8 <= r <= 14.2 and abs(d) <= (1.7 if r < 12.6 else 1.7 * (14.2 - r) / 1.6):
+                    col = metal[4 if d > 0.4 else (1 if d < -0.4 else 5)]
+                    if abs(d) < 0.4 and r < 12.2:
+                        col = metal[3]               # the fuller
+                elif 3.4 <= r < 4.8 and abs(d) <= 3.2:
+                    col = grip[4] if abs(d) < 0.8 else metal[0]   # cross-guard
+                elif r < 3.4 and abs(d) < 0.8 and r >= 0.4:
+                    col = grip[3 if d > 0 else 1]
+            elif kind == "spear":
+                if 10.4 <= r <= 15.2 and abs(d) <= 1.7 * min(1.0, (15.2 - r) / 2.4, (r - 10.0) / 1.2):
+                    col = metal[4 if d > 0 else 2]
+                elif abs(d) < 0.6 and 0.4 <= r < 10.4:
+                    col = wood[3 if d > 0 else 1]
+                    if 9.6 <= r < 10.4:
+                        col = metal[1]               # the socket
+            elif kind == "mace":
+                cx, cy = FOOT[0] + 9.6 * 0.7071, FOOT[1] - 9.6 * 0.7071
+                dd = ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2) ** 0.5
+                if dd <= 3.0:
+                    k = int(np.clip(5 - (dd / 3.0) * 3.0 - (0 if x + 0.5 > cx else 1), 0, 5))
+                    col = metal[k]
+                elif dd <= 3.9 and (x + y) % 2 == 0 and abs((x - y) % 3) == 0:
+                    col = metal[1]                   # studs
+                elif abs(d) < 0.75 and 0.4 <= r < 7.6:
+                    col = wood[3 if d > 0 else 1]
+                    if r < 2.4:
+                        col = grip[2]
+            if col is not None:
+                img[y, x, :3] = col
+                img[y, x, 3] = 1.0
+    if tier == "star_crystal":
+        for y in range(N):
+            for x in range(N):
+                if img[y, x, 3] > 0 and (x + y) % 5 == 0 and polar(x, y)[0] > 6:
+                    img[y, x, :3] = (1.0, 0.98, 0.9)
+    return outline(img, (0.1, 0.07, 0.06))
+
+
 def bar(base):
     # an ingot seen at an angle: a lit top face and a darker front
     pal = ramp(base, n=6, spread=0.22)
@@ -920,6 +972,8 @@ ITEMS = {
 for _tier in TIER_COLOURS:
     for _kind in ("pickaxe", "axe", "shovel", "hoe"):
         ITEMS[f"{_tier}_{_kind}"] = (lambda k=_kind, t=_tier: tool(k, t))
+    for _kind in ("sword", "spear", "mace"):
+        ITEMS[f"{_tier}_{_kind}"] = (lambda k=_kind, t=_tier: weapon(k, t))
 
 
 def main(argv):

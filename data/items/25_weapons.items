@@ -1,0 +1,352 @@
+# Melee weapons (milestone 21 part 1, design/combat/combat.md): swords,
+# spears and maces in the 8 tiers (axes are in 20_tools.items: they chop
+# and fight). `weapon` = the kind; `damage` = health points a full swing
+# takes; `swing` = seconds the swing meter takes to fill (a hit before it is
+# full does damage x (0.2 + 0.8 x meter^2)); `knockback` x the usual push;
+# `reach` = extra blocks of reach. Weapons wear 1 per hit and are repaired
+# at the Tinker's table like tools (`repair`, `binding`).
+# Pictures: assets/textures/items/<name>.png (tools/texgen/itemgen.py).
+
+# ---- wooden ----
+[item wooden_sword]
+title = Wooden sword
+texture = wooden_sword
+tab = combat
+stack = 1
+weapon = sword
+tier = wood
+damage = 4
+swing = 0.6
+repair = *_planks
+binding = fibre_binding
+durability = 60
+
+[item wooden_spear]
+title = Wooden spear
+texture = wooden_spear
+tab = combat
+stack = 1
+weapon = spear
+tier = wood
+damage = 3.5
+swing = 0.55
+knockback = 0.7
+reach = 1
+repair = *_planks
+binding = fibre_binding
+durability = 60
+
+[item wooden_mace]
+title = Wooden mace
+texture = wooden_mace
+tab = combat
+stack = 1
+weapon = mace
+tier = wood
+damage = 6
+swing = 1.4
+knockback = 2
+repair = *_planks
+binding = fibre_binding
+durability = 60
+
+# ---- stone ----
+[item stone_sword]
+title = Stone sword
+texture = stone_sword
+tab = combat
+stack = 1
+weapon = sword
+tier = stone
+damage = 5
+swing = 0.6
+repair = cobblestone, mossy_cobblestone
+binding = fibre_binding
+durability = 132
+
+[item stone_spear]
+title = Stone spear
+texture = stone_spear
+tab = combat
+stack = 1
+weapon = spear
+tier = stone
+damage = 4
+swing = 0.55
+knockback = 0.7
+reach = 1
+repair = cobblestone, mossy_cobblestone
+binding = fibre_binding
+durability = 132
+
+[item stone_mace]
+title = Stone mace
+texture = stone_mace
+tab = combat
+stack = 1
+weapon = mace
+tier = stone
+damage = 7
+swing = 1.4
+knockback = 2
+repair = cobblestone, mossy_cobblestone
+binding = fibre_binding
+durability = 132
+
+# ---- copper ----
+[item copper_sword]
+title = Copper sword
+texture = copper_sword
+tab = combat
+stack = 1
+weapon = sword
+tier = copper
+damage = 5.5
+swing = 0.6
+repair = copper_bar
+binding = fibre_binding
+durability = 190
+
+[item copper_spear]
+title = Copper spear
+texture = copper_spear
+tab = combat
+stack = 1
+weapon = spear
+tier = copper
+damage = 4.5
+swing = 0.55
+knockback = 0.7
+reach = 1
+repair = copper_bar
+binding = fibre_binding
+durability = 190
+
+[item copper_mace]
+title = Copper mace
+texture = copper_mace
+tab = combat
+stack = 1
+weapon = mace
+tier = copper
+damage = 8
+swing = 1.4
+knockback = 2
+repair = copper_bar
+binding = fibre_binding
+durability = 190
+
+# ---- iron ----
+[item iron_sword]
+title = Iron sword
+texture = iron_sword
+tab = combat
+stack = 1
+weapon = sword
+tier = iron
+damage = 6
+swing = 0.6
+repair = iron_bar
+binding = flux
+durability = 250
+
+[item iron_spear]
+title = Iron spear
+texture = iron_spear
+tab = combat
+stack = 1
+weapon = spear
+tier = iron
+damage = 5
+swing = 0.55
+knockback = 0.7
+reach = 1
+repair = iron_bar
+binding = flux
+durability = 250
+
+[item iron_mace]
+title = Iron mace
+texture = iron_mace
+tab = combat
+stack = 1
+weapon = mace
+tier = iron
+damage = 9
+swing = 1.4
+knockback = 2
+repair = iron_bar
+binding = flux
+durability = 250
+
+# ---- diamond ----
+[item diamond_sword]
+title = Diamond sword
+texture = diamond_sword
+tab = combat
+stack = 1
+weapon = sword
+tier = diamond
+damage = 7
+swing = 0.6
+repair = diamond
+binding = flux
+durability = 1560
+
+[item diamond_spear]
+title = Diamond spear
+texture = diamond_spear
+tab = combat
+stack = 1
+weapon = spear
+tier = diamond
+damage = 6
+swing = 0.55
+knockback = 0.7
+reach = 1
+repair = diamond
+binding = flux
+durability = 1560
+
+[item diamond_mace]
+title = Diamond mace
+texture = diamond_mace
+tab = combat
+stack = 1
+weapon = mace
+tier = diamond
+damage = 10
+swing = 1.4
+knockback = 2
+repair = diamond
+binding = flux
+durability = 1560
+
+# ---- mythril ----
+[item mythril_sword]
+title = Mythril sword
+texture = mythril_sword
+tab = combat
+stack = 1
+weapon = sword
+tier = mythril
+damage = 8
+swing = 0.6
+repair = mythril_bar
+binding = star_essence
+durability = 2400
+
+[item mythril_spear]
+title = Mythril spear
+texture = mythril_spear
+tab = combat
+stack = 1
+weapon = spear
+tier = mythril
+damage = 7
+swing = 0.55
+knockback = 0.7
+reach = 1
+repair = mythril_bar
+binding = star_essence
+durability = 2400
+
+[item mythril_mace]
+title = Mythril mace
+texture = mythril_mace
+tab = combat
+stack = 1
+weapon = mace
+tier = mythril
+damage = 11
+swing = 1.4
+knockback = 2
+repair = mythril_bar
+binding = star_essence
+durability = 2400
+
+# ---- adamantite ----
+[item adamantite_sword]
+title = Adamantite sword
+texture = adamantite_sword
+tab = combat
+stack = 1
+weapon = sword
+tier = adamantite
+damage = 9
+swing = 0.6
+repair = adamantite_bar
+binding = star_essence
+durability = 3600
+
+[item adamantite_spear]
+title = Adamantite spear
+texture = adamantite_spear
+tab = combat
+stack = 1
+weapon = spear
+tier = adamantite
+damage = 8
+swing = 0.55
+knockback = 0.7
+reach = 1
+repair = adamantite_bar
+binding = star_essence
+durability = 3600
+
+[item adamantite_mace]
+title = Adamantite mace
+texture = adamantite_mace
+tab = combat
+stack = 1
+weapon = mace
+tier = adamantite
+damage = 12
+swing = 1.4
+knockback = 2
+repair = adamantite_bar
+binding = star_essence
+durability = 3600
+
+# ---- star crystal ----
+[item star_crystal_sword]
+title = Star crystal sword
+texture = star_crystal_sword
+tab = combat
+stack = 1
+weapon = sword
+tier = star_crystal
+damage = 10
+swing = 0.6
+repair = star_crystal
+binding = star_essence
+durability = 5000
+
+[item star_crystal_spear]
+title = Star crystal spear
+texture = star_crystal_spear
+tab = combat
+stack = 1
+weapon = spear
+tier = star_crystal
+damage = 9
+swing = 0.55
+knockback = 0.7
+reach = 1
+repair = star_crystal
+binding = star_essence
+durability = 5000
+
+[item star_crystal_mace]
+title = Star crystal mace
+texture = star_crystal_mace
+tab = combat
+stack = 1
+weapon = mace
+tier = star_crystal
+damage = 13
+swing = 1.4
+knockback = 2
+repair = star_crystal
+binding = star_essence
+durability = 5000

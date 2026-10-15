@@ -29,6 +29,7 @@ global ents_view_reset, ents_view_packet, ents_view_update, ents_pick, ents_lead
 global ents_view_name
 global g_vents, g_ents_shown, g_ent_target, g_vlist
 
+extern g_cv_paused
 extern g_frame_us, world_block_at, sincosf
 
 %define SKY_EVERY       16              ; frames between sky checks
@@ -207,6 +208,10 @@ PROC ents_view_update, 32, rbx, rsi, rdi
     cmp dword [rel g_ents_shown], 0
     je .done
     mov rax, [rel g_frame_us]
+    cmp dword [rel g_cv_paused], 0
+    je .moving
+    xor eax, eax                        ; (a hit pause: everything holds still)
+.moving:
     cvtsi2sd xmm0, rax
     mulsd xmm0, [rel c_us]
     cvtsd2ss xmm1, xmm0

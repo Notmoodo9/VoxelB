@@ -2104,3 +2104,36 @@ take everything back; Hardcore deaths spectate or delete the world.
 * **The packet queues grew to 2048** (from 256): at up to 10 simulation
   ticks per slow frame the client queue overflowed and dropped packets —
   a dropped block change left the client showing a block that was gone.
+
+## D105 — Melee (M21 part 1)
+Owner's interview (design/combat/combat.md): a swing meter like Minecraft
+1.9, swords / axes / spears / maces in the 8 tool tiers, crits, sweeps,
+a hit pause and shake with sparks and dust, no damage numbers. Armor,
+ranged weapons and runes are parts 2–4.
+* **The simulation owns the meter** (src/sim/combat.asm): ticks since the
+  last swing over the item's `swing` time. The client keeps its own copy
+  only to draw the bar (src/client/combat_view.asm) and sends every swing,
+  also one at nothing (PKT_C_ATTACK id −1), so both start together; a new
+  item in hand starts both again.
+* **Weapon stats are item keys** (`weapon`, `damage`, `swing`,
+  `knockback`, `reach`); the rules around them are data/combat/combat.cfg.
+  Pickaxes, shovels and hoes got small `damage` values; axes are weapons
+  and tools at once.
+* **Animal health stays whole points** (saved as u16 in the entity
+  regions): a fractional hit takes its fraction as a chance of one more
+  point, so the average is exact and no save format changes.
+* **ents_hit** (entities.asm) takes the damage and knock-back; reach,
+  scaling, crits and sweeps are combat.asm's. The red-flash window
+  (0.5 s) still stops double hits, as before.
+* **Hit feel without a frame hitch**: the hit pause freezes the animals'
+  interpolation and the arm's swing (not the whole game), and the camera
+  shakes by moving g_cam_pos a little each frame (rebuilt from the
+  player every frame, so it never drifts). PKT_S_HIT carries where and
+  how (HITF_CRIT / SWEEP / HEAVY, the meter).
+* **Particles are drawn by the UI**: points projected to the screen as
+  little squares (no depth test; they live < 0.5 s at the animal). A
+  world-space particle renderer can replace this when weather and
+  fireflies need one.
+* **Test switch** `--attack-test`: whenever the meter is full, a hit on
+  the nearest grown-up animal within 5.5 blocks (with `--lead-test` the
+  animals stay close; with jump held, crits).

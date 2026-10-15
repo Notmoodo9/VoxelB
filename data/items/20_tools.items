@@ -18,6 +18,8 @@ repair = *_planks
 binding = fibre_binding
 speed = 2
 durability = 60
+damage = 2
+swing = 0.8
 
 [item wooden_axe]
 title = Wooden axe
@@ -30,6 +32,9 @@ repair = *_planks
 binding = fibre_binding
 speed = 2
 durability = 60
+weapon = axe
+damage = 6
+swing = 1.0
 
 [item wooden_shovel]
 title = Wooden shovel
@@ -42,6 +47,8 @@ repair = *_planks
 binding = fibre_binding
 speed = 2
 durability = 60
+damage = 1.5
+swing = 0.8
 
 [item wooden_hoe]
 title = Wooden hoe
@@ -54,6 +61,8 @@ repair = *_planks
 binding = fibre_binding
 speed = 2
 durability = 60
+damage = 1
+swing = 0.8
 
 # ---- stone ----
 [item stone_pickaxe]
@@ -67,6 +76,8 @@ repair = cobblestone, mossy_cobblestone
 binding = fibre_binding
 speed = 4
 durability = 132
+damage = 2.5
+swing = 0.8
 
 [item stone_axe]
 title = Stone axe
@@ -79,6 +90,9 @@ repair = cobblestone, mossy_cobblestone
 binding = fibre_binding
 speed = 4
 durability = 132
+weapon = axe
+damage = 7
+swing = 1.0
 
 [item stone_shovel]
 title = Stone shovel
@@ -91,6 +105,8 @@ repair = cobblestone, mossy_cobblestone
 binding = fibre_binding
 speed = 4
 durability = 132
+damage = 2
+swing = 0.8
 
 [item stone_hoe]
 title = Stone hoe
@@ -103,6 +119,8 @@ repair = cobblestone, mossy_cobblestone
 binding = fibre_binding
 speed = 4
 durability = 132
+damage = 1
+swing = 0.8
 
 # ---- copper ----
 [item copper_pickaxe]
@@ -116,6 +134,8 @@ repair = copper_bar
 binding = fibre_binding
 speed = 5
 durability = 190
+damage = 3
+swing = 0.8
 
 [item copper_axe]
 title = Copper axe
@@ -128,6 +148,9 @@ repair = copper_bar
 binding = fibre_binding
 speed = 5
 durability = 190
+weapon = axe
+damage = 7.5
+swing = 1.0
 
 [item copper_shovel]
 title = Copper shovel
@@ -140,6 +163,8 @@ repair = copper_bar
 binding = fibre_binding
 speed = 5
 durability = 190
+damage = 2
+swing = 0.8
 
 [item copper_hoe]
 title = Copper hoe
@@ -152,6 +177,8 @@ repair = copper_bar
 binding = fibre_binding
 speed = 5
 durability = 190
+damage = 1.5
+swing = 0.8
 
 # ---- iron ----
 [item iron_pickaxe]
@@ -165,6 +192,8 @@ repair = iron_bar
 binding = flux
 speed = 6
 durability = 250
+damage = 3
+swing = 0.8
 
 [item iron_axe]
 title = Iron axe
@@ -177,6 +206,9 @@ repair = iron_bar
 binding = flux
 speed = 6
 durability = 250
+weapon = axe
+damage = 8
+swing = 1.0
 
 [item iron_shovel]
 title = Iron shovel
@@ -189,6 +221,8 @@ repair = iron_bar
 binding = flux
 speed = 6
 durability = 250
+damage = 2.5
+swing = 0.8
 
 [item iron_hoe]
 title = Iron hoe
@@ -201,6 +235,8 @@ repair = iron_bar
 binding = flux
 speed = 6
 durability = 250
+damage = 1.5
+swing = 0.8
 
 # ---- diamond ----
 [item diamond_pickaxe]
@@ -214,6 +250,8 @@ repair = diamond
 binding = flux
 speed = 8
 durability = 1560
+damage = 3.5
+swing = 0.8
 
 [item diamond_axe]
 title = Diamond axe
@@ -226,6 +264,9 @@ repair = diamond
 binding = flux
 speed = 8
 durability = 1560
+weapon = axe
+damage = 9
+swing = 1.0
 
 [item diamond_shovel]
 title = Diamond shovel
@@ -238,6 +279,8 @@ repair = diamond
 binding = flux
 speed = 8
 durability = 1560
+damage = 3
+swing = 0.8
 
 [item diamond_hoe]
 title = Diamond hoe
@@ -250,6 +293,8 @@ repair = diamond
 binding = flux
 speed = 8
 durability = 1560
+damage = 2
+swing = 0.8
 
 # ---- mythril ----
 [item mythril_pickaxe]
@@ -263,6 +308,8 @@ repair = mythril_bar
 binding = star_essence
 speed = 10
 durability = 2400
+damage = 4
+swing = 0.8
 
 [item mythril_axe]
 title = Mythril axe
@@ -275,6 +322,9 @@ repair = mythril_bar
 binding = star_essence
 speed = 10
 durability = 2400
+weapon = axe
+damage = 10
+swing = 1.0
 
 [item mythril_shovel]
 title = Mythril shovel
@@ -287,6 +337,8 @@ repair = mythril_bar
 binding = star_essence
 speed = 10
 durability = 2400
+damage = 3
+swing = 0.8
 
 [item mythril_hoe]
 title = Mythril hoe
@@ -299,6 +351,8 @@ repair = mythril_bar
 binding = star_essence
 speed = 10
 durability = 2400
+damage = 2
+swing = 0.8
 
 # ---- adamantite ----
 [item adamantite_pickaxe]
@@ -312,6 +366,8 @@ repair = adamantite_bar
 binding = star_essence
 speed = 12
 durability = 3600
+damage = 4
+swing = 0.8
 
 [item adamantite_axe]
 title = Adamantite axe
@@ -324,6 +380,9 @@ repair = adamantite_bar
 binding = star_essence
 speed = 12
 durability = 3600
+weapon = axe
+damage = 11
+swing = 1.0
 
 [item adamantite_shovel]
 title = Adamantite shovel
@@ -336,6 +395,8 @@ repair = adamantite_bar
 binding = star_essence
 speed = 12
 durability = 3600
+damage = 3.5
+swing = 0.8
 
 [item adamantite_hoe]
 title = Adamantite hoe
@@ -348,6 +409,8 @@ repair = adamantite_bar
 binding = star_essence
 speed = 12
 durability = 3600
+damage = 2.5
+swing = 0.8
 
 # ---- star crystal ----
 [item star_crystal_pickaxe]
@@ -361,6 +424,8 @@ repair = star_crystal
 binding = star_essence
 speed = 16
 durability = 5000
+damage = 4.5
+swing = 0.8
 
 [item star_crystal_axe]
 title = Star crystal axe
@@ -373,6 +438,9 @@ repair = star_crystal
 binding = star_essence
 speed = 16
 durability = 5000
+weapon = axe
+damage = 12
+swing = 1.0
 
 [item star_crystal_shovel]
 title = Star crystal shovel
@@ -385,6 +453,8 @@ repair = star_crystal
 binding = star_essence
 speed = 16
 durability = 5000
+damage = 3.5
+swing = 0.8
 
 [item star_crystal_hoe]
 title = Star crystal hoe
@@ -397,3 +467,6 @@ repair = star_crystal
 binding = star_essence
 speed = 16
 durability = 5000
+
+damage = 2.5
+swing = 0.8

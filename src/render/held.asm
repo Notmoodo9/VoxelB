@@ -18,7 +18,7 @@
 %include "gl.inc"
 %include "packet.inc"
 
-global held_init, held_draw, held_swing
+global held_init, held_draw, held_swing, g_swing_t0
 
 extern shader_create, shader_program, block_textures_bind, icon_uv, icon_kind
 extern timer_elapsed_us, sincosf

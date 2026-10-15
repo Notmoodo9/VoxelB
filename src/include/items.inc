@@ -8,6 +8,12 @@
 %define ITEMF_HIDDEN    1               ; not in the Creative inventory
 %define EATF_ALWAYS     1               ; M20: can be eaten when full (milk)
 %define EATF_CURE       2               ; M20: cures food poisoning
+%define WEAPON_NONE     0               ; M21: g_item_weapon
+%define WEAPON_SWORD    1
+%define WEAPON_AXE      2
+%define WEAPON_SPEAR    3
+%define WEAPON_MACE     4
+%define WEAPON_COUNT    5
 ; tool types and tiers (item settings `tool`, `tier`; mining.cfg)
 %define TOOL_NONE       0
 %define TOOL_PICKAXE    1
@@ -35,5 +41,6 @@ extern g_item_tool, g_item_tier, g_item_speed, g_item_dur
 extern g_item_repair, g_item_binding
 extern item_tool_index, item_tier_index, items_match_list
 extern g_item_leaves, item_fill
+extern g_item_weapon, g_item_damage, g_item_swing, g_item_kb, g_item_reach
 %endif
 %endif

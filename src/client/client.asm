@@ -44,6 +44,7 @@ extern interact_init, interact_update, stream_block_changed
 extern g_held_block, g_item_block, g_dig_want, g_target_valid, g_target
 extern drops_view_packet, drops_view_reset, ents_view_packet, ents_view_reset
 extern ents_view_name, graves_view_reset, graves_view_packet
+extern combat_view_reset, combat_view_hit
 
 %define DOUBLE_TAP_US   300000          ; move_up twice within this: fly
 
@@ -109,6 +110,7 @@ PROC client_init, 0
     call drops_view_reset
     call ents_view_reset                ; animals (milestone 19)
     call graves_view_reset              ; gravestones (milestone 20)
+    call combat_view_reset              ; the swing meter, hit feel (milestone 21)
     xor eax, eax
     mov [rel g_cwin + WIN_PKT.kind], eax
     mov [rel g_cwin_event], eax
@@ -497,6 +499,12 @@ PROC client_view, 0, rsi, rdi
     call graves_view_packet             ; (part 2: a gravestone)
     jmp .packet
 .not_grave:
+    cmp eax, PKT_S_HIT
+    jne .not_hit
+    lea rcx, [rel g_cl_pkt + PKT.data]
+    call combat_view_hit                ; (milestone 21: a hit landed)
+    jmp .packet
+.not_hit:
     cmp eax, PKT_S_TIME
     jne .packet
     mov eax, [rel g_cl_pkt + PKT.data + TIME_PKT.time]

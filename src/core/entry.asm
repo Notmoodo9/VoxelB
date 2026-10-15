@@ -27,6 +27,8 @@
 ;                      8 s in the player steps 6 blocks south (pull); 15 s in
 ;                      they are tied to a fence 2 blocks east of the player;
 ;                      20 s in the player steps 12 blocks more (part 3b)
+;   --attack-test      whenever the swing meter is full, a hit on the nearest
+;                      grown-up animal within 5.5 blocks (40 hits; milestone 21)
 ;   --test-block <b>   3 s in, block b fills the player's feet and head cells
 ;                      and the cell below (water, lava, stone, cactus; M20)
 ;   --use-test         once a grown-up animal is within 4 blocks, it is right-clicked
@@ -71,7 +73,7 @@ extern camera_init, camera_update
 extern overlay_draw, overlay_toggle, hud_draw
 extern cpu_detect, selftest_run
 extern world_init, world_render_init, world_render_shutdown, g_breed_test, g_mob_gallery, g_gallery_name
-extern g_give_name, g_lead_test, g_use_test, g_test_block
+extern g_give_name, g_lead_test, g_use_test, g_test_block, g_attack_test
 extern terrain_survey
 extern world_spawn, g_seed_override, g_seed_override_set, g_force_flat
 extern stream_init, stream_update, stream_shutdown, settings_load
@@ -129,6 +131,7 @@ opt_give:           db "--give ", 0
 opt_lead_test:      db "--lead-test", 0
 opt_test_block:     db "--test-block ", 0
 opt_use_test:      db "--use-test", 0
+opt_attack_test:   db "--attack-test", 0
 align 4
 c_deg_to_rad:       dd 0.0174532925
 align 4
@@ -455,6 +458,12 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     jz .no_use_test
     mov dword [rel g_use_test], 12      ; (part 3b test: a right click on an animal)
 .no_use_test:
+    lea rdx, [rel opt_attack_test]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .no_attack_test
+    mov dword [rel g_attack_test], 40   ; (milestone 21 test: full swings at an animal)
+.no_attack_test:
     xor esi, esi                        ; world name (0: default)
     lea rdx, [rel opt_world]
     INVOKE str_find, rbx, rdx

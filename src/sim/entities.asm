@@ -20,7 +20,8 @@
 ; Public API (include/entity.inc):
 ;   ents_reset()                    a new world: none
 ;   ents_tick()                     once per simulation tick
-;   ents_attack(rcx = ENT_PKT*)     the player hit an animal
+;   ents_hit(ecx = id, xmm1 = f32 damage, xmm2 = f32 knock-back) -> eax 1
+;                                   the player hit an animal (combat.asm)
 ;   ent_new(ecx = variant, edx = EF_BABY or 0, r8 = f64[3] feet) -> eax id / -1
 ;   ent_remove(ecx = id)            gone (the client is told)
 ; Part 3: an animal with `glide` falls no faster than that; a shorn one
@@ -37,7 +38,7 @@
 %include "mobs.inc"
 %include "entity.inc"
 
-global ents_reset, ents_tick, ents_attack, ent_new, ent_remove, g_ents, g_ent_count
+global ents_reset, ents_tick, ents_hit, ent_new, ent_remove, g_ents, g_ent_count
 global g_ent_awake, g_ent_tick_us, g_ent_sent, g_paths, ent_send_name
 
 extern pkt_send, g_to_client, drops_spawn, sincosf, atan2f, timer_elapsed_us
@@ -75,11 +76,13 @@ c_u32:          dq 0.00000000023283064365386963 ; 2^-32
 c_knock:        dq 0.42
 c_knock_up:     dq 0.34
 c_reach_extra:  dq 1.5
+c_one_d:        dq 1.0
 c_probe:        dq 0.55                 ; how far ahead it looks for drops
 c_moving2:      dq 0.0004               ; squared speed: moving
 c_eye_lift:     dq -0.4               ; the player's eyes above its head
 c_lower:        dq 0.5                  ; water: the lower half of the body
 c_progress:     dd 0.02                 ; closer by this: not stuck
+c_inv_65536:    dd 0.0000152587890625   ; 1 / 65536
 align 4
 c_turn:         dd 0.25                 ; radians per tick
 c_head_turn:    dd 0.2
@@ -672,24 +675,31 @@ PROC die, 32, rdi, r12
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; ents_attack — the player hit an animal: damage, knock-back, it runs.
-;   in:  rcx = ENT_PKT* (.id)
+; ents_hit — an animal is hit (milestone 21: combat.asm works out how hard):
+; damage (a fraction rounds up with that chance), knock-back away from the
+; player, the red flash, and it and its herd run (or it dies).
+;   in:  ecx = id, xmm1 = f32 damage, xmm2 = f32 knock-back factor
+;   out: eax = 1 if it took the hit (awake, alive, not just hit), else 0
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC ents_attack, 0, rbx, rsi
-    mov esi, [rcx + ENT_PKT.id]
+%define H_DMG   0
+%define H_KB    4
+PROC ents_hit, 16, rbx, rsi
+    movss [LOCAL(H_DMG)], xmm1
+    movss [LOCAL(H_KB)], xmm2
+    mov esi, ecx
     cmp esi, MAX_ENTITIES
-    jae .done
+    jae .no
     imul rax, rsi, EntT_size
     lea rbx, [rel g_ents]
     add rbx, rax
     mov eax, [rbx + EntT.flags]
     and eax, EF_ACTIVE | EF_AWAKE | EF_DYING
     cmp eax, EF_ACTIVE | EF_AWAKE
-    jne .done
+    jne .no
     cmp word [rbx + EntT.hurt], 0
-    jne .done                           ; (just hit)
-    ; within reach of the eyes (the reach plus a little: aimed at its body)
+    jne .no                             ; (just hit)
+    ; knock-back away from the player
     movsd xmm0, [rbx + EntT.pos]
     subsd xmm0, [rel g_pl_pos]
     movsd xmm1, [rbx + EntT.pos + 16]
@@ -699,32 +709,51 @@ PROC ents_attack, 0, rbx, rsi
     movsd xmm3, xmm1
     mulsd xmm3, xmm1
     addsd xmm2, xmm3
-    cvtss2sd xmm3, [rel g_pl_reach]
-    addsd xmm3, [rel c_reach_extra]
-    mulsd xmm3, xmm3
-    comisd xmm2, xmm3
-    ja .done
     sqrtsd xmm2, xmm2
     addsd xmm2, [rel c_tiny]
-    ; knock-back away from the player
+    cvtss2sd xmm3, [LOCAL(H_KB)]
     divsd xmm0, xmm2
     divsd xmm1, xmm2
     mulsd xmm0, [rel c_knock]
     mulsd xmm1, [rel c_knock]
+    mulsd xmm0, xmm3
+    mulsd xmm1, xmm3
     movsd [rbx + EntT.vel], xmm0
     movsd [rbx + EntT.vel + 16], xmm1
     movsd xmm0, [rel c_knock_up]
+    minsd xmm3, [rel c_one_d]
+    mulsd xmm0, xmm3
     movsd [rbx + EntT.vel + 8], xmm0
     mov word [rbx + EntT.hurt], HURT_TICKS
     or dword [rbx + EntT.flags], EF_DIRTY
-    dec word [rbx + EntT.health]
+    ; the damage: whole points, and the fraction's chance of one more
+    movss xmm0, [LOCAL(H_DMG)]
+    roundss xmm1, xmm0, 9               ; (floor)
+    subss xmm0, xmm1
+    cvttss2si esi, xmm1
+    call rand
+    and eax, 0xFFFF
+    cvtsi2ss xmm1, eax
+    mulss xmm1, [rel c_inv_65536]
+    comiss xmm1, xmm0
+    jae .whole
+    inc esi
+.whole:
+    movzx eax, word [rbx + EntT.health]
+    sub eax, esi
     jg .alive
+    mov word [rbx + EntT.health], 0
     or dword [rbx + EntT.flags], EF_DYING
     mov byte [rbx + EntT.death], 0
-    jmp .done
+    mov eax, 1
+    RETURN
 .alive:
+    mov [rbx + EntT.health], ax
     call behave_hurt                    ; it and its herd run
-.done:
+    mov eax, 1
+    RETURN
+.no:
+    xor eax, eax
     RETURN
 ENDPROC
 

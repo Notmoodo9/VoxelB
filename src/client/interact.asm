@@ -28,7 +28,7 @@
 %include "save.inc"
 
 global interact_init, interact_update, use_on_animal
-extern held_swing
+extern held_swing, combat_view_swing
 global g_dig_want
 extern g_world_mode
 global g_target_valid, g_target, g_target_face, g_target_id, g_held_block
@@ -424,6 +424,7 @@ PROC interact_update, 0, rbx
     lea r8, [rel g_attack]
     INVOKE pkt_send, rcx, PKT_C_ATTACK, r8, ENT_PKT_size
     call held_swing
+    call combat_view_swing              ; (the swing meter starts again)
     jmp .done
 .blocks:
     cmp dword [rel g_target_valid], 0
@@ -440,7 +441,13 @@ PROC interact_update, 0, rbx
     call input_pressed
     test eax, eax
     jz .done
+    ; a swing at nothing: the simulation's meter starts again (id -1)
+    mov dword [rel g_attack + ENT_PKT.id], -1
+    lea rcx, [rel g_to_sim]
+    lea r8, [rel g_attack]
+    INVOKE pkt_send, rcx, PKT_C_ATTACK, r8, ENT_PKT_size
     call held_swing
+    call combat_view_swing
     jmp .done
 .has_block:
     cmp dword [rel g_world_mode], MODE_CREATIVE

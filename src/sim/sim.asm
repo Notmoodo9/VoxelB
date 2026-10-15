@@ -40,7 +40,8 @@ extern inv_place_block, inv_used_slot, inv_swap_hands, inv_drag
 extern dig_reset, dig_tick, drops_reset, drops_tick, g_world_mode, g_world_day
 extern craft_reset, craft_window, craft_recipe, craft_tick, furnace_tick
 extern cont_reset, save_load_containers, g_block_flags
-extern ents_reset, ents_tick, ents_attack, store_reset, store_open, store_update
+extern combat_load, combat_reset, combat_tick, combat_attack
+extern ents_reset, ents_tick, store_reset, store_open, store_update
 extern behave_interact, racks_load, racks_tick, graves_load
 extern timer_elapsed_us, g_frame_us, g_time_of_day, g_day_length
 
@@ -106,6 +107,8 @@ PROC sim_init, 16, rbx, rsi
     call racks_load                     ; hides drying on racks (part 3)
     call graves_load                    ; gravestones (milestone 20 part 2)
     call survival_load                  ; health and hunger (milestone 20)
+    call combat_load                    ; melee (milestone 21)
+    call combat_reset
     mov rcx, rbx
     call survival_reset
     cvtss2sd xmm0, [rel g_time_of_day]
@@ -221,7 +224,7 @@ PROC sim_tick, 16, rbx, rsi, rdi
     cmp eax, PKT_C_ATTACK
     jne .not_attack
     lea rcx, [rel g_pkt + PKT.data]
-    call ents_attack                    ; (milestone 19)
+    call combat_attack                  ; (milestone 19; damage: milestone 21)
     jmp .packet
 .not_attack:
     cmp eax, PKT_C_INTERACT
@@ -291,6 +294,7 @@ PROC sim_tick, 16, rbx, rsi, rdi
     lea rcx, [rel g_input]
     mov edx, [rel g_pressed]
     call survival_tick                  ; health, hunger, damage (milestone 20)
+    call combat_tick                    ; the swing meter (milestone 21)
     lea rcx, [rel g_input]
     call dig_tick                       ; Survival mining (milestone 18)
     call drops_tick                     ; dropped items

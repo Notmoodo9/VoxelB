@@ -29,6 +29,9 @@
 ;     TIER_*), g_item_speed (f32, 1 = by hand), g_item_dur (u16 uses, 0 =
 ;     does not wear), g_item_repair / g_item_binding (char*: a tool's repair
 ;     material and binding patterns, 0 = cannot be repaired)
+;   g_item_weapon (u8 WEAPON_*), g_item_damage (f32, 0 = the hand's),
+;     g_item_swing (u8 ticks, 0 = the hand's), g_item_kb (f32, 0 = 1),
+;     g_item_reach (f32 extra blocks) — milestone 21 (melee)
 ;   item_tool_index(name) / item_tier_index(name) -> eax TOOL_* / TIER_*, -1
 ;   g_item_leaves (u16: the item left once it is used up, e.g. a bucket of
 ;     water leaves the bucket; 0 = nothing; milestone 19 part 3b)
@@ -55,6 +58,7 @@ global g_item_repair, g_item_binding, g_item_leaves, item_fill
 global g_fill_count, g_fill_item
 global g_item_food, g_item_poison, g_item_eat, g_item_eatf, g_item_sat
 global item_tool_index, item_tier_index, items_match_list
+global g_item_weapon, g_item_damage, g_item_swing, g_item_kb, g_item_reach
 
 extern str_ieq, str_len, str_copy, str_parse_u64, str_dup, str_parse_float
 
@@ -96,6 +100,16 @@ k_eat_time:     db "eat_time", 0
 k_always:       db "always_edible", 0
 k_cures:        db "cures_poison", 0
 k_fill:         db "fill", 0
+k_weapon:       db "weapon", 0
+k_damage:       db "damage", 0
+k_swing:        db "swing", 0
+k_knockback:    db "knockback", 0
+k_reach:        db "reach", 0
+weapon_0:       db "none", 0
+weapon_1:       db "sword", 0
+weapon_2:       db "axe", 0
+weapon_3:       db "spear", 0
+weapon_4:       db "mace", 0
 str_bad_fill:   db "items: a fill line names no block or item: ", 0
 tool_0:         db "none", 0
 tool_1:         db "pickaxe", 0
@@ -114,6 +128,7 @@ tier_8:         db "star_crystal", 0
 align 8
 tool_names:     dq tool_0, tool_1, tool_2, tool_3, tool_4
 tier_names:     dq tier_0, tier_1, tier_2, tier_3, tier_4, tier_5, tier_6, tier_7, tier_8
+weapon_names:   dq weapon_0, weapon_1, weapon_2, weapon_3, weapon_4
 align 4
 c_one:          dd 1.0
 c_twenty:       dd 20.0                 ; ticks a second
@@ -153,6 +168,11 @@ g_item_eat:     resb MAX_ITEMS          ; ticks to eat it (0: the default)
 g_item_eatf:    resb MAX_ITEMS          ; EATF_*
 alignb 4
 g_item_sat:     resd MAX_ITEMS          ; f32 saturation it gives
+g_item_damage:  resd MAX_ITEMS          ; M21: f32 melee damage (0: the hand's, combat.cfg)
+g_item_kb:      resd MAX_ITEMS          ; M21: f32 knock-back factor (0: 1)
+g_item_reach:   resd MAX_ITEMS          ; M21: f32 extra reach in blocks
+g_item_weapon:  resb MAX_ITEMS          ; M21: WEAPON_*
+g_item_swing:   resb MAX_ITEMS          ; M21: ticks a full swing takes (0: the hand's)
 g_fill_item:    resw MAX_FILLS          ; the container
 g_fill_block:   resw MAX_FILLS          ; the block it takes
 g_fill_result:  resw MAX_FILLS          ; what it becomes
@@ -802,7 +822,7 @@ PROC items_pair, 0, rbx, rsi, rdi
     lea rdx, [rel k_cures]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
-    jz .i_fill
+    jz .i_weapon
     mov ecx, EATF_CURE
 .eat_flag:
     lea rdx, [rel g_item_eatf]
@@ -813,7 +833,83 @@ PROC items_pair, 0, rbx, rsi, rdi
     je .done
     or [rdx + rdi], cl
     RETURN
+.i_weapon:
+    ; weapon = sword | axe | spear | mace (milestone 21)
+    lea rdx, [rel k_weapon]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_damage
+    xor ecx, ecx
+.w_name:
+    cmp ecx, WEAPON_COUNT
+    jae .bad
+    mov [rsp + 32], rcx
+    lea rdx, [rel weapon_names]
+    mov rdx, [rdx + rcx * 8]
+    INVOKE str_ieq, rsi, rdx
+    mov rcx, [rsp + 32]
+    test eax, eax
+    jnz .w_found
+    inc ecx
+    jmp .w_name
+.w_found:
+    lea rax, [rel g_item_weapon]
+    mov [rax + rdi], cl
+    RETURN
+.i_damage:
+    lea rdx, [rel k_damage]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_swing
+    lea rax, [rel g_item_damage]
+    jmp .float_field
+.i_swing:
+    ; swing = seconds a full swing takes (1 tick .. 12 s)
+    lea rdx, [rel k_swing]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_kb
+    mov rcx, rsi
+    call str_parse_float
+    test eax, eax
+    jz .bad
+    mulss xmm0, [rel c_twenty]
+    cvtss2si eax, xmm0
+    cmp eax, 1
+    jl .bad
+    cmp eax, 240
+    jg .bad
+    lea rcx, [rel g_item_swing]
+    mov [rcx + rdi], al
+    RETURN
+.i_kb:
+    lea rdx, [rel k_knockback]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_reach
+    lea rax, [rel g_item_kb]
+    jmp .float_field
+.i_reach:
+    lea rdx, [rel k_reach]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_fill_key
+    lea rax, [rel g_item_reach]
+.float_field:
+    ; an f32 field at rax (0 .. 1000)
+    mov [rsp + 32], rax
+    mov rcx, rsi
+    call str_parse_float
+    test eax, eax
+    jz .bad
+    xorps xmm1, xmm1
+    comiss xmm0, xmm1
+    jb .bad
+    mov rax, [rsp + 32]
+    movss [rax + rdi * 4], xmm0
+    RETURN
 .i_fill:
+.i_fill_key:
     ; fill = <block>, <item> (resolved later)
     lea rdx, [rel k_fill]
     INVOKE str_ieq, rbx, rdx

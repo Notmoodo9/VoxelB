@@ -547,6 +547,11 @@ name and a title made from it ("stone_bricks" → "Stone bricks"). Records:
 | | `eat_time` | seconds it takes to eat (default `eat_time` in survival.cfg) |
 | | `always_edible` | `1`: can be eaten with full hunger (milk) |
 | | `cures_poison` | `1`: ends food poisoning |
+| | `weapon` | (Milestone 21) `sword`, `axe`, `spear` or `mace`: what kind of weapon it is (axes are tools too). Swords sweep; axes and maces hit hard (a longer hit pause) |
+| | `damage` | health points a full swing takes (default: combat.cfg `hand_damage`) |
+| | `swing` | seconds the swing meter takes to fill (default `hand_swing`) |
+| | `knockback` | × the usual knock-back (default 1) |
+| | `reach` | extra blocks of reach (spears 1) |
 
 An `[item]` with an existing item's name (a block's, too) changes that item.
 
@@ -625,7 +630,7 @@ animal never needs assembly. Records:
 | `[model <name>]` | `skin_size` | `64 64` (every skin is 64 × 64; one texture array) |
 | | `part` | `name, motion, pivot x y z, box x y z, size w h d, u v` — one box (up to 32 per model). Pixels: 16 = one block; the model faces north (−Z), y up from the feet centre. `box` is the box's low corner from the pivot (halves allowed), `size` whole pixels, `u v` its place in the skin. `motion`: `none`, `head` (turns and tilts with the look), `leg0` / `leg1` (swing in opposite phases when walking), `tail` (sways), `coat` (part 3: still; not drawn while the animal is shorn), `wing0` / `wing1` (part 3: left and right wings, beating while off the ground), `head_male` (part 3b: turns with the head, shown only on grown males — antlers) |
 | `[mob <name>]` | `title` | the shown name |
-| | `health` | hit points (a hit takes 1 until combat, milestone 21) |
+| | `health` | hit points (a weapon takes its `damage`, Milestone 21; a fraction of a point is taken with that chance) |
 | | `size` | `width height` of its body box, in blocks (babies half) |
 | | `speed` | walking speed, blocks per second (running away: 2.2 ×) |
 | | `temper` | `calm` (runs when hurt), `wild` (also runs from a player within 12 blocks) or `fierce` (part 3: when hit it charges the player for up to 6 s and knocks them back; its herd stays) |
@@ -698,6 +703,25 @@ fills back up), `regen` (`normal`, `fast` = 1 HP every `regen_every`
 whatever the hunger, `full_only` = 1 HP every `regen_every` at full
 hunger, `none`), `regen_every`, `starve_floor` (health starvation stops
 at; 0 = it kills).
+
+## Combat (`data/combat/combat.cfg`, Milestone 21)
+
+The rules around the weapons' own numbers (item keys `weapon`, `damage`,
+`swing`, `knockback`, `reach`). A hit before the swing meter is full does
+`damage × (min_factor + (1 − min_factor) × meter²)` and knock-back ×
+(0.4 + 0.6 × meter).
+
+| Key | Meaning |
+|---|---|
+| `hand_damage`, `hand_swing` | the bare hand and items without `damage` / `swing` (seconds) |
+| `min_factor` | the share of the damage a swing at an empty meter does |
+| `crit_factor`, `crit_meter` | a swing with at least `crit_meter` while falling (not on the ground, in water, climbing or flying) does × `crit_factor` |
+| `sweep_damage`, `sweep_fraction`, `sweep_radius` | a full sword swing on the ground also hits the animals within `sweep_radius` blocks of the target for `sweep_damage` + `sweep_fraction` × the damage |
+| `reach_extra` | blocks of reach beyond the player's (to an animal's centre) |
+| `exhaust_attack` | exhaustion per hit |
+| `weapon_wear`, `tool_wear` | durability a hit takes from a weapon / another tool (Survival) |
+| `hit_pause`, `crit_pause`, `heavy_pause` | seconds the animals and the arm hold still after a hit / a critical hit / an axe or mace hit (the longest that applies) |
+| `shake` | the camera shake's strength (× the meter; 0 = none) |
 
 ## Saved worlds (`saves/<name>/`, Milestone 17)
 

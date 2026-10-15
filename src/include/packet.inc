@@ -137,6 +137,18 @@ endstruc
 %define PKT_S_ENTITY_NAME   76          ; NAME_PKT: an animal's name tag (after its PKT_S_ENTITY)
 %define PKT_S_SURVIVAL      77          ; SURV_PKT: health, hunger, air ... every tick (milestone 20)
 %define PKT_S_GRAVE         78          ; GRAVE_PKT: a gravestone appeared / was emptied (milestone 20)
+%define PKT_S_HIT           79          ; HIT_PKT: the player's hit landed (milestone 21: pause, shake, sparks)
+
+; a landed melee hit (milestone 21)
+struc HIT_PKT
+    .pos        resq 3                  ; f64 where (the animal, a little up)
+    .flags      resw 1                  ; HITF_*
+    .pad        resw 1
+    .meter      resd 1                  ; f32 the swing's meter (0..1)
+endstruc
+%define HITF_CRIT           1
+%define HITF_SWEEP          2
+%define HITF_HEAVY          4           ; an axe or a mace
 
 ; a gravestone (milestone 20 part 2): the client keeps a list by .index
 struc GRAVE_PKT

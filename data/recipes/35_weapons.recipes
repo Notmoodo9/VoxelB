@@ -1,0 +1,146 @@
+# Melee weapons (milestone 21 part 1): M = the tier's material, S = stick
+# (a shape also matches mirrored). Axes are with the tools.
+
+[recipe wooden_sword]
+shape = M / M / S
+M = *_planks
+S = stick
+result = wooden_sword
+
+[recipe wooden_spear]
+shape = ..M / .S. / S..
+M = *_planks
+S = stick
+result = wooden_spear
+
+[recipe wooden_mace]
+shape = MM / MM / S.
+M = *_planks
+S = stick
+result = wooden_mace
+
+[recipe stone_sword]
+shape = M / M / S
+M = cobblestone, mossy_cobblestone
+S = stick
+result = stone_sword
+
+[recipe stone_spear]
+shape = ..M / .S. / S..
+M = cobblestone, mossy_cobblestone
+S = stick
+result = stone_spear
+
+[recipe stone_mace]
+shape = MM / MM / S.
+M = cobblestone, mossy_cobblestone
+S = stick
+result = stone_mace
+
+[recipe copper_sword]
+shape = M / M / S
+M = copper_bar
+S = stick
+result = copper_sword
+
+[recipe copper_spear]
+shape = ..M / .S. / S..
+M = copper_bar
+S = stick
+result = copper_spear
+
+[recipe copper_mace]
+shape = MM / MM / S.
+M = copper_bar
+S = stick
+result = copper_mace
+
+[recipe iron_sword]
+shape = M / M / S
+M = iron_bar
+S = stick
+result = iron_sword
+
+[recipe iron_spear]
+shape = ..M / .S. / S..
+M = iron_bar
+S = stick
+result = iron_spear
+
+[recipe iron_mace]
+shape = MM / MM / S.
+M = iron_bar
+S = stick
+result = iron_mace
+
+[recipe diamond_sword]
+shape = M / M / S
+M = diamond
+S = stick
+result = diamond_sword
+
+[recipe diamond_spear]
+shape = ..M / .S. / S..
+M = diamond
+S = stick
+result = diamond_spear
+
+[recipe diamond_mace]
+shape = MM / MM / S.
+M = diamond
+S = stick
+result = diamond_mace
+
+[recipe mythril_sword]
+shape = M / M / S
+M = mythril_bar
+S = stick
+result = mythril_sword
+
+[recipe mythril_spear]
+shape = ..M / .S. / S..
+M = mythril_bar
+S = stick
+result = mythril_spear
+
+[recipe mythril_mace]
+shape = MM / MM / S.
+M = mythril_bar
+S = stick
+result = mythril_mace
+
+[recipe adamantite_sword]
+shape = M / M / S
+M = adamantite_bar
+S = stick
+result = adamantite_sword
+
+[recipe adamantite_spear]
+shape = ..M / .S. / S..
+M = adamantite_bar
+S = stick
+result = adamantite_spear
+
+[recipe adamantite_mace]
+shape = MM / MM / S.
+M = adamantite_bar
+S = stick
+result = adamantite_mace
+
+[recipe star_crystal_sword]
+shape = M / M / S
+M = star_crystal
+S = stick
+result = star_crystal_sword
+
+[recipe star_crystal_spear]
+shape = ..M / .S. / S..
+M = star_crystal
+S = stick
+result = star_crystal_spear
+
+[recipe star_crystal_mace]
+shape = MM / MM / S.
+M = star_crystal
+S = stick
+result = star_crystal_mace

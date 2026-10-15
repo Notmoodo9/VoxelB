@@ -42,6 +42,7 @@ extern death_screen_open, death_screen_frame, g_csv, g_csv_have
 extern g_world_mode, g_world_difficulty, g_world_hardcore
 extern g_new_mode, g_new_difficulty, g_new_hardcore, g_new_death, g_world_death
 extern menu_delete_world, g_world_name, str_copy
+extern combat_view_update, combat_view_draw, combat_view_test
 extern renderer_frame, hud_draw, overlay_draw, menu_frame, menu_open, menu_back
 extern daycycle_init, daycycle_set, world_spawn
 extern pkt_recv, g_to_sim, g_to_client
@@ -612,12 +613,14 @@ PROC game_frame, 16, rbx, rsi, rdi
 .live_input:
     call client_input
     call use_test_frame                ; (--use-test)
+    call combat_view_test               ; (--attack-test)
     cmp dword [rel g_name_request], 0
     je .sim
     call open_name                      ; (a name tag used on an animal)
 .sim:
     call sim_update
     call client_view
+    call combat_view_update             ; hit pause, shake, particles (milestone 21)
     call death_events                   ; (milestone 20)
     call window_events
     call save_update
@@ -639,6 +642,9 @@ PROC game_frame, 16, rbx, rsi, rdi
     mov ecx, esi
     mov edx, edi
     call names_draw                     ; named animals (part 3b)
+    mov ecx, esi
+    mov edx, edi
+    call combat_view_draw               ; sparks, dust, the swing meter (M21)
     cmp dword [rel g_world_mode], MODE_SPECTATOR
     je .inventory                       ; (a spectator: no hand, no HUD)
     mov ecx, esi

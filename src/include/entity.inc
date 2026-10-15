@@ -93,7 +93,7 @@ struc EREG
 endstruc
 
 %ifndef ENTITIES_IMPL
-extern ents_reset, ents_tick, ents_attack, ent_new, ent_remove, g_ents, g_ent_count
+extern ents_reset, ents_tick, ents_hit, ent_new, ent_remove, g_ents, g_ent_count
 extern g_ent_awake, g_ent_tick_us, g_ent_sent, g_paths, ent_send_name
 %endif
 %ifndef BEHAVE_IMPL

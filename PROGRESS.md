@@ -1,16 +1,71 @@
 # Progress
 
 ## Current state
-**Milestone 20, part 2** — the death rule, gravestones, Hardcore
-(v0.20.2, Windows CI green: run #119)
+**Milestone 21, part 1** — melee: the swing meter, swords, axes, spears
+and maces in 8 tiers, crits, sweeps, hit feel (v0.21.1, Windows CI:
+pending)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
 
-Next: **Milestone 21, part 1** — melee: the swing meter, swords, axes,
-spears and maces in 8 tiers, crits, sweeps, hit feel
-(design/combat/combat.md, approved 2026-10-15; parts: melee → armor →
-ranged → runes).
+Next: **Milestone 21, part 2** — armor: the paper doll page, light /
+medium / heavy sets, protection and mobility, the HUD shield row,
+shields and blocking, the dodge roll, accessory slots
+(design/combat/combat.md).
+
+---
+
+## Milestone 21, part 1 — done (2026-10-15): melee (D105)
+
+Design interview: design/combat/combat.md (approved 2026-10-15).
+
+### What was built
+* **Weapons**: swords, spears and maces in all 8 tiers (wood → star
+  crystal; 24 new items with their own pictures, a Combat tab and
+  recipes: sword M/M/S, spear diagonal, mace MM/MM/S.), and the axes
+  became weapons too. Damage 3.5–13, swing 0.55 s (spear) to 1.4 s
+  (mace); spears reach a block further, maces knock back twice as far.
+  Pickaxes, shovels and hoes hit for 1–4.5.
+* **The swing meter**: a small ink bar under the crosshair fills after
+  every swing; hitting early does as little as a fifth of the damage.
+* **Critical hits**: a full swing while falling after a jump: × 1.5 with
+  sparks. **Sweeps**: a full sword swing on the ground also hits the
+  animals right next to the target.
+* **Hit feel**: the animals and your arm stop for a moment (longer for
+  crits, axes and maces), the camera shakes a little, dust flies.
+* Weapons wear by 1 a hit (other tools by 2) and are repaired at the
+  Tinker's table like tools.
+* All the rules are in data/combat/combat.cfg.
+
+### Try it
+* Creative → Combat tab, or craft a sword (planks/planks/stick); hit a
+  cow, wait for the bar, hit again; jump and hit as you come down.
+* `--give iron_sword --mob-gallery cow --lead-test --attack-test`.
+
+### Verified (scripted; Survival test world)
+* `--attack-test` with an iron sword: full hits 6.0, early hits 4.5
+  (the test VM's simulation runs at ~8 ticks a second, so its meter lags
+  the client's); with jump held a critical hit 9.0 (flags crit).
+* With `sweep_radius` raised for the test, a full sword hit swept its
+  neighbours (flags sweep); an iron mace hit: heavy (flags 4).
+* The sword's wear went to 1 after a hit (player.dat).
+* The meter bar under the crosshair (screen), dust on a hit cow (screen),
+  the red flash; particles checked with lifetimes stretched for the
+  1 FPS test VM, then restored.
+* Debug and release headless tests pass; items load with no warnings.
+
+### Performance (llvmpipe test VM, release)
+* Simulation tick 71 µs average, 169 µs max while hitting (the combat
+  step only runs on a swing; a sweep looks at the awake animals once).
+* Particles: at most 160 tiny UI quads, only for half a second after a
+  hit; 0 packets dropped.
+
+### Deferred
+* Armor, shields, the dodge roll, accessory slots: part 2. Bows,
+  crossbows, slings, throwing knives, spear throws: part 3. Runes and
+  named weapons: part 4.
+* Hostile mobs to fight (M22); the arm's swing animation does not yet
+  follow each weapon's speed.
 
 ---
 
