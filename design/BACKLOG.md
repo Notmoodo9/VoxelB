@@ -43,7 +43,7 @@ yet; each item gets its own doc in `design/` when we interview it.
 | todo | Sign text, pressure plate mechanisms (wiring) | M16+ | from the M7b interview |
 | building | Items, inventory, chests, crafting, tool tiers, smelting | M18 | `design/items/items_inventory.md` |
 | done | Passive animals (cow, sheep, pig/boar, chicken, deer, rabbit, goat) | M19 | `design/mobs/passive_animals.md`; later: bees and beehives on meadow trees (meadow interview); seals, polar bears, walruses (frozen ocean interview); river fish (river interview) |
-| todo | Survival: health, hunger, damage, death, difficulty levels, Hardcore | M20 | |
+| building | Survival: health, hunger, damage, death, difficulty levels, Hardcore | M20 | `design/survival/survival.md` |
 | todo | Combat: melee, ranged, armor | M21 | |
 | todo | Hostile mobs and spawning rules | M22 | |
 | todo | Structures: villages, ruins, dungeons; swamp witch hut; badlands mineshafts | M23 | witch hut and mineshafts from the biome interviews |
