@@ -36,7 +36,17 @@
 %define SKIN_STRIP_SLOT 18
 %define SKIN_TIP        19
 %define SKIN_PAGE_TILE  20
-%define SKIN_COUNT      21
+%define SKIN_HEART           21
+%define SKIN_HEART_HALF      22
+%define SKIN_HEART_EMPTY     23
+%define SKIN_FOOD            24
+%define SKIN_FOOD_HALF       25
+%define SKIN_FOOD_EMPTY      26
+%define SKIN_FOOD_SICK       27
+%define SKIN_FOOD_SICK_HALF  28
+%define SKIN_BUBBLE          29
+%define SKIN_BUBBLE_POP      30
+%define SKIN_COUNT      31
 
 ; ui_text flags
 %define UI_CENTER       1

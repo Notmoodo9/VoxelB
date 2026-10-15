@@ -18,6 +18,7 @@ global hud_draw
 extern ui_draw_begin, ui_draw_flush, ui_rect, ui_glass, ui_glow, ui_text
 extern ui_text_width, ui_icon, timer_elapsed_us, ui_wear_bar, ui_skin
 extern g_ui_vw, g_ui_vh, g_cinv, g_csel, g_item_titles
+extern g_csv, g_csv_have, g_cl_hurt_flash, g_frame_us
 
 %define CROSS_ARM       10              ; half length (units)
 %define SLOT            50              ; hotbar slot (units)
@@ -30,6 +31,15 @@ extern g_ui_vw, g_ui_vh, g_cinv, g_csel, g_item_titles
 %define NAME_SIZE       20
 %define NAME_SHOW_US    1600000         ; the name stays this long, then fades
 %define NAME_FADE_US    400000
+%define ROW_ICON        18              ; a heart / food icon (9 atlas pixels x 2)
+%define ICON_STEP       17              ; icon to icon
+%define ROW_H           20
+
+section .rdata
+align 4
+c_flash_rate:   dd 0.000003             ; the flash fades out in 1/3 s (per microsecond)
+c_flash_alpha:  dd 120.0
+%define FLASH_RGB       0x001018B0      ; deep red, no alpha (ABGR)
 
 section .bss
 alignb 8
@@ -37,6 +47,7 @@ g_name_since:   resq 1                  ; when the item in hand changed (us)
 g_name_item:    resd 1                  ; the item it changed to
 g_name_slot:    resd 1
 g_count_text:   resb 16
+g_rows_h:       resd 1                  ; units the survival rows take above the strip
 
 section .text
 
@@ -162,6 +173,10 @@ PROC hud_draw, 32, rbx, rsi, rdi, r12, r13, r14
     sub ecx, SLOT + 2 * PAD + 10
     mov edx, [LOCAL(H_Y0)]
     call off_pocket
+    ; ---- health, hunger and air above the strip (milestone 20) ----
+    mov ecx, [LOCAL(H_X0)]
+    mov edx, [LOCAL(H_Y0)]
+    call survival_rows
     ; ---- the name of the item in hand, for a moment after it changes ----
 .name:
     call timer_elapsed_us
@@ -209,6 +224,7 @@ PROC hud_draw, 32, rbx, rsi, rdi, r12, r13, r14
     sub ecx, eax
     mov edx, [LOCAL(H_Y0)]
     sub edx, 44
+    sub edx, [rel g_rows_h]             ; (above the hearts and food)
     mov eax, r14d
     shl eax, 24
     or eax, 0x00FFFFFF
@@ -217,6 +233,7 @@ PROC hud_draw, 32, rbx, rsi, rdi, r12, r13, r14
     INVOKE ui_skin, rcx, rdx, r8, 34
     mov r8d, [LOCAL(H_Y0)]
     sub r8d, 44 - 5
+    sub r8d, [rel g_rows_h]
     mov eax, r14d
     shl eax, 24
     or eax, COL_INK & 0x00FFFFFF
@@ -232,6 +249,207 @@ PROC hud_draw, 32, rbx, rsi, rdi, r12, r13, r14
 ENDPROC
 
 extern str_append_dec
+
+; -----------------------------------------------------------------------------
+; survival_rows — ten hearts left and ten food icons right just above the
+; strip at (ecx, edx), air bubbles over the food while under water, and
+; the red flash after a hit (milestone 20, design/survival/survival.md).
+; Hearts shake when health is low, food icons jitter while starving and
+; turn green with food poisoning. Nothing in Creative or Spectator.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define R_X0    0
+%define R_Y     4
+%define R_I     8
+%define R_TICK  12
+%define R_PIECE 16
+%define R_X     20
+%define R_BUBBLES 24
+PROC survival_rows, 32, rbx, rsi, rdi
+    mov dword [rel g_rows_h], 0
+    cmp dword [rel g_csv_have], 0
+    je .done
+    test word [rel g_csv + SURV_PKT.flags], SVF_ACTIVE
+    jz .flash
+    mov dword [rel g_rows_h], ROW_H + 6
+    mov [LOCAL(R_X0)], ecx
+    sub edx, ROW_H + 4
+    mov [LOCAL(R_Y)], edx
+    ; a jitter clock: 12 steps a second
+    call timer_elapsed_us
+    xor edx, edx
+    mov ecx, 83333
+    div rcx
+    mov [LOCAL(R_TICK)], eax
+    ; ---- hearts, left to right ----
+    mov dword [LOCAL(R_I)], 0
+.heart:
+    mov esi, [LOCAL(R_I)]
+    cmp esi, 10
+    jae .food_row
+    movzx eax, word [rel g_csv + SURV_PKT.health]
+    lea ecx, [esi * 2]
+    mov ebx, SKIN_HEART_EMPTY
+    cmp eax, ecx
+    jle .heart_piece
+    mov ebx, SKIN_HEART_HALF
+    inc ecx
+    cmp eax, ecx
+    je .heart_piece
+    mov ebx, SKIN_HEART
+.heart_piece:
+    imul edi, esi, ICON_STEP
+    add edi, [LOCAL(R_X0)]
+    add edi, PAD
+    mov edx, [LOCAL(R_Y)]
+    ; low health (2 hearts or less): they shake
+    cmp word [rel g_csv + SURV_PKT.health], 4
+    ja .heart_draw
+    mov eax, [LOCAL(R_TICK)]
+    imul ecx, esi, 7
+    add eax, ecx
+    xor ecx, ecx
+    test eax, 1
+    jz .shake_dn
+    mov ecx, -2
+    test eax, 2
+    jz .shake_dn
+    mov ecx, 2
+.shake_dn:
+    add edx, ecx
+.heart_draw:
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov [rsp + 32], rbx
+    INVOKE ui_skin, rdi, rdx, ROW_ICON, ROW_ICON
+    inc dword [LOCAL(R_I)]
+    jmp .heart
+.food_row:
+    ; ---- food, right to left ----
+    mov dword [LOCAL(R_I)], 0
+.food:
+    mov esi, [LOCAL(R_I)]
+    cmp esi, 10
+    jae .air_row
+    movzx eax, word [rel g_csv + SURV_PKT.hunger]
+    lea ecx, [esi * 2]
+    mov ebx, SKIN_FOOD_EMPTY
+    cmp eax, ecx
+    jle .food_piece
+    mov ebx, SKIN_FOOD_HALF
+    inc ecx
+    cmp eax, ecx
+    je .food_full
+    mov ebx, SKIN_FOOD
+.food_full:
+    test word [rel g_csv + SURV_PKT.flags], SVF_POISON
+    jz .food_piece
+    add ebx, SKIN_FOOD_SICK - SKIN_FOOD   ; (green: food poisoning)
+.food_piece:
+    mov edi, [LOCAL(R_X0)]
+    add edi, BAR_W - PAD - ROW_ICON
+    imul eax, esi, ICON_STEP
+    sub edi, eax
+    mov [LOCAL(R_X)], edi
+    mov edx, [LOCAL(R_Y)]
+    ; no saturation left and hungry: they jitter
+    movss xmm0, [rel g_csv + SURV_PKT.sat]
+    xorps xmm1, xmm1
+    comiss xmm0, xmm1
+    ja .food_draw
+    cmp word [rel g_csv + SURV_PKT.hunger], 6
+    ja .food_draw
+    mov eax, [LOCAL(R_TICK)]
+    imul ecx, esi, 5
+    add eax, ecx
+    and eax, 3
+    cmp eax, 1
+    jne .food_draw
+    sub edx, 2
+.food_draw:
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov [rsp + 32], rbx
+    INVOKE ui_skin, [LOCAL(R_X)], rdx, ROW_ICON, ROW_ICON
+    inc dword [LOCAL(R_I)]
+    jmp .food
+.air_row:
+    ; ---- air bubbles while under water ----
+    movzx eax, word [rel g_csv + SURV_PKT.air]
+    movzx ecx, word [rel g_csv + SURV_PKT.air_max]
+    test ecx, ecx
+    jz .flash
+    cmp eax, ecx
+    jge .flash
+    ; bubbles = ceil(air * 10 / max); the next one shown popping
+    imul eax, eax, 10
+    add eax, ecx
+    dec eax
+    xor edx, edx
+    div ecx
+    mov [LOCAL(R_BUBBLES)], eax
+    mov dword [LOCAL(R_I)], 0
+.bubble:
+    mov esi, [LOCAL(R_I)]
+    cmp esi, 10
+    jae .flash
+    mov ebx, SKIN_BUBBLE
+    cmp esi, [LOCAL(R_BUBBLES)]
+    jb .bubble_draw
+    jne .flash
+    mov ebx, SKIN_BUBBLE_POP
+.bubble_draw:
+    mov edi, [LOCAL(R_X0)]
+    add edi, BAR_W - PAD - ROW_ICON
+    imul eax, esi, ICON_STEP
+    sub edi, eax
+    mov edx, [LOCAL(R_Y)]
+    sub edx, ROW_H
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov [rsp + 32], rbx
+    INVOKE ui_skin, rdi, rdx, ROW_ICON, ROW_ICON
+    inc dword [LOCAL(R_I)]
+    jmp .bubble
+.flash:
+    ; ---- the red flash after a hit, fading over a third of a second ----
+    movss xmm0, [rel g_cl_hurt_flash]
+    xorps xmm1, xmm1
+    comiss xmm0, xmm1
+    jbe .done
+    mov rax, [rel g_frame_us]
+    cvtsi2ss xmm1, rax
+    mulss xmm1, [rel c_flash_rate]
+    subss xmm0, xmm1
+    xorps xmm1, xmm1
+    maxss xmm0, xmm1
+    movss [rel g_cl_hurt_flash], xmm0
+    ; red at the top and bottom edges, clear toward the middle
+    mulss xmm0, [rel c_flash_alpha]
+    cvttss2si ebx, xmm0
+    shl ebx, 24
+    or ebx, FLASH_RGB                   ; (ABGR)
+    mov dword [rsp + 32], ebx
+    mov dword [rsp + 40], FLASH_RGB
+    mov qword [rsp + 48], 0
+    mov qword [rsp + 56], 0
+    mov r8d, [rel g_ui_vw]
+    add r8d, 16
+    mov r9d, [rel g_ui_vh]
+    shr r9d, 2
+    INVOKE ui_rect, -8, -8, r8, r9
+    mov dword [rsp + 32], FLASH_RGB
+    mov dword [rsp + 40], ebx
+    mov qword [rsp + 48], 0
+    mov qword [rsp + 56], 0
+    mov r8d, [rel g_ui_vw]
+    add r8d, 16
+    mov r9d, [rel g_ui_vh]
+    shr r9d, 2
+    mov edx, [rel g_ui_vh]
+    sub edx, r9d
+    add edx, 8
+    INVOKE ui_rect, -8, rdx, r8, r9
+.done:
+    RETURN
+ENDPROC
 
 ; -----------------------------------------------------------------------------
 ; off_pocket — the off hand's slot on a small leather piece at ecx, edx

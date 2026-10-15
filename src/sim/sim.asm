@@ -34,6 +34,8 @@ extern player_load, player_spawn, player_tick, player_toggle_fly, player_fill
 extern edit_request, edit_tick, fluid_tick
 extern inv_init, inv_packet, inv_selected_block, inv_used_selected, inv_flush
 extern use_item, lead_tie, behave_name
+extern survival_load, survival_reset, survival_tick, survival_respawn, survival_fill
+extern g_sv_dead
 extern inv_place_block, inv_used_slot, inv_swap_hands, inv_drag
 extern dig_reset, dig_tick, drops_reset, drops_tick, g_world_mode
 extern craft_reset, craft_window, craft_recipe, craft_tick, furnace_tick
@@ -102,6 +104,9 @@ PROC sim_init, 16, rbx, rsi
     call store_reset
     call store_open
     call racks_load                     ; hides drying on racks (part 3)
+    call survival_load                  ; health and hunger (milestone 20)
+    mov rcx, rbx
+    call survival_reset
     cvtss2sd xmm0, [rel g_time_of_day]
     movsd [rel g_sim_time], xmm0
     mov qword [rel g_sim_acc], 0
@@ -235,6 +240,11 @@ PROC sim_tick, 16, rbx, rsi, rdi
     call behave_name                    ; (part 3b: a name tag)
     jmp .packet
 .not_name:
+    cmp eax, PKT_C_RESPAWN
+    jne .not_respawn
+    call survival_respawn               ; (milestone 20)
+    jmp .packet
+.not_respawn:
     cmp eax, PKT_C_TOGGLE_FLY
     jne .packet                         ; (unknown packets are ignored)
     call player_toggle_fly
@@ -264,9 +274,15 @@ PROC sim_tick, 16, rbx, rsi, rdi
     call inv_used_slot
     jmp .packet
 .packets_done:
+    cmp dword [rel g_sv_dead], 0
+    jne .dead                           ; (dead: the body waits for the respawn)
     lea rcx, [rel g_input]
     mov edx, [rel g_pressed]
     call player_tick
+.dead:
+    lea rcx, [rel g_input]
+    mov edx, [rel g_pressed]
+    call survival_tick                  ; health, hunger, damage (milestone 20)
     lea rcx, [rel g_input]
     call dig_tick                       ; Survival mining (milestone 18)
     call drops_tick                     ; dropped items
@@ -343,6 +359,11 @@ PROC send_state, 0
     lea rcx, [rel g_to_client]
     lea r8, [rel g_out]
     INVOKE pkt_send, rcx, PKT_S_TIME, r8, TIME_PKT_size
+    lea rcx, [rel g_out]
+    call survival_fill
+    lea rcx, [rel g_to_client]
+    lea r8, [rel g_out]
+    INVOKE pkt_send, rcx, PKT_S_SURVIVAL, r8, SURV_PKT_size
     RETURN
 ENDPROC
 

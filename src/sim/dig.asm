@@ -17,6 +17,7 @@
 
 global dig_reset, dig_tick
 
+extern survival_mined
 extern phys_block, mining_time, mining_drop, mining_bonus, mining_bonus2, edit_request, drops_spawn
 extern pkt_send, g_to_client, g_world_mode, g_inv, g_inv_sel, inv_wear_selected
 
@@ -191,6 +192,7 @@ PROC dig_tick, 16, rbx, rsi
     call stop
     test esi, esi
     jz .done
+    call survival_mined                 ; (milestone 20: mining makes hungry)
     cmp dword [LOCAL(D_INSTANT)], 0
     jne .worn
     call inv_wear_selected              ; (milestone 18 part 4: tools wear)

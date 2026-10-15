@@ -2016,3 +2016,44 @@ that sometimes ram (design/mobs/passive_animals.md).
 * **Test switches**: `--give <item>`, `--lead-test` (leash, pull, tie,
   snap without aiming), `--use-test` (a right click on the nearest animal with what is in hand: the name page, milking …);
   the gallery now also places each look's young and males.
+
+## D103 — Survival: health, hunger, damage, death (M20 part 1)
+Owner's interview (design/survival/survival.md): icon rows, Minecraft-like
+hunger, scaling difficulties, hold to eat, raw chicken/rabbit can poison,
+a journal death page, respawn at the world spawn. Part 2 adds the death
+rule option (gravestone, keep inventory) and Hardcore.
+* **One simulation module** (src/sim/survival.asm) owns health, hunger,
+  saturation, exhaustion, air, burning, poisoning and death; it runs
+  after the player's movement each tick and reads the player's flags
+  (on ground, in water/lava, climbing, sprinting) instead of hooking into
+  the physics. Other modules only call `survival_damage` (rams),
+  `survival_mined` (mining) and read `g_sv_dead` / `g_sv_eating`.
+* **Every number is data**: data/survival/survival.cfg (with a
+  `[difficulty …]` section each) and the items' `food` lines; the
+  difficulty table scales damage taken, the hunger drain and picks the
+  regeneration kind and where starvation stops.
+* **Integer points, f32 reserves**: health and hunger are whole points
+  (as shown), saturation and exhaustion floats; times become tick counts
+  once at load. Damage × the difficulty rounds to the nearest point, at
+  least 1.
+* **Falls** from the highest point since the last ground contact (water,
+  flying, climbing reset it); a respawn's first landing does no harm (the
+  spawn point can be above the ground).
+* **Eating is simulation-side**: the client only reports the use button
+  held (INB_USE); the simulation checks the item, counts the ticks, and
+  the client shows the progress (SURV_PKT.eat) as the hand bringing the
+  food to the mouth and bobbing.
+* **Death** freezes the body (no movement, no pickups) and drops every
+  slot with its wear at the death spot (the usual 5-minute drops); the
+  client shows the page when SVF_DEAD arrives and sends PKT_C_RESPAWN.
+  The respawn point is `world_spawn` (the terrain's spawn search), or the
+  position the world started at on a flat test world.
+* **SURV_PKT every tick** (36 bytes): small, and the HUD never drifts
+  from the simulation. A changed hit counter starts the red flash.
+* **The HUD icons** are journal-skin pieces drawn by tools/texgen/uigen.py
+  (9 × 9 pixel art at 2 units a pixel): hearts, food, green food
+  (poisoned), bubbles. Hearts shake at 2 hearts or less; food icons
+  jitter with no saturation and 3 icons or less.
+* **Saved** as one `survival` line in player.dat; older saves start full.
+* **Test switches**: `--test-block <block>` fills the cells from under the
+  player's feet to the eyes (drowning, lava, suffocation, cactus).

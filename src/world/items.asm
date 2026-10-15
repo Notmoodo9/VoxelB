@@ -53,6 +53,7 @@ global g_tab_count, g_tab_titles, g_tab_icon
 global g_item_tool, g_item_tier, g_item_speed, g_item_dur
 global g_item_repair, g_item_binding, g_item_leaves, item_fill
 global g_fill_count, g_fill_item
+global g_item_food, g_item_poison, g_item_eat, g_item_eatf, g_item_sat
 global item_tool_index, item_tier_index, items_match_list
 
 extern str_ieq, str_len, str_copy, str_parse_u64, str_dup, str_parse_float
@@ -89,6 +90,11 @@ k_durability:   db "durability", 0
 k_repair:       db "repair", 0
 k_binding:      db "binding", 0
 k_leaves:       db "leaves", 0
+k_food:         db "food", 0
+k_poison:       db "poison", 0
+k_eat_time:     db "eat_time", 0
+k_always:       db "always_edible", 0
+k_cures:        db "cures_poison", 0
 k_fill:         db "fill", 0
 str_bad_fill:   db "items: a fill line names no block or item: ", 0
 tool_0:         db "none", 0
@@ -110,6 +116,7 @@ tool_names:     dq tool_0, tool_1, tool_2, tool_3, tool_4
 tier_names:     dq tier_0, tier_1, tier_2, tier_3, tier_4, tier_5, tier_6, tier_7, tier_8
 align 4
 c_one:          dd 1.0
+c_twenty:       dd 20.0                 ; ticks a second
 str_unknown:    db "unknown setting: ", 0
 str_no_block:   db "unknown block: ", 0
 str_no_item:    db "unknown item: ", 0
@@ -140,6 +147,12 @@ g_item_binding: resq MAX_ITEMS          ; tools: the binding a repair needs
 g_leaves_text:  resq MAX_ITEMS          ; `leaves` until all items are read
 g_fill_text:    resq MAX_FILLS          ; `fill` lines until all items are read
 g_item_leaves:  resw MAX_ITEMS
+g_item_food:    resb MAX_ITEMS          ; M20: hunger points it fills (0: not food)
+g_item_poison:  resb MAX_ITEMS          ; % chance of food poisoning
+g_item_eat:     resb MAX_ITEMS          ; ticks to eat it (0: the default)
+g_item_eatf:    resb MAX_ITEMS          ; EATF_*
+alignb 4
+g_item_sat:     resd MAX_ITEMS          ; f32 saturation it gives
 g_fill_item:    resw MAX_FILLS          ; the container
 g_fill_block:   resw MAX_FILLS          ; the block it takes
 g_fill_result:  resw MAX_FILLS          ; what it becomes
@@ -713,9 +726,92 @@ PROC items_pair, 0, rbx, rsi, rdi
     lea rdx, [rel k_leaves]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
-    jz .i_fill
+    jz .i_food
     lea rcx, [rel g_leaves_text]
     mov [rcx + rdi * 8], rsi
+    RETURN
+.i_food:
+    ; food = hunger, saturation (milestone 20)
+    lea rdx, [rel k_food]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_poison
+    mov rcx, rsi
+    call cfg_next_token
+    mov rsi, rdx
+    mov rcx, rax
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    cmp rax, 20
+    ja .bad
+    lea rcx, [rel g_item_food]
+    mov [rcx + rdi], al
+    test rsi, rsi
+    jz .done
+    mov rcx, rsi
+    call cfg_next_token
+    mov rcx, rax
+    call str_parse_float
+    test eax, eax
+    jz .bad
+    lea rcx, [rel g_item_sat]
+    movss [rcx + rdi * 4], xmm0
+    RETURN
+.i_poison:
+    lea rdx, [rel k_poison]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_eat_time
+    mov rcx, rsi
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    cmp rax, 100
+    ja .bad
+    lea rcx, [rel g_item_poison]
+    mov [rcx + rdi], al
+    RETURN
+.i_eat_time:
+    ; eat_time = seconds (1 tick .. 12 s)
+    lea rdx, [rel k_eat_time]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_always
+    mov rcx, rsi
+    call str_parse_float
+    test eax, eax
+    jz .bad
+    mulss xmm0, [rel c_twenty]
+    cvtss2si eax, xmm0
+    cmp eax, 1
+    jl .bad
+    cmp eax, 240
+    jg .bad
+    lea rcx, [rel g_item_eat]
+    mov [rcx + rdi], al
+    RETURN
+.i_always:
+    lea rdx, [rel k_always]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_cures
+    mov ecx, EATF_ALWAYS
+    jmp .eat_flag
+.i_cures:
+    lea rdx, [rel k_cures]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_fill
+    mov ecx, EATF_CURE
+.eat_flag:
+    lea rdx, [rel g_item_eatf]
+    not ecx
+    and [rdx + rdi], cl
+    not ecx
+    cmp byte [rsi], '0'
+    je .done
+    or [rdx + rdi], cl
     RETURN
 .i_fill:
     ; fill = <block>, <item> (resolved later)

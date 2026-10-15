@@ -1,12 +1,14 @@
 # What animals give (milestone 19, design/mobs/passive_animals.md). Eating
-# comes with survival (milestone 20); until then food is an ingredient.
+# is survival (milestone 20): `food = hunger, saturation` (DATA_FORMAT.md).
 
 [item beef]
+food = 3, 1.8
 title = Raw beef
 texture = beef
 tab = food
 
 [item cooked_beef]
+food = 8, 12.8
 title = Cooked beef
 texture = cooked_beef
 tab = food
@@ -23,29 +25,36 @@ tab = food
 
 # part 3: meat, eggs, feathers, forage, hides, shears
 [item pork]
+food = 3, 1.8
 title = Raw pork
 texture = pork
 tab = food
 
 [item cooked_pork]
+food = 8, 12.8
 texture = cooked_pork
 tab = food
 
 [item mutton]
+food = 2, 1.2
 title = Raw mutton
 texture = mutton
 tab = food
 
 [item cooked_mutton]
+food = 6, 9.6
 texture = cooked_mutton
 tab = food
 
 [item chicken]
+food = 2, 1.2
+poison = 30
 title = Raw chicken
 texture = chicken
 tab = food
 
 [item cooked_chicken]
+food = 6, 7.2
 texture = cooked_chicken
 tab = food
 
@@ -59,10 +68,13 @@ texture = seeds
 tab = food
 
 [item carrot]
+food = 3, 3.6
 texture = carrot
 tab = food
 
 [item berries]
+food = 2, 0.4
+eat_time = 0.8
 texture = berries
 tab = food
 
@@ -88,20 +100,25 @@ tab = tools
 
 # part 3b: deer, rabbits, goats; buckets, leads, name tags
 [item venison]
+food = 3, 1.8
 title = Raw venison
 texture = venison
 tab = food
 
 [item cooked_venison]
+food = 8, 12.8
 texture = cooked_venison
 tab = food
 
 [item rabbit]
+food = 2, 1.2
+poison = 30
 title = Raw rabbit
 texture = rabbit
 tab = food
 
 [item cooked_rabbit]
+food = 5, 6.0
 texture = cooked_rabbit
 tab = food
 
@@ -166,9 +183,13 @@ leaves = bucket
 tab = tools
 
 [item milk_bucket]
+food = 2, 1.0
+always_edible = 1
+cures_poison = 1
 title = Bucket of milk
 texture = milk_bucket
 stack = 1
+leaves = bucket
 tab = food
 
 [item lead]

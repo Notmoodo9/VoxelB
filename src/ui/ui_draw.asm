@@ -102,10 +102,21 @@ sk_17: db "strip", 0
 sk_18: db "strip_slot", 0
 sk_19: db "tip", 0
 sk_20: db "page_tile", 0
+sk_21: db "heart", 0
+sk_22: db "heart_half", 0
+sk_23: db "heart_empty", 0
+sk_24: db "food", 0
+sk_25: db "food_half", 0
+sk_26: db "food_empty", 0
+sk_27: db "food_sick", 0
+sk_28: db "food_sick_half", 0
+sk_29: db "bubble", 0
+sk_30: db "bubble_pop", 0
 align 8
 skin_names:     dq sk_0, sk_1, sk_2, sk_3, sk_4, sk_5, sk_6, sk_7, sk_8, sk_9
                 dq sk_10, sk_11, sk_12, sk_13, sk_14, sk_15, sk_16, sk_17, sk_18
                 dq sk_19, sk_20
+                dq sk_21, sk_22, sk_23, sk_24, sk_25, sk_26, sk_27, sk_28, sk_29, sk_30   ; (milestone 20: the HUD)
 str_vs:         db "shaders/ui.vert", 0
 str_fs:         db "shaders/ui.frag", 0
 k_cell:         db "cell", 0

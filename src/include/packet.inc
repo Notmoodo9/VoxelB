@@ -46,6 +46,7 @@ endstruc
 %define PKT_C_USE           15          ; use the item in hand on what is looked at (a bucket scoops; part 3b)
 %define PKT_C_TIE           16          ; BLOCK_PKT: tie the animals the player leads to this fence
 %define PKT_C_NAME          17          ; NAME_PKT: the name tag in hand names this animal
+%define PKT_C_RESPAWN       18          ; a dead player comes back (milestone 20; no payload)
 
 ; inventory (milestone 18): slots 0-8 are the hotbar, 9-35 the inventory
 struc INV_PKT
@@ -117,6 +118,7 @@ endstruc
 %define INB_SPRINT          4
 %define INB_TIME_FORWARD    8           ; debug: the clock runs fast
 %define INB_DIG             16          ; Survival: mining the block at .dig
+%define INB_USE             32          ; the use button held (eating; milestone 20)
 
 ; ---- simulation -> client ------------------------------------------------------
 %define PKT_S_PLAYER        64          ; PLAYER_PKT, every tick
@@ -132,6 +134,38 @@ endstruc
 %define PKT_S_ENTITY        74          ; ENT_PKT: an animal appeared / moved / changed (milestone 19)
 %define PKT_S_ENTITY_GONE   75          ; ENT_PKT .id: out of sight, dead or unloaded
 %define PKT_S_ENTITY_NAME   76          ; NAME_PKT: an animal's name tag (after its PKT_S_ENTITY)
+%define PKT_S_SURVIVAL      77          ; SURV_PKT: health, hunger, air ... every tick (milestone 20)
+
+; the player's survival state (milestone 20)
+struc SURV_PKT
+    .health     resw 1                  ; points (20 = 10 hearts)
+    .hunger     resw 1
+    .sat        resd 1                  ; f32 saturation
+    .air        resw 1                  ; ticks of air left
+    .air_max    resw 1
+    .flags      resw 1                  ; SVF_*
+    .hurt       resw 1                  ; hits taken so far (a change: flash)
+    .cause      resw 1                  ; CAUSE_* of the last damage
+    .cause_mob  resw 1                  ; the animal (CAUSE_RAM)
+    .eat        resw 1                  ; ticks into eating (0: not eating)
+    .eat_total  resw 1                  ; ticks the food takes
+    .death      resd 3                  ; i32 where the player died
+endstruc
+%define SVF_POISON          1           ; food poisoning
+%define SVF_BURNING         2
+%define SVF_DEAD            4
+%define SVF_ACTIVE          8           ; Survival / Adventure (health and hunger shown)
+%define CAUSE_NONE          0
+%define CAUSE_FALL          1
+%define CAUSE_DROWN         2
+%define CAUSE_LAVA          3
+%define CAUSE_FIRE          4
+%define CAUSE_SUFFOCATE     5
+%define CAUSE_CACTUS        6
+%define CAUSE_VOID          7
+%define CAUSE_RAM           8
+%define CAUSE_STARVE        9
+%define CAUSE_COUNT         10
 
 ; an animal's name (milestone 19 part 3b): both ways
 %define ENT_NAME_MAX        24          ; 23 characters + 0

@@ -38,6 +38,7 @@ global player_load, player_spawn, player_tick, player_toggle_fly, player_fill
 global g_pl_pos, g_pl_vel, g_pl_flags, g_pl_eye, g_pl_reach, g_pl_width, g_pl_height
 
 extern str_ieq, str_parse_float, sincosf, g_gravity, g_world_mode
+extern g_sv_eating, g_sv_eat_speed
 
 %define TICK_DT     0.05
 %define MAX_FALL_Y  -512.0              ; below the world: stop falling here
@@ -603,8 +604,12 @@ PROC player_tick, 112, rbx, rsi, rdi, r12
     movss xmm0, [rel s_sprint]
 .not_sprint:
     test r12d, PF_SNEAKING
-    jz .land_acc
+    jz .eating
     movss xmm0, [rel s_sneak]
+.eating:
+    cmp dword [rel g_sv_eating], 0
+    je .land_acc
+    mulss xmm0, [rel g_sv_eat_speed]    ; (eating: slow, milestone 20)
 .land_acc:
     cvtss2sd xmm1, [rel s_air_acc]
     cmp dword [LOCAL(T_ONGROUND)], 0

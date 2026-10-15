@@ -56,7 +56,7 @@ global g_herd_count, g_regrow_count, g_breed_test, g_mob_gallery, g_gallery_name
 extern path_find, g_pf_start, g_pf_goal, g_pf_height, g_pf_out, g_pf_climb, g_pf_fall
 extern phys_block, inv_turn_slot, g_block_eat
 extern atan2f, edit_apply, block_find, inv_used_selected, inv_wear_selected
-extern drops_spawn, ent_new, str_ieq, inv_mark
+extern drops_spawn, ent_new, str_ieq, inv_mark, survival_damage
 extern g_pl_pos, g_pl_vel, g_pl_reach, g_inv, g_inv_sel, g_sim_time
 
 %define PATHS_PER_TICK  3
@@ -1307,6 +1307,12 @@ PROC ram, 0
     maxsd xmm0, [rel c_ram_up]
     movsd [rel g_pl_vel + 8], xmm0
     LOG_DEBUG "entities: a fierce animal rammed the player"
+    ; it hurts (milestone 20)
+    call mob_of
+    mov ecx, [rax + MOB.ram_damage]
+    mov edx, CAUSE_RAM
+    movzx r8d, word [rbx + EntT.mob]
+    call survival_damage
     RETURN
 ENDPROC
 

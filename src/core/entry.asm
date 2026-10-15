@@ -27,6 +27,8 @@
 ;                      8 s in the player steps 6 blocks south (pull); 15 s in
 ;                      they are tied to a fence 2 blocks east of the player;
 ;                      20 s in the player steps 12 blocks more (part 3b)
+;   --test-block <b>   3 s in, block b fills the player's feet and head cells
+;                      and the cell below (water, lava, stone, cactus; M20)
 ;   --use-test         once a grown-up animal is within 4 blocks, it is right-clicked
 ;                      with what is in hand (with --give: name_tag, bucket,
 ;                      lead ...; part 3b)
@@ -69,7 +71,7 @@ extern camera_init, camera_update
 extern overlay_draw, overlay_toggle, hud_draw
 extern cpu_detect, selftest_run
 extern world_init, world_render_init, world_render_shutdown, g_breed_test, g_mob_gallery, g_gallery_name
-extern g_give_name, g_lead_test, g_use_test
+extern g_give_name, g_lead_test, g_use_test, g_test_block
 extern terrain_survey
 extern world_spawn, g_seed_override, g_seed_override_set, g_force_flat
 extern stream_init, stream_update, stream_shutdown, settings_load
@@ -125,6 +127,7 @@ opt_daylight:       db "--daylight ", 0
 opt_time:           db "--time ", 0
 opt_give:           db "--give ", 0
 opt_lead_test:      db "--lead-test", 0
+opt_test_block:     db "--test-block ", 0
 opt_use_test:      db "--use-test", 0
 align 4
 c_deg_to_rad:       dd 0.0174532925
@@ -423,6 +426,23 @@ PROC main_entry, 32, rbx, rsi, rdi, r12, r13
     cmp ecx, 31
     jb .give_copy
 .no_give:
+    ; --test-block <block>: around the player 3 s in (milestone 20 tests)
+    lea rdx, [rel opt_test_block]
+    INVOKE str_find, rbx, rdx
+    test rax, rax
+    jz .no_test_block
+    lea rsi, [rax + 13]
+    lea rdi, [rel g_test_block]
+    xor ecx, ecx
+.tb_copy:
+    mov al, [rsi + rcx]
+    cmp al, ' '
+    jbe .no_test_block
+    mov [rdi + rcx], al
+    inc ecx
+    cmp ecx, 31
+    jb .tb_copy
+.no_test_block:
     lea rdx, [rel opt_lead_test]
     INVOKE str_find, rbx, rdx
     test rax, rax

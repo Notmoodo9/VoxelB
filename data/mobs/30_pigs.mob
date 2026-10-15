@@ -47,6 +47,8 @@ health = 14
 size = 0.9 0.9
 speed = 1.4
 temper = fierce
+# health points a charge takes from the player (milestone 20)
+ram_damage = 4
 food = carrot, berries
 drop = pork, 1, 3
 variant = wild, boar_wild, boar

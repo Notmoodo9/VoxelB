@@ -85,6 +85,19 @@ world spawn. Hardcore deaths leave the world to spectate or delete.
   lava, burned to death, suffocated in a wall, pricked to death by a
   cactus, fell out of the world, was rammed by a boar/goat, starved.
 
+## Built
+* **Part 1 (v0.20.1)**: health, hunger and saturation with the HUD rows
+  (hearts, food, air bubbles, green food when poisoned, shaking and
+  jittering), exhaustion, regeneration and starvation by difficulty, all
+  the damage sources, hold-to-eat with the food values above, food
+  poisoning and milk, the red flash after a hit, death (everything drops)
+  with the journal death page and respawn at the world spawn.
+  Try it: a Survival world, eat with the right button held; `--test-block
+  water` (or `lava`, `stone`, `cactus`) next to the player.
+* Part 2 (next): the death rule on the create-world page (drop /
+  gravestone / keep inventory), the gravestone, Hardcore spectate or
+  delete.
+
 ## Still open
 * The death rule is changeable later from the pause menu (my
   suggestion; the owner chose "default Drop" at creation).

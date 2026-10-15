@@ -23,7 +23,7 @@ global held_init, held_draw, held_swing
 extern shader_create, shader_program, block_textures_bind, icon_uv, icon_kind
 extern timer_elapsed_us, sincosf
 extern g_cinv, g_csel, g_item_block, g_icon_tex, g_daylight, g_held_on, hand_light
-extern g_cl_player
+extern g_cl_player, g_csv
 
 %define SWING_US        300000          ; (Minecraft: 6 ticks)
 %define EQUIP_US        160000          ; the dip when the item in hand changes
@@ -213,6 +213,21 @@ PROC held_item, 48, rbx, rsi
     movss [LOCAL(D_EQUIP)], xmm0
     movss xmm2, [LOCAL(D_EQUIP)]
     GL glProgramUniform1f, [rel g_prog], 8
+    ; ---- eating (milestone 20): how far through, main hand only ----
+    xorps xmm2, xmm2
+    cmp dword [LOCAL(D_MIRROR)], 0
+    jne .eat
+    movzx eax, word [rel g_csv + SURV_PKT.eat]
+    movzx ecx, word [rel g_csv + SURV_PKT.eat_total]
+    test eax, eax
+    jz .eat
+    test ecx, ecx
+    jz .eat
+    cvtsi2ss xmm2, eax
+    cvtsi2ss xmm0, ecx
+    divss xmm2, xmm0
+.eat:
+    GL glProgramUniform1f, [rel g_prog], 10
     ; ---- walking sway: by the horizontal speed ----
     movss xmm0, [rel g_cl_player + PLAYER_PKT.vel]
     mulss xmm0, xmm0

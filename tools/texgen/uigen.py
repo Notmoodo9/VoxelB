@@ -279,6 +279,79 @@ def strip_slot(n=24):
     return img
 
 
+# HUD icons (milestone 20, design/survival/survival.md): 9 x 9 pixel art in
+# the journal's ink: hearts, food (a drumstick), air bubbles
+HEART = ["..oo.oo..",
+         ".oRRoRRo.",
+         "oRHRRRRRo",
+         "oRHRRRRRo",
+         "oRRRRRRdo",
+         ".oRRRRdo.",
+         "..oRRdo..",
+         "...odo...",
+         "....o...."]
+FOOD = ["......oo.",
+        ".....oBBo",
+        "....oBBo.",
+        "..oooBo..",
+        ".oMMMoo..",
+        "oMHMMMo..",
+        "oMMMMdo..",
+        "oMMMddo..",
+        ".oooooo.."]
+BUBBLE = ["..ooooo..",
+          ".oWWbbbo.",
+          "oWbbbbbbo",
+          "oWbbbbbbo",
+          "obbbbbbbo",
+          "obbbbbbbo",
+          "obbbbbbbo",
+          ".obbbbbo.",
+          "..ooooo.."]
+POP = [".........",
+       "..o...o..",
+       "...o.o...",
+       ".........",
+       ".oo...oo.",
+       ".........",
+       "...o.o...",
+       "..o...o..",
+       "........."]
+
+
+def icon(rows, pal, half=None, empty=False):
+    """A 9 x 9 icon; half: only the left 5 columns filled; empty: the
+    outline with a faint wash."""
+    img = np.zeros((9, 9, 4))
+    for y, row in enumerate(rows):
+        for x, ch in enumerate(row):
+            if ch == ".":
+                continue
+            if ch == "o":
+                img[y, x] = (*pal["o"], 1.0)
+                continue
+            if empty or (half and x > 4):
+                img[y, x] = (*pal["e"], 0.55)
+            else:
+                img[y, x] = (*pal[ch], 1.0)
+    return img
+
+
+def hexc(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+
+
+HEART_PAL = {"o": hexc("2a140c"), "R": hexc("c42a24"), "H": hexc("f08a78"),
+             "d": hexc("801812"), "e": hexc("4a3428")}
+FOOD_PAL = {"o": hexc("2a140c"), "M": hexc("b0602c"), "H": hexc("e0a060"),
+            "d": hexc("7a3a18"), "B": hexc("f2e8d4"), "e": hexc("4a3428")}
+SICK_PAL = {"o": hexc("1c2a10"), "M": hexc("6a8a2c"), "H": hexc("a8c860"),
+            "d": hexc("3e5a18"), "B": hexc("d8e4b8"), "e": hexc("34402a")}
+BUBBLE_PAL = {"o": hexc("1c3a5a"), "W": hexc("f4fbff"), "b": hexc("7cc4f0"),
+              "e": hexc("1c3a5a")}
+
+
 def main():
     a = Atlas()
     a.put("leather", 0, 0, leather(), 16)
@@ -303,6 +376,19 @@ def main():
     a.put("strip_slot", 64, 64, strip_slot(), 5)
     a.put("tip", 88, 64, page(32, 6, "tip"), 6)
     a.put("page_tile", 0, 128, page(128, 1, "page_big"), 0)
+    # HUD icons (milestone 20)
+    hud = [("heart", icon(HEART, HEART_PAL)),
+           ("heart_half", icon(HEART, HEART_PAL, half=True)),
+           ("heart_empty", icon(HEART, HEART_PAL, empty=True)),
+           ("food", icon(FOOD, FOOD_PAL)),
+           ("food_half", icon(FOOD, FOOD_PAL, half=True)),
+           ("food_empty", icon(FOOD, FOOD_PAL, empty=True)),
+           ("food_sick", icon(FOOD, SICK_PAL)),
+           ("food_sick_half", icon(FOOD, SICK_PAL, half=True)),
+           ("bubble", icon(BUBBLE, BUBBLE_PAL)),
+           ("bubble_pop", icon(POP, BUBBLE_PAL))]
+    for i, (name, img) in enumerate(hud):
+        a.put(name, 120 + (i % 13) * 10, 96, img, 0)
     os.makedirs(OUT, exist_ok=True)
     arr = (np.clip(a.img, 0, 1) * 255 + 0.5).astype(np.uint8)
     Image.fromarray(arr, "RGBA").save(os.path.join(OUT, "journal.png"), optimize=True)

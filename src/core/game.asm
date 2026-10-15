@@ -37,6 +37,7 @@ extern inv_screen_open, inv_screen_close, inv_screen_frame, inv_screen_typing
 extern client_input_idle, held_draw, g_cwin, g_cwin_event
 extern name_screen_open, name_screen_frame, names_draw, g_name_request
 extern use_test_frame
+extern death_screen_open, death_screen_frame, g_csv, g_csv_have
 extern g_world_mode, g_world_difficulty, g_world_hardcore
 extern g_new_mode, g_new_difficulty, g_new_hardcore
 extern renderer_frame, hud_draw, overlay_draw, menu_frame, menu_open, menu_back
@@ -84,6 +85,7 @@ g_game_paused:  resd 1
 g_save_allowed: resd 1                  ; not --nosave
 g_inv_open:     resd 1                  ; the inventory screen is open
 g_name_open:    resd 1                  ; the name tag page is open (part 3b)
+g_death_open:   resd 1                  ; the death page is open (milestone 20)
 g_default_seed: resd 1
 g_menu_loaded:  resd 1
 g_fly_n:        resd 1
@@ -505,6 +507,8 @@ PROC game_frame, 16, rbx, rsi, rdi
     jne .menu_keys
     cmp dword [rel g_game_paused], 0
     jne .paused_keys
+    cmp dword [rel g_death_open], 0
+    jne .keys_done                      ; (dead: only the page's buttons)
     cmp dword [rel g_name_open], 0
     jne .name_keys
     cmp dword [rel g_inv_open], 0
@@ -591,6 +595,8 @@ PROC game_frame, 16, rbx, rsi, rdi
     jne .stream
     cmp dword [rel g_inv_open], 0
     jne .idle_input
+    cmp dword [rel g_death_open], 0
+    jne .idle_input
     cmp dword [rel g_name_open], 0
     je .live_input
 .idle_input:
@@ -605,6 +611,7 @@ PROC game_frame, 16, rbx, rsi, rdi
 .sim:
     call sim_update
     call client_view
+    call death_events                   ; (milestone 20)
     call window_events
     call save_update
 .stream:
@@ -634,6 +641,17 @@ PROC game_frame, 16, rbx, rsi, rdi
     mov edx, edi
     call hud_draw
 .inventory:
+    cmp dword [rel g_death_open], 0
+    je .no_death_page
+    mov ecx, esi
+    mov edx, edi
+    call death_screen_frame
+    cmp eax, 2                          ; (DS_MENU)
+    jne .overlay
+    mov eax, 5                          ; (MA_TO_MENU, menu.inc: save, main menu)
+    call do_action
+    jmp .overlay
+.no_death_page:
     cmp dword [rel g_name_open], 0
     je .no_name_page
     mov ecx, esi
@@ -715,6 +733,38 @@ PROC window_events, 0
     cmp dword [rel g_inv_open], 0
     je .done
     call close_inventory
+.done:
+    RETURN
+ENDPROC
+
+; death_events — the simulation says the player died: the death page (the
+; mouse is free, windows close); alive again (respawned): back to playing
+;   clobbers: volatile registers
+PROC death_events, 0
+    cmp dword [rel g_csv_have], 0
+    je .done
+    test word [rel g_csv + SURV_PKT.flags], SVF_DEAD
+    jz .alive
+    cmp dword [rel g_death_open], 0
+    jne .done
+    cmp dword [rel g_inv_open], 0
+    je .no_inv
+    call close_inventory
+.no_inv:
+    mov dword [rel g_name_open], 0
+    call death_screen_open
+    mov dword [rel g_death_open], 1
+    xor ecx, ecx
+    call input_set_capture
+    RETURN
+.alive:
+    cmp dword [rel g_death_open], 0
+    je .done
+    mov dword [rel g_death_open], 0
+    cmp dword [rel g_window_active], 0
+    je .done
+    mov ecx, 1
+    call input_set_capture
 .done:
     RETURN
 ENDPROC

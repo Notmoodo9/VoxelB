@@ -541,6 +541,11 @@ name and a title made from it ("stone_bricks" → "Stone bricks"). Records:
 | | `binding` | the binding (item patterns) each repair also needs |
 | | `fill` | `<block>, <item>` (Milestone 19 part 3b, up to 16 in all items): right click with this item on that block (looked at, plants and other liquids in between are looked through) takes the block away and the item becomes `<item>` — an empty bucket scoops a water source (`fill = water, water_bucket`). In Survival one item of a stack turns; the new one goes into the inventory (dropped if there is no room) |
 | | `leaves` | the item left in hand once this one is used up (placed): a water bucket places water and leaves the bucket |
+| | `food` | `hunger, saturation` (Milestone 20): the item can be eaten (hold the use button); hunger points it fills (0–20) and saturation it adds (never above hunger) |
+| | `poison` | % chance that eating it gives food poisoning |
+| | `eat_time` | seconds it takes to eat (default `eat_time` in survival.cfg) |
+| | `always_edible` | `1`: can be eaten with full hunger (milk) |
+| | `cures_poison` | `1`: ends food poisoning |
 
 An `[item]` with an existing item's name (a block's, too) changes that item.
 
@@ -636,6 +641,7 @@ animal never needs assembly. Records:
 | | `rams` | `distance, percent` (part 3b): a player standing within `distance` blocks gets rammed (a charge and knock-back, like a boar's) with `percent` % chance a second |
 | | `milk` | `item, item` (part 3b): right click on a grown-up with the first item (a bucket) turns it into the second (a milk bucket) |
 | | `baby_skin` | `variant, skin` (part 3b, after the `variant` line): the young of that look wear this skin (spotted fawns, yellow chicks) |
+| | `ram_damage` | health points a charge or ram takes from the player (Milestone 20; boars 4, goats 2) |
 | | `variant` | `name, skin, model [, coat]` — a look (`assets/textures/mobs/<skin>.png`); `coat` is the item its coat gives (sheep: its wool) |
 | `[spawn]` | `mob` | the animal |
 | | `variant` | one of its variants (default its first) |
@@ -657,6 +663,39 @@ than 6 blocks behind, the lead snaps and drops beyond 10; right click on a
 fence ties every animal the player leads within 10 blocks to it) and
 `name_tag` (right click on an animal opens a page to type its name, up to
 23 characters, shown over its head within 24 blocks).
+
+## Survival (`data/survival/survival.cfg`, Milestone 20)
+
+Health, hunger and damage (design/survival/survival.md). Health and
+hunger are in points (2 = one heart / one food icon); times in seconds.
+Missing keys keep the built-in values.
+
+| Key | Meaning |
+|---|---|
+| `health`, `hunger` | the most there is (20) |
+| `start_saturation` | saturation after a respawn (5) |
+| `exhaustion_per_point` | exhaustion that takes one saturation point, or one hunger point when saturation is gone (4) |
+| `exhaust_sprint`, `exhaust_swim` | exhaustion per block sprinted / swum |
+| `exhaust_jump`, `exhaust_sprint_jump` | per jump |
+| `exhaust_mine`, `exhaust_damage`, `exhaust_heal` | per block broken, per hit taken, per health point regenerated |
+| `regen_fast` | `normal` regeneration with full hunger and saturation left: 1 HP every … |
+| `regen_slow`, `regen_hunger` | … else 1 HP every `regen_slow` while hunger ≥ `regen_hunger` |
+| `starve_every` | at hunger 0: 1 HP every … (down to the difficulty's `starve_floor`) |
+| `eat_time`, `eat_speed` | default eating time; walking speed while eating (×) |
+| `poison_time`, `poison_exhaust` | food poisoning: how long, exhaustion per second |
+| `fall_safe` | blocks fallen without harm; 1 HP for each block more (water, flying and climbing break falls) |
+| `air`, `drown_damage` | seconds of air under water; HP each second without |
+| `lava_damage`, `burn_time`, `burn_damage` | HP every half second in lava; seconds burning after it, HP each second (water puts it out) |
+| `suffocate_damage`, `cactus_damage` | HP every half second with the head in a solid block / touching a cactus |
+| `void_y`, `void_damage` | below this y: HP every half second |
+| `hurt_time` | no new damage for this long after a hit (the void and starvation still hurt) |
+
+`[difficulty <peaceful|normal|hard|extreme|ultra>]` sections: `damage`
+(damage taken ×), `hunger` (exhaustion ×; 0 = no hunger drain, and hunger
+fills back up), `regen` (`normal`, `fast` = 1 HP every `regen_every`
+whatever the hunger, `full_only` = 1 HP every `regen_every` at full
+hunger, `none`), `regen_every`, `starve_floor` (health starvation stops
+at; 0 = it kills).
 
 ## Saved worlds (`saves/<name>/`, Milestone 17)
 
@@ -685,6 +724,7 @@ Text in the format above (the game rewrites them on every save, via a
 | | `selected` | the hotbar slot in hand, 0–8 (Milestone 18) |
 | | `slot` | one line per used slot: `index, item, count, durability` (0–8 the hotbar, 9–35 the inventory, 101 the off hand; 36 the stack carried by the mouse and 37–45 the crafting grid when the game quit with the inventory open: they go back into the slots on load); unknown items are skipped |
 | | `held_block` | (saves from before Milestone 18) a block name: put in hotbar slot 0 |
+| | `survival` | (Milestone 20) `health, hunger, saturation, exhaustion, air ticks, burning ticks, poison ticks, dead` |
 
 `containers.dat` holds what is in the chests: a `[container x y z]`
 record (the block position) per container that holds anything, then its

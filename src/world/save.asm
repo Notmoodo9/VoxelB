@@ -62,7 +62,7 @@ global save_open, save_load_player, save_column, save_load_column, save_all
 global save_load_containers
 global save_update
 global g_save_enabled, g_save_exists, g_save_player_flags, g_save_held
-global g_save_inv, g_save_inv_loaded, g_save_inv_sel
+global g_save_inv, g_save_inv_loaded, g_save_inv_sel, g_save_sv, g_save_sv_loaded
 global g_save_columns, g_save_bytes, g_save_loaded, g_save_last_ms
 global g_world_name, g_autosave_minutes, save_peek, g_dir
 global save_text_load, save_text_release, save_text_write
@@ -77,6 +77,7 @@ extern g_world_seed, g_time_override, g_sim_time
 extern g_cam_pos, g_cam_yaw, g_cam_pitch, g_held_block, g_block_names
 extern g_inv, g_inv_sel, craft_sync, station_find, g_station_names, store_save_all
 extern racks_save
+extern g_sv_health, g_sv_hunger, g_sv_sat, g_sv_exh, g_sv_air, g_sv_burn, g_sv_poison, g_sv_dead
 extern g_pl_pos, g_pl_eye, g_pl_flags, g_loaded, g_loaded_count
 
 IMPORT CreateFileA, ReadFile, WriteFile, CloseHandle, SetFilePointerEx
@@ -157,6 +158,7 @@ k_flying:       db "flying", 0
 k_held:         db "held_block", 0
 k_selected:     db "selected", 0
 k_slot:         db "slot", 0
+k_survival:     db "survival", 0
 k_difficulty:   db "difficulty", 0
 k_hardcore:     db "hardcore", 0
 k_played:       db "last_played", 0
@@ -190,6 +192,10 @@ t_eye:          db 10, "eye_position = ", 0
 t_look:         db 10, "look = ", 0
 t_flying:       db 10, "flying = ", 0
 t_selected:     db 10, "selected = ", 0
+t_survival:     db 10, "survival = ", 0
+align 8
+sv_fields:      dq g_sv_health, g_sv_hunger, g_sv_sat, g_sv_exh, g_sv_air, g_sv_burn
+                dq g_sv_poison, g_sv_dead
 t_slot:         db 10, "slot = ", 0
 t_comma:        db ", ", 0
 t_nl:           db 10, 0
@@ -223,6 +229,8 @@ g_save_exists:      resd 1
 g_save_player_flags: resd 1
 g_save_held:        resd 1
 g_save_inv_loaded:  resd 1
+g_save_sv:          resd 8          ; player.dat's survival line (f32; milestone 20)
+g_save_sv_loaded:   resd 1
 g_save_inv_sel:     resd 1
 alignb 8
 g_save_inv:         resq INV_SAVED + 1  ; player.dat's slots, for inv_init (the
@@ -652,6 +660,7 @@ PROC save_load_player, 0
     mov dword [rel g_save_held], 0
     mov dword [rel g_save_inv_loaded], 0
     mov dword [rel g_save_inv_sel], 0
+    mov dword [rel g_save_sv_loaded], 0
     lea rcx, [rel g_save_inv]
     xor eax, eax
     mov edx, INV_SAVED + 1
@@ -756,6 +765,34 @@ PROC player_pair, 0, rbx, rsi, rdi
     mov [rel g_save_inv_sel], eax
     RETURN
 .not_selected:
+    ; survival = health, hunger, saturation, exhaustion, air, burn, poison,
+    ; dead (milestone 20)
+    lea rdx, [rel k_survival]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_survival
+    xor edi, edi
+.sv:
+    mov rcx, rsi
+    call parse_d
+    test eax, eax
+    jz .done
+    cvtsd2ss xmm0, xmm0
+    lea rax, [rel g_save_sv]
+    movss [rax + rdi * 4], xmm0
+    inc edi
+    cmp edi, 8
+    jae .sv_done
+    cmp byte [rdx], ','
+    jne .sv_done
+    lea rsi, [rdx + 1]
+    jmp .sv
+.sv_done:
+    cmp edi, 4
+    jb .done                            ; (too short: ignored)
+    mov dword [rel g_save_sv_loaded], 1
+    RETURN
+.not_survival:
     lea rdx, [rel k_slot]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
@@ -1574,6 +1611,36 @@ PROC write_player_dat, 16, rbx, rsi, rdi
     call str_copy
     mov edx, [rel g_inv_sel]
     INVOKE str_append_dec, rax, rdx, 0
+    ; survival (milestone 20): health, hunger, saturation, exhaustion,
+    ; air, burn, poison, dead
+    lea rdx, [rel t_survival]
+    mov rcx, rax
+    call str_copy
+    xor esi, esi
+.sv:
+    test esi, esi
+    jz .sv_value
+    lea rdx, [rel t_comma]
+    mov rcx, rax
+    call str_copy
+.sv_value:
+    lea rcx, [rel sv_fields]
+    mov rcx, [rcx + rsi * 8]
+    cmp esi, 2
+    je .sv_float
+    cmp esi, 3
+    je .sv_float
+    mov edx, [rcx]
+    INVOKE str_append_dec, rax, rdx, 0
+    jmp .sv_next
+.sv_float:
+    cvtss2sd xmm0, [rcx]
+    mov rcx, rax
+    call append_d
+.sv_next:
+    inc esi
+    cmp esi, 8
+    jb .sv
     xor esi, esi
 .slot:
     cmp esi, INV_SAVED                  ; (with the carried stack and the grid,

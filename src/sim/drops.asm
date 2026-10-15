@@ -23,7 +23,7 @@
 global drops_reset, drops_spawn, drops_spawn_dur, drops_tick, g_drop_count
 
 extern phys_block, inv_add_dur, pkt_send, g_to_client, g_block_coll
-extern g_pl_pos, g_item_stack
+extern g_pl_pos, g_item_stack, g_sv_dead
 
 %define LIFE_TICKS      6000            ; 5 minutes at 20 ticks per second
 %define PICKUP_TICKS    10              ; just dropped: not yet
@@ -305,6 +305,8 @@ PROC drops_tick, 16, rbx, rsi, rdi, r12
     addsd xmm3, xmm4                    ; distance^2
     cmp dword [rbx + DROP.age], PICKUP_TICKS
     jb .physics
+    cmp dword [rel g_sv_dead], 0
+    jne .physics                        ; (a dead player picks nothing up; M20)
     comisd xmm3, [rel c_pickup2]
     jae .magnet
     ; picked up: what fits goes into the inventory

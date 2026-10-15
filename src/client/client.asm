@@ -36,6 +36,7 @@
 global client_init, client_input, client_view, g_cl_player, g_cinv, g_csel
 global client_select, client_input_idle, g_dig_pos, g_dig_progress
 global g_cwin, g_cwin_event, g_cinv_ver, g_cfurnace, g_off_block, g_fov_scale
+global g_csv, g_csv_have, g_cl_hurt_flash
 
 extern g_cam_yaw, g_cam_pitch, g_cam_pos, g_sim_alpha
 extern daycycle_set, timer_elapsed_us, g_frame_us
@@ -51,6 +52,10 @@ alignb 16
 g_cl_player:    resb PLAYER_PKT_size    ; latest state
 g_cl_prev:      resb PLAYER_PKT_size    ; the one before
 g_cl_pkt:       resb PKT_SIZE
+alignb 4
+g_csv:          resb SURV_PKT_size     ; the player's health, hunger ... (milestone 20)
+g_csv_have:     resd 1
+g_cl_hurt_flash: resd 1                 ; f32 1 → 0: the red flash after a hit
 g_cl_input:     resb INPUT_PKT_size
 g_cl_have:      resd 1                  ; a state has arrived
 g_cl_time:      resd 1                  ; latest time of day
@@ -287,6 +292,8 @@ PROC client_input, 0, rbx
 .no_sprint:
     INVOKE button, ACT_TIME_FORWARD, INB_TIME_FORWARD
     or ebx, eax
+    INVOKE button, ACT_PLACE_BLOCK, INB_USE     ; (held: eating, milestone 20)
+    or ebx, eax
     ; Survival mining: the block being dug
     cmp dword [rel g_dig_want], 0
     je .no_dig
@@ -466,6 +473,23 @@ PROC client_view, 0, rsi, rdi
     call ents_view_name                 ; (part 3b: a name tag)
     jmp .packet
 .not_name:
+    cmp eax, PKT_S_SURVIVAL
+    jne .not_survival
+    ; health, hunger ... (milestone 20): a new hit starts the red flash
+    movzx eax, word [rel g_cl_pkt + PKT.data + SURV_PKT.hurt]
+    cmp ax, [rel g_csv + SURV_PKT.hurt]
+    je .copy_sv
+    cmp dword [rel g_csv_have], 0
+    je .copy_sv
+    mov dword [rel g_cl_hurt_flash], 0x3F800000     ; 1.0
+.copy_sv:
+    lea rsi, [rel g_cl_pkt + PKT.data]
+    lea rdi, [rel g_csv]
+    mov ecx, SURV_PKT_size
+    rep movsb
+    mov dword [rel g_csv_have], 1
+    jmp .packet
+.not_survival:
     cmp eax, PKT_S_TIME
     jne .packet
     mov eax, [rel g_cl_pkt + PKT.data + TIME_PKT.time]

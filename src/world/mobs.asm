@@ -16,7 +16,8 @@
 ;                   glide = fastest fall (blocks per second),
 ;                   lays = item, min, max (seconds), sexes, jump (blocks),
 ;                   fall (blocks), hops, eats = block patterns,
-;                   rams = distance, % per second, milk = item, item,
+;                   rams = distance, % per second, ram_damage (M20),
+;                   milk = item, item,
 ;                   baby_skin = variant, skin (part 3b; drop lines may end
 ;                   in `male` and / or a chance `N%`),
 ;                   variant = name, skin, model [, coat item] (skin: a
@@ -97,6 +98,7 @@ k_fall:         db "fall", 0
 k_hops:         db "hops", 0
 k_eats:         db "eats", 0
 k_rams:         db "rams", 0
+k_ram_damage:   db "ram_damage", 0
 k_milk:         db "milk", 0
 k_baby_skin:    db "baby_skin", 0
 k_altitude:     db "altitude", 0
@@ -790,7 +792,7 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     lea rdx, [rel k_rams]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
-    jz .b_milk
+    jz .b_ram_damage
     mov rcx, rsi
     call cfg_next_token
     mov [LOCAL(0)], rdx
@@ -806,6 +808,20 @@ PROC mobs_pair, 16, rbx, rsi, rdi, r12, r13
     test eax, eax
     jz .bad
     movss [r12 + MOB.rams_pct], xmm0
+    RETURN
+.b_ram_damage:
+    ; ram_damage = health points (milestone 20)
+    lea rdx, [rel k_ram_damage]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .b_milk
+    mov rcx, rsi
+    call str_parse_u64
+    test r8, r8
+    jz .bad
+    cmp rax, 100
+    ja .bad
+    mov [r12 + MOB.ram_damage], eax
     RETURN
 .b_milk:
     ; milk = the item that milks it, what that item becomes

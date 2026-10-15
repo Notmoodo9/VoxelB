@@ -6,6 +6,8 @@
 %define MAX_ITEMS       4096
 %define MAX_TABS        16
 %define ITEMF_HIDDEN    1               ; not in the Creative inventory
+%define EATF_ALWAYS     1               ; M20: can be eaten when full (milk)
+%define EATF_CURE       2               ; M20: cures food poisoning
 ; tool types and tiers (item settings `tool`, `tier`; mining.cfg)
 %define TOOL_NONE       0
 %define TOOL_PICKAXE    1
@@ -24,6 +26,7 @@
 %define MAX_FILLS           16              ; item `fill` lines (buckets)
 %ifndef ITEMS_IMPL
 extern items_load, item_find
+extern g_item_food, g_item_poison, g_item_eat, g_item_eatf, g_item_sat
 extern g_item_count, g_item_names, g_item_titles, g_item_block, g_item_stack
 extern g_item_tab, g_item_tex, g_item_flags, g_block_item
 extern g_tab_count, g_tab_titles, g_tab_icon

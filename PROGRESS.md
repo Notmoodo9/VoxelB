@@ -1,16 +1,79 @@
 # Progress
 
 ## Current state
-**Milestone 19, part 3b** — deer, rabbits, goats, buckets and milk, leads,
-name tags (v0.19.5, Windows CI green: run #114)
+**Milestone 20, part 1** — survival: health, hunger, damage, eating, death
+(v0.20.1, Windows CI: see below)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
 
-Next: **Milestone 20** 🎨 DESIGN — survival: health, hunger, damage,
-death, the difficulties Peaceful → Ultra and Hardcore (an interview
-first). Milestone 19's design list is done; open animal ideas stay in
-design/mobs/passive_animals.md ("Still open").
+Next: **Milestone 20, part 2** — the death rule on the create-world page
+(drop everything / gravestone / keep inventory below Hard), the mossy
+gravestone, Hardcore deaths (spectate or delete the world)
+(design/survival/survival.md).
+
+---
+
+## Milestone 20, part 1 — done (2026-10-15): health, hunger, damage, death (D103)
+
+Design interview: design/survival/survival.md (approved).
+
+### What was built
+* **Health and hunger** in Survival and Adventure: ten hearts left and
+  ten food icons right above the hotbar, drawn in the journal's ink
+  (data/survival/survival.cfg). Hearts shake at 2 hearts or less; food
+  icons jitter when you are starving; they turn green with food
+  poisoning; air bubbles show over the food under water; the screen
+  edges flash red when you are hurt. Nothing shows in Creative.
+* **Hunger** like Minecraft: a hidden saturation reserve is used first;
+  sprinting, swimming, jumping, mining, being hurt and healing make you
+  hungry. Health comes back while you are well fed (fast with full
+  hunger and saturation, slowly from 9 food icons); at no food you
+  starve.
+* **Difficulties**: Peaceful (half damage, no hunger, fast healing),
+  Normal, Hard (×1.5 damage, faster hunger, starvation kills), Extreme
+  (heals only when full) and Ultra (×2 damage, no natural healing).
+* **Damage**: falls (blocks − 3), drowning (15 s of air), lava and burning
+  after it, suffocation in walls, cactus, the void, boar and goat rams
+  (4 and 2), starvation.
+* **Eating**: hold the right button with food in hand (1.6 s, berries
+  0.8 s); you walk slowly and the hand brings the food to your mouth.
+  Cooked meat 6–8 hunger, raw meat 2–3, carrot 3, berries 2; raw chicken
+  and rabbit have a 30% chance of food poisoning; milk cures it (and
+  leaves the bucket).
+* **Death**: everything you carry drops where you died (5 minutes to get
+  it back); the world fades to sepia and a journal page says how and
+  where you died, with Respawn (at the world spawn, full health and
+  hunger) and Main menu.
+* Health, hunger and the rest are saved in player.dat.
+
+### Verified (scripted with xdotool; Survival test world)
+* Fall from 18 blocks: 15 damage, 2½ hearts left (screens); from 37
+  blocks: death page "You fell from a high place, at 52, 102, -40"
+  (screen), the hotbar empty, Respawn → at the spawn with full health and
+  hunger and nothing in hand (no fall damage from the spawn drop).
+* Eating: holding the button ate two cooked beef (hunger 6 → 20), then
+  health regenerated from 5 to 20 while saturation drained (player.dat).
+* `--test-block`: water → bubbles shown, then drowned (cause 2); lava
+  (cause 3); stone at the head → suffocated (cause 5); cactus (cause 6).
+* Starvation at hunger 0 on Normal: health 20 → 10 and no death (stops
+  at 1).
+* Food poisoning (chicken set to 100% for the test, then restored): green
+  food icons (screen), poison saved in player.dat.
+* Goat rams with the range widened for the test (restored): 2 rams, the
+  healing used up saturation and a hunger point.
+* Creative: no hearts or food. Debug and release headless tests pass.
+
+### Performance (llvmpipe test VM, release)
+* Simulation tick 106 µs average (was 100), 269 µs max; the survival
+  step is a few block lookups a tick. HUD: 20–30 more UI quads.
+
+### Deferred
+* The death rule option, gravestones, keep inventory, Hardcore: part 2.
+* The day count on the death page (worlds do not count days yet) and
+  crumbs while eating.
+* Armor, weapons and mob damage (M21–22); temperature and thirst (M28);
+  potions (M27); beds as respawn points (later).
 
 ---
 

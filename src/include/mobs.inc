@@ -89,6 +89,7 @@ struc MOB
     .eats       resd 1                  ; bit in g_block_eat of the blocks it eats (0 none)
     .rams_dist  resd 1                  ; f32 rams a player this close (0: never)
     .rams_pct   resd 1                  ; f32 % chance per second
+    .ram_damage resd 1                  ; M20: health points a ram (charge) takes from the player
     .milk_from  resw 1                  ; item that milks it (a bucket; 0 none)
     .milk_to    resw 1                  ; what that item becomes
 endstruc

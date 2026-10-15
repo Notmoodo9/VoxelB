@@ -33,6 +33,7 @@ jump = 3
 fall = 6
 # rams = distance (blocks), % chance a second
 rams = 2, 5
+ram_damage = 2
 milk = bucket, milk_bucket
 drop = mutton, 1, 2
 drop = goat_horn, 0, 1

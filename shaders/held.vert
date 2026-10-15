@@ -10,8 +10,8 @@
 //             picture as a thin model, one 1/16 box per pixel (empty pixels
 //             and the dark outline pixels around the picture are left out),
 //             held diagonally at the fist like a tool.
-// The whole hand sways while walking, swings in an arc when used and dips
-// while the item in hand changes.
+// The whole hand sways while walking, swings in an arc when used, dips
+// while the item in hand changes and brings food to the mouth (eating).
 
 layout(std430, binding = 1) readonly buffer Faces { uint block_face[]; };
 layout(std430, binding = 2) readonly buffer Textures { uvec4 tex_info[]; };
@@ -26,6 +26,7 @@ layout(location = 5) uniform float u_aspect;
 layout(location = 7) uniform int u_mirror;      // 1: the off hand (lower left, mirrored)
 layout(location = 8) uniform float u_equip;     // 0 lowered .. 1 up (the item changed)
 layout(location = 9) uniform int u_empty;       // 1: nothing in this hand (the arm reaches further)
+layout(location = 10) uniform float u_eat;      // 0..1 through eating (milestone 20; 0: not eating)
 
 out vec2 v_uv;
 flat out uint v_layer;
@@ -90,6 +91,12 @@ void main() {
     hand += vec3(u_bob.x - 0.3 * sw2, u_bob.y + 0.14 * sin(sqrt(t) * 6.2831853) - 0.6 * (1.0 - u_equip),
                  -0.16 * sw);
     mat3 swing = rot_y(-0.35 * sin(t * t * 3.14159265)) * rot_z(-0.3 * sw2) * rot_x(-1.1 * sw2);
+    // eating: the food comes up to the mouth and bobs there
+    if (u_eat > 0.0) {
+        float e = smoothstep(0.0, 0.12, u_eat);
+        hand = mix(hand, vec3(0.1, -0.26, -0.55) + vec3(0.0, 0.03 * abs(sin(u_eat * 40.0)), 0.0), e);
+        swing = rot_y(0.5 * e) * rot_x(0.35 * e) * swing;
+    }
 
     vec3 p, n;
     if (u_part == 0) {
