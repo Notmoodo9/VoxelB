@@ -3,7 +3,8 @@
 ## Current state
 **Milestone 21, part 2** — armor: light / medium / heavy sets, the paper
 doll, protection and mobility, the HUD shield row, shields and
-blocking, the dodge roll, charm slots (v0.21.2, Windows CI pending)
+blocking, the dodge roll, charm slots (v0.21.2, Windows CI
+green: run #124)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
