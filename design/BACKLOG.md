@@ -44,7 +44,7 @@ yet; each item gets its own doc in `design/` when we interview it.
 | building | Items, inventory, chests, crafting, tool tiers, smelting | M18 | `design/items/items_inventory.md` |
 | done | Passive animals (cow, sheep, pig/boar, chicken, deer, rabbit, goat) | M19 | `design/mobs/passive_animals.md`; later: bees and beehives on meadow trees (meadow interview); seals, polar bears, walruses (frozen ocean interview); river fish (river interview) |
 | building | Survival: health, hunger, damage, death, difficulty levels, Hardcore | M20 | `design/survival/survival.md` |
-| todo | Combat: melee, ranged, armor | M21 | |
+| building | Combat: melee, ranged, armor, runes | M21 | `design/combat/combat.md`; named weapons with dungeons/bosses (M23/M29); accessories later |
 | todo | Hostile mobs and spawning rules | M22 | |
 | todo | Structures: villages, ruins, dungeons; swamp witch hut; badlands mineshafts | M23 | witch hut and mineshafts from the biome interviews |
 | todo | Audio: SFX, ambience, music | M24 | |

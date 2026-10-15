@@ -7,8 +7,10 @@
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
 
-Next: **Milestone 21** — 🎨 DESIGN: combat (melee, ranged, armor): the
-design interview first.
+Next: **Milestone 21, part 1** — melee: the swing meter, swords, axes,
+spears and maces in 8 tiers, crits, sweeps, hit feel
+(design/combat/combat.md, approved 2026-10-15; parts: melee → armor →
+ranged → runes).
 
 ---
 
