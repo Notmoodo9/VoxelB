@@ -2,7 +2,7 @@
 
 ## Current state
 **Milestone 20, part 2** — the death rule, gravestones, Hardcore
-(v0.20.2, Windows CI: pending)
+(v0.20.2, Windows CI green: run #119)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
