@@ -32,6 +32,9 @@
 ;   g_item_weapon (u8 WEAPON_*), g_item_damage (f32, 0 = the hand's),
 ;     g_item_swing (u8 ticks, 0 = the hand's), g_item_kb (f32, 0 = 1),
 ;     g_item_reach (f32 extra blocks) — milestone 21 (melee)
+;   g_item_armor (u8 ARMOR_*: head, chest, legs, feet, shield, trinket),
+;     g_item_prot (f32 protection points), g_item_weight (u8 WEIGHT_*) —
+;     milestone 21 part 2
 ;   item_tool_index(name) / item_tier_index(name) -> eax TOOL_* / TIER_*, -1
 ;   g_item_leaves (u16: the item left once it is used up, e.g. a bucket of
 ;     water leaves the bucket; 0 = nothing; milestone 19 part 3b)
@@ -59,6 +62,7 @@ global g_fill_count, g_fill_item
 global g_item_food, g_item_poison, g_item_eat, g_item_eatf, g_item_sat
 global item_tool_index, item_tier_index, items_match_list
 global g_item_weapon, g_item_damage, g_item_swing, g_item_kb, g_item_reach
+global g_item_armor, g_item_prot, g_item_weight
 
 extern str_ieq, str_len, str_copy, str_parse_u64, str_dup, str_parse_float
 
@@ -105,6 +109,19 @@ k_damage:       db "damage", 0
 k_swing:        db "swing", 0
 k_knockback:    db "knockback", 0
 k_reach:        db "reach", 0
+k_armor:        db "armor", 0
+k_protection:   db "protection", 0
+k_weight:       db "weight", 0
+armor_0:        db "none", 0
+armor_1:        db "head", 0
+armor_2:        db "chest", 0
+armor_3:        db "legs", 0
+armor_4:        db "feet", 0
+armor_5:        db "shield", 0
+armor_6:        db "trinket", 0
+weight_0:       db "light", 0
+weight_1:       db "medium", 0
+weight_2:       db "heavy", 0
 weapon_0:       db "none", 0
 weapon_1:       db "sword", 0
 weapon_2:       db "axe", 0
@@ -129,6 +146,8 @@ align 8
 tool_names:     dq tool_0, tool_1, tool_2, tool_3, tool_4
 tier_names:     dq tier_0, tier_1, tier_2, tier_3, tier_4, tier_5, tier_6, tier_7, tier_8
 weapon_names:   dq weapon_0, weapon_1, weapon_2, weapon_3, weapon_4
+armor_names:    dq armor_0, armor_1, armor_2, armor_3, armor_4, armor_5, armor_6
+weight_names:   dq weight_0, weight_1, weight_2
 align 4
 c_one:          dd 1.0
 c_twenty:       dd 20.0                 ; ticks a second
@@ -173,6 +192,10 @@ g_item_kb:      resd MAX_ITEMS          ; M21: f32 knock-back factor (0: 1)
 g_item_reach:   resd MAX_ITEMS          ; M21: f32 extra reach in blocks
 g_item_weapon:  resb MAX_ITEMS          ; M21: WEAPON_*
 g_item_swing:   resb MAX_ITEMS          ; M21: ticks a full swing takes (0: the hand's)
+g_item_armor:   resb MAX_ITEMS          ; M21 part 2: ARMOR_* (where it is worn)
+g_item_weight:  resb MAX_ITEMS          ; WEIGHT_*
+alignb 4
+g_item_prot:    resd MAX_ITEMS          ; f32 protection points
 g_fill_item:    resw MAX_FILLS          ; the container
 g_fill_block:   resw MAX_FILLS          ; the block it takes
 g_fill_result:  resw MAX_FILLS          ; what it becomes
@@ -838,7 +861,7 @@ PROC items_pair, 0, rbx, rsi, rdi
     lea rdx, [rel k_weapon]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
-    jz .i_damage
+    jz .i_armor
     xor ecx, ecx
 .w_name:
     cmp ecx, WEAPON_COUNT
@@ -856,6 +879,53 @@ PROC items_pair, 0, rbx, rsi, rdi
     lea rax, [rel g_item_weapon]
     mov [rax + rdi], cl
     RETURN
+.i_armor:
+    ; armor = head | chest | legs | feet | shield | trinket (part 2)
+    lea rdx, [rel k_armor]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_weight
+    lea rdx, [rel armor_names]
+    mov r8d, ARMOR_COUNT
+    lea r9, [rel g_item_armor]
+    jmp .named_byte
+.i_weight:
+    lea rdx, [rel k_weight]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_prot
+    lea rdx, [rel weight_names]
+    mov r8d, WEIGHT_COUNT
+    lea r9, [rel g_item_weight]
+.named_byte:
+    ; the value's index in the name table rdx (r8d names) into byte [r9 + item]
+    mov [rsp + 32], rdx
+    mov [rsp + 40], r8
+    mov [rsp + 48], r9
+    xor ecx, ecx
+.nb:
+    cmp ecx, [rsp + 40]
+    jae .bad
+    mov [rsp + 56], rcx
+    mov rdx, [rsp + 32]
+    mov rdx, [rdx + rcx * 8]
+    INVOKE str_ieq, rsi, rdx
+    mov rcx, [rsp + 56]
+    test eax, eax
+    jnz .nb_found
+    inc ecx
+    jmp .nb
+.nb_found:
+    mov rax, [rsp + 48]
+    mov [rax + rdi], cl
+    RETURN
+.i_prot:
+    lea rdx, [rel k_protection]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .i_damage
+    lea rax, [rel g_item_prot]
+    jmp .float_field
 .i_damage:
     lea rdx, [rel k_damage]
     INVOKE str_ieq, rbx, rdx

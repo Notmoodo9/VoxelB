@@ -25,6 +25,7 @@
 ;   inv_drag(rcx = DRAG_PKT*)        the carried stack spread over slots:
 ;                                    evenly (Shift+drag) or one each
 ;                                    (right-drag); what is left stays carried
+;   inv_wear_slot(ecx = slot)        the same for any slot (armor; part 2 of M21)
 ;   inv_wear_selected()              the tool in hand broke a block: Survival
 ;                                    wears it by one (slot durability field =
 ;                                    uses spent); worn out, it breaks
@@ -45,7 +46,7 @@
 %include "save.inc"
 
 global inv_init, inv_packet, inv_selected_block, inv_used_selected, inv_add
-global inv_wear_selected, inv_add_dur, inv_place_block, inv_used_slot
+global inv_wear_selected, inv_wear_slot, inv_add_dur, inv_place_block, inv_used_slot
 global inv_swap_hands, inv_drag
 global inv_flush, g_inv, g_inv_sel, inv_mark, inv_stack_of, inv_room
 global inv_cursor_back, inv_turn_slot
@@ -140,8 +141,16 @@ PROC inv_init, 0, rbx, rsi, rdi
     xor eax, eax
 .sel:
     mov [rel g_inv_sel], eax
-    mov rax, [rel g_save_inv + INV_SAVED * SLOT_SIZE]
-    mov [rel g_inv + INV_OFFHAND * SLOT_SIZE], rax
+    ; the off hand, armor and accessories (saved after the others)
+    xor ecx, ecx
+.gear:
+    lea rdx, [rel g_save_inv + INV_SAVED * SLOT_SIZE]
+    mov rax, [rdx + rcx * SLOT_SIZE]
+    lea rdx, [rel g_inv + INV_OFFHAND * SLOT_SIZE]
+    mov [rdx + rcx * SLOT_SIZE], rax
+    inc ecx
+    cmp ecx, INV_ALL - INV_OFFHAND
+    jb .gear
     ; a carried stack or a crafting grid saved full: back into the slots
     mov ebx, INV_SLOTS
 .back:
@@ -270,10 +279,12 @@ inv_selected_block:
     ret
 
 ; inv_wear_selected — see the header   clobbers: rax, rcx, rdx, r8, r9
-PROC inv_wear_selected, 0
+inv_wear_selected:
+    mov ecx, [rel g_inv_sel]
+; inv_wear_slot — the same for slot ecx (armor hit: milestone 21 part 2)
+PROC inv_wear_slot, 0
     cmp dword [rel g_world_mode], MODE_CREATIVE
     je .done
-    mov ecx, [rel g_inv_sel]
     SLOT_PTR rax, rcx
     movzx edx, word [rax + SLOT_ITEM]
     test edx, edx
@@ -684,6 +695,25 @@ PROC click, 0, rbx, rsi, rdi, r12, r13
     jb .valid
     cmp ebx, INV_OFFHAND
     je .valid
+    cmp ebx, INV_ARMOR
+    jb .window
+    cmp ebx, INV_ALL
+    jae .done
+    ; armor and accessory slots (milestone 21 part 2): what is carried must
+    ; be worn there
+    movzx edx, word [rel g_inv + INV_CURSOR * SLOT_SIZE + SLOT_ITEM]
+    test edx, edx
+    jz .valid
+    lea eax, [ebx - INV_ARMOR + ARMOR_HEAD]
+    cmp ebx, INV_TRINKET
+    jb .gear_kind
+    mov eax, ARMOR_TRINKET
+.gear_kind:
+    lea rcx, [rel g_item_armor]
+    cmp [rcx + rdx], al
+    jne .done
+    jmp .valid
+.window:
     ; the open window's slots
     cmp ebx, INV_RESULT
     je .result
@@ -816,6 +846,36 @@ PROC click, 0, rbx, rsi, rdi, r12, r13
     movzx ecx, word [rsi + SLOT_ITEM]
     test ecx, ecx
     jz .done
+    ; a piece of armor (a shield) from the player's slots: onto the body
+    ; (into the off hand) if that slot is empty
+    cmp ebx, INV_SLOTS
+    jae .not_worn
+    lea rax, [rel g_item_armor]
+    movzx eax, byte [rax + rcx]
+    cmp eax, ARMOR_SHIELD
+    je .to_offhand
+    cmp eax, ARMOR_HEAD
+    jb .not_worn
+    cmp eax, ARMOR_FEET
+    ja .not_worn
+    lea edi, [eax + INV_ARMOR - ARMOR_HEAD]
+    jmp .wear
+.to_offhand:
+    mov edi, INV_OFFHAND
+.wear:
+    lea rax, [rel g_inv]
+    lea rdx, [rax + rdi * SLOT_SIZE]
+    cmp qword [rdx], 0
+    jne .not_worn
+    mov rax, [rsi]
+    mov [rdx], rax
+    mov qword [rsi], 0
+    mov ecx, edi
+    call mark
+    mov ecx, ebx
+    call mark
+    jmp .done
+.not_worn:
     mov r13, [rsi]                      ; the stack
     mov qword [rsi], 0
     mov ecx, ebx

@@ -64,6 +64,8 @@ extern g_pl_pos, g_pl_vel, g_pl_flags, g_pl_eye, g_pl_width, g_pl_height
 extern g_world_mode, g_world_difficulty, g_inv, g_inv_sel
 extern g_save_sv, g_save_sv_loaded, g_world_death, g_world_day
 extern craft_close, graves_make, g_grave_pos, g_world_hardcore, g_world_hc_dead
+extern combat_armor_hit, g_armor_hunger, g_armor_points, g_cb_safe
+extern g_cb_blocking, g_roll
 
 %define SLOT_SIZE       8
 %define DIFFS           5               ; peaceful .. ultra
@@ -189,6 +191,10 @@ d_hunger:       dd 0.0, 1.0, 1.25, 1.5, 1.75
 d_regen:        dd REGEN_FAST, REGEN_NORMAL, REGEN_NORMAL, REGEN_FULL, REGEN_NONE
 d_regen_every:  dd 1.0, 4.0, 4.0, 6.0, 4.0
 d_floor:        dd 10.0, 1.0, 0.0, 0.0, 0.0
+
+section .rdata
+align 4
+c_inv_2_24:     dd 0.000000059604644775390625 ; 1 / 2^24
 
 section .bss
 alignb 8
@@ -634,6 +640,12 @@ survival_exhaust:
     movss [rel g_sv_exh], xmm0
     ret
 
+; move_exhaust — exhaustion from moving: × the armor's hunger factor
+;   (heavy armor), then survival_exhaust.   clobbers: rax, xmm0
+move_exhaust:
+    mulss xmm0, [rel g_armor_hunger]
+    jmp survival_exhaust
+
 ; survival_mined — a block was broken by hand or tool: its exhaustion
 ;   clobbers: rax, rcx, xmm0
 survival_mined:
@@ -659,6 +671,8 @@ PROC survival_damage, 0, rbx
     je .hit
     cmp dword [rel g_invuln], 0
     jne .done
+    cmp dword [rel g_cb_safe], 0
+    jne .done                           ; (a dodge roll's first moment)
 .hit:
     mov [rel g_cause], edx
     mov [rel g_cause_mob], r8d
@@ -667,6 +681,34 @@ PROC survival_damage, 0, rbx
     call diff
     lea rdx, [rel d_damage]
     mulss xmm0, [rdx + rax * 4]
+    ; armor takes its share of rams, burns and cactus pricks (and wears)
+    mov eax, [rel g_cause]
+    cmp eax, CAUSE_RAM
+    je .armored
+    cmp eax, CAUSE_LAVA
+    je .armored
+    cmp eax, CAUSE_FIRE
+    je .armored
+    cmp eax, CAUSE_CACTUS
+    jne .round
+.armored:
+    ; (what gets through, rounded by chance: armor softens small hits too)
+    call combat_armor_hit
+    cvttss2si ebx, xmm0
+    cvtsi2ss xmm1, ebx
+    subss xmm0, xmm1                    ; the fraction
+    call rand_u32
+    shr eax, 8
+    cvtsi2ss xmm1, eax
+    mulss xmm1, [rel c_inv_2_24]
+    comiss xmm1, xmm0
+    jae .armor_rounded
+    inc ebx
+.armor_rounded:
+    test ebx, ebx
+    jz .done                            ; (all of it stopped)
+    jmp .amount
+.round:
     addss xmm0, [rel c_half]
     cvttss2si ebx, xmm0
     cmp ebx, 1
@@ -832,7 +874,7 @@ ENDPROC
 
 ; -----------------------------------------------------------------------------
 ; survival_fill — the state as a SURV_PKT.
-;   in:  rcx = SURV_PKT*   clobbers: rax, rdx
+;   in:  rcx = SURV_PKT*   clobbers: rax, rdx, xmm0
 ; -----------------------------------------------------------------------------
 survival_fill:
     mov eax, [rel g_sv_health]
@@ -865,6 +907,14 @@ survival_fill:
     jz .f4
     or edx, SVF_ACTIVE
 .f4:
+    cmp dword [rel g_cb_blocking], 0
+    je .fblk
+    or edx, SVF_BLOCKING
+.fblk:
+    cmp dword [rel g_roll], 0
+    je .froll
+    or edx, SVF_ROLLING
+.froll:
     mov [rcx + SURV_PKT.flags], dx
     mov eax, [rel g_hurt_count]
     mov [rcx + SURV_PKT.hurt], ax
@@ -894,6 +944,10 @@ survival_fill:
     mov [rcx + SURV_PKT.death + 8], eax
     mov eax, [rel g_world_day]
     mov [rcx + SURV_PKT.day], eax
+    movss xmm0, [rel g_armor_points]
+    addss xmm0, xmm0
+    cvtss2si eax, xmm0
+    mov [rcx + SURV_PKT.armor], ax
     mov eax, [rel g_grave_pos]
     mov [rcx + SURV_PKT.grave], eax
     mov eax, [rel g_grave_pos + 4]
@@ -1059,14 +1113,14 @@ PROC survival_tick, 32, rbx, rsi, rdi
     jz .not_swim
     cvtsd2ss xmm0, [LOCAL(S_DIST)]
     mulss xmm0, [rel s_ex_swim]
-    call survival_exhaust
+    call move_exhaust
     jmp .jumps
 .not_swim:
     test eax, PF_SPRINTING
     jz .jumps
     cvtsd2ss xmm0, [LOCAL(S_DIST)]
     mulss xmm0, [rel s_ex_sprint]
-    call survival_exhaust
+    call move_exhaust
 .jumps:
     ; left the ground going up: a jump
     test dword [rel g_prev_flags], PF_ON_GROUND
@@ -1082,7 +1136,7 @@ PROC survival_tick, 32, rbx, rsi, rdi
     jz .jump_ex
     movss xmm0, [rel s_ex_sjump]
 .jump_ex:
-    call survival_exhaust
+    call move_exhaust
 
 .falls:
     ; ---- falls: from the highest point since the ground ----

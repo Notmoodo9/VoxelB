@@ -23,7 +23,7 @@ global held_init, held_draw, held_swing, g_swing_t0
 extern shader_create, shader_program, block_textures_bind, icon_uv, icon_kind
 extern timer_elapsed_us, sincosf
 extern g_cinv, g_csel, g_item_block, g_icon_tex, g_daylight, g_held_on, hand_light
-extern g_cl_player, g_csv
+extern g_cl_player, g_csv, g_frame_us
 
 %define SWING_US        300000          ; (Minecraft: 6 ticks)
 %define EQUIP_US        160000          ; the dip when the item in hand changes
@@ -44,6 +44,8 @@ c_bob_rate:     dd 9.0                  ; radians per second of walking
 c_bob_amp:      dd 0.022
 c_speed_full:   dd 4.3                  ; walking speed: full sway
 c_neg:          dd -1.0
+c_raise_rate:   dd 6.0                  ; 1 / the seconds a shield takes to come up
+c_zero:         dd 0.0
 
 section .bss
 alignb 8
@@ -55,6 +57,7 @@ g_uv:           resd 4
 g_last_us:      resq 1
 g_equip_t0:     resq 1                  ; when the main hand's item changed
 g_equip_item:   resd 1                  ; the item it changed to
+g_raise:        resd 1                  ; f32 0..1 the off hand's shield up (milestone 21)
 
 section .text
 
@@ -228,6 +231,27 @@ PROC held_item, 48, rbx, rsi
     divss xmm2, xmm0
 .eat:
     GL glProgramUniform1f, [rel g_prog], 10
+    ; ---- a raised shield (milestone 21 part 2): the off hand only ----
+    xorps xmm2, xmm2
+    cmp dword [LOCAL(D_MIRROR)], 0
+    je .raise
+    mov rax, [rel g_frame_us]
+    cvtsi2ss xmm0, rax
+    mulss xmm0, [rel c_us]
+    mulss xmm0, [rel c_raise_rate]      ; the step this frame
+    movss xmm2, [rel g_raise]
+    test word [rel g_csv + SURV_PKT.flags], SVF_BLOCKING
+    jnz .raising
+    subss xmm2, xmm0
+    jmp .raise_clamp
+.raising:
+    addss xmm2, xmm0
+.raise_clamp:
+    maxss xmm2, [rel c_zero]
+    minss xmm2, [rel c_one]
+    movss [rel g_raise], xmm2
+.raise:
+    GL glProgramUniform1f, [rel g_prog], 11
     ; ---- walking sway: by the horizontal speed ----
     movss xmm0, [rel g_cl_player + PLAYER_PKT.vel]
     mulss xmm0, xmm0

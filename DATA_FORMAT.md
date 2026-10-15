@@ -65,7 +65,10 @@ Actions: `move_forward`, `move_back`, `move_left`, `move_right`, `move_up`,
 `pick_block` (Mouse3: brings the targeted block's item to hand),
 `inventory` (E), `hotbar_1` … `hotbar_9` (1–9; the mouse wheel also steps
 through the hotbar), `recipe_book` (R: the recipe book page next to a
-crafting grid), `swap_hands` (F: the main and the off hand trade items);
+crafting grid), `swap_hands` (F: the main and the off hand trade items),
+`dodge` (V, Milestone 21: a dodge roll the way you move, back when
+standing; a double tap of `move_left` / `move_right` / `move_back` rolls
+too; holding `place_block` with a shield in the off hand raises it);
 holding break or place repeats it every 0.25 s. Each takes one or two key names (the list of
 names is at the top of the file).
 
@@ -552,6 +555,9 @@ name and a title made from it ("stone_bricks" → "Stone bricks"). Records:
 | | `swing` | seconds the swing meter takes to fill (default `hand_swing`) |
 | | `knockback` | × the usual knock-back (default 1) |
 | | `reach` | extra blocks of reach (spears 1) |
+| | `armor` | (Milestone 21 part 2) where it is worn: `head`, `chest`, `legs`, `feet`, `shield` (the off hand) or `trinket` (the 2 charm slots) |
+| | `protection` | protection points it gives worn in its slot (see combat.cfg) |
+| | `weight` | `light` (default), `medium` or `heavy`: how much it slows (see combat.cfg) |
 
 An `[item]` with an existing item's name (a block's, too) changes that item.
 
@@ -722,6 +728,10 @@ The rules around the weapons' own numbers (item keys `weapon`, `damage`,
 | `weapon_wear`, `tool_wear` | durability a hit takes from a weapon / another tool (Survival) |
 | `hit_pause`, `crit_pause`, `heavy_pause` | seconds the animals and the arm hold still after a hit / a critical hit / an axe or mace hit (the longest that applies) |
 | `shake` | the camera shake's strength (× the meter; 0 = none) |
+| `protection_per_point`, `protection_cap` | (part 2) damage from rams, fire, lava and cactus × (1 − `protection_per_point` × min(points, `protection_cap`)); each worn piece wears 1 per such hit (not falls, drowning or starving) |
+| `medium_slow`, `heavy_slow`, `heavy_hunger` | by the share of the body in each weight (helmet 15 %, chestplate 40 %, leggings 30 %, boots 15 %): walking × (1 − `medium_slow` × medium − `heavy_slow` × heavy); hunger from moving × (1 + `heavy_hunger` × heavy) |
+| `shield_raise`, `shield_arc`, `shield_push` | a shield in the off hand is up after holding `place_block` `shield_raise` seconds (with nothing that eats or places in the main hand); it takes every ram from within `shield_arc` degrees in front: no damage, × `shield_push` knock-back, the shield wears by the damage; the player walks at sneak speed meanwhile |
+| `roll_distance`, `roll_distance_medium`, `roll_time`, `roll_safe`, `roll_cooldown`, `exhaust_roll`, `roll_heavy` | the dodge roll (double-tap `move_left` / `move_right` / `move_back`, or `dodge`): `roll_distance` blocks in `roll_time` s, shortened toward `roll_distance_medium` by the medium + heavy share; no damage for `roll_safe` s; `roll_cooldown` s before the next; `exhaust_roll` hunger; none on a heavy share of `roll_heavy` or more, off the ground, in water, climbing, flying or blocking |
 
 ## Saved worlds (`saves/<name>/`, Milestone 17)
 
@@ -751,7 +761,7 @@ Text in the format above (the game rewrites them on every save, via a
 | | `look` | yaw, pitch in radians |
 | | `flying` | `0`/`1` |
 | | `selected` | the hotbar slot in hand, 0–8 (Milestone 18) |
-| | `slot` | one line per used slot: `index, item, count, durability` (0–8 the hotbar, 9–35 the inventory, 101 the off hand; 36 the stack carried by the mouse and 37–45 the crafting grid when the game quit with the inventory open: they go back into the slots on load); unknown items are skipped |
+| | `slot` | one line per used slot: `index, item, count, durability` (0–8 the hotbar, 9–35 the inventory, 101 the off hand, 102–105 the armor: head, chest, legs, feet, 106–107 the charm slots (Milestone 21); 36 the stack carried by the mouse and 37–45 the crafting grid when the game quit with the inventory open: they go back into the slots on load); unknown items are skipped |
 | | `held_block` | (saves from before Milestone 18) a block name: put in hotbar slot 0 |
 | | `survival` | (Milestone 20) `health, hunger, saturation, exhaustion, air ticks, burning ticks, poison ticks, dead` |
 
@@ -769,7 +779,7 @@ rack whose block changed meanwhile is forgotten.
 `graves.dat` (Milestone 20 part 2) lists the gravestones still holding
 items: `grave = x, y, z, <day>, <name>` (the block, the day its owner
 died, their name), then its items, `item = <slot>, <item>, <count>,
-<durability>` (the slot it was in: 0–35, 101 the off hand). Up to 64.
+<durability>` (the slot it was in: 0–35, 101 the off hand, 102–107 the armor and charms). Up to 64.
 
 `thumb.png` (256 × 144 RGB) in the world folder is the picture shown in
 the world list; the game rewrites it on every save.

@@ -48,6 +48,7 @@ endstruc
 %define PKT_C_NAME          17          ; NAME_PKT: the name tag in hand names this animal
 %define PKT_C_RESPAWN       18          ; a dead player comes back (milestone 20; no payload)
 %define PKT_C_SPECTATE      19          ; a dead Hardcore player watches on as a spectator (no payload)
+%define PKT_C_DODGE         20          ; DODGE_PKT: a dodge roll (milestone 21 part 2)
 
 ; inventory (milestone 18): slots 0-8 are the hotbar, 9-35 the inventory
 struc INV_PKT
@@ -69,9 +70,12 @@ endstruc
 %define INV_CONTAINER       47
 %define INV_CONTAINER_MAX   54
 %define INV_OFFHAND         (INV_CONTAINER + INV_CONTAINER_MAX) ; 101: the off hand (part 5)
-%define INV_ALL             (INV_OFFHAND + 1) ; 102
+%define INV_ARMOR           (INV_OFFHAND + 1) ; 102..105: head, chest, legs, feet (M21 part 2)
+%define INV_TRINKET         (INV_ARMOR + 4)   ; 106..107: the accessory slots
+%define INV_ALL             (INV_TRINKET + 2) ; 108
 %define INV_SAVED           46          ; player.dat keeps 0..45 (a grid left
-                                        ; full when the game quits comes back)
+                                        ; full when the game quits comes back),
+%define INV_SAVED_ALL       (INV_SAVED + 7) ; then the off hand, armor, accessories
 
 ; PKT_C_INV_DRAG: the carried stack spread over slots
 struc DRAG_PKT
@@ -139,6 +143,12 @@ endstruc
 %define PKT_S_GRAVE         78          ; GRAVE_PKT: a gravestone appeared / was emptied (milestone 20)
 %define PKT_S_HIT           79          ; HIT_PKT: the player's hit landed (milestone 21: pause, shake, sparks)
 
+; a dodge roll (milestone 21 part 2): the way, in the world (x, z)
+struc DODGE_PKT
+    .dx         resd 1                  ; f32
+    .dz         resd 1                  ; f32
+endstruc
+
 ; a landed melee hit (milestone 21)
 struc HIT_PKT
     .pos        resq 3                  ; f64 where (the animal, a little up)
@@ -176,6 +186,7 @@ struc SURV_PKT
     .death      resd 3                  ; i32 where the player died
     .day        resd 1                  ; the day (from 1; part 2)
     .grave      resd 3                  ; i32 the gravestone with the items (SVF_GRAVE)
+    .armor      resw 1                  ; protection in half points (milestone 21; 40 = 20 points)
 endstruc
 %define SVF_POISON          1           ; food poisoning
 %define SVF_BURNING         2
@@ -184,6 +195,8 @@ endstruc
 %define SVF_GRAVE           16          ; the items wait in a gravestone (.grave)
 %define SVF_KEPT            32          ; the player kept the items (keep inventory)
 %define SVF_SPECTATE        64          ; a Hardcore death: only spectating is left
+%define SVF_BLOCKING        128         ; the shield is raised (milestone 21 part 2)
+%define SVF_ROLLING         256         ; a dodge roll
 %define CAUSE_NONE          0
 %define CAUSE_FALL          1
 %define CAUSE_DROWN         2

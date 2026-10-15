@@ -112,11 +112,15 @@ sk_27: db "food_sick", 0
 sk_28: db "food_sick_half", 0
 sk_29: db "bubble", 0
 sk_30: db "bubble_pop", 0
+sk_31: db "armor", 0
+sk_32: db "armor_half", 0
+sk_33: db "armor_empty", 0
 align 8
 skin_names:     dq sk_0, sk_1, sk_2, sk_3, sk_4, sk_5, sk_6, sk_7, sk_8, sk_9
                 dq sk_10, sk_11, sk_12, sk_13, sk_14, sk_15, sk_16, sk_17, sk_18
                 dq sk_19, sk_20
                 dq sk_21, sk_22, sk_23, sk_24, sk_25, sk_26, sk_27, sk_28, sk_29, sk_30   ; (milestone 20: the HUD)
+                dq sk_31, sk_32, sk_33                                                     ; (milestone 21: armor)
 str_vs:         db "shaders/ui.vert", 0
 str_fs:         db "shaders/ui.frag", 0
 k_cell:         db "cell", 0

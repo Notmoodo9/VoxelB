@@ -27,7 +27,7 @@
 %include "physics.inc"
 %include "world.inc"
 
-global sim_init, sim_update, g_sim_alpha, g_sim_tick
+global sim_init, sim_update, g_sim_alpha, g_sim_tick, g_input
 global g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us, g_sim_time
 
 extern player_load, player_spawn, player_tick, player_toggle_fly, player_fill
@@ -40,7 +40,7 @@ extern inv_place_block, inv_used_slot, inv_swap_hands, inv_drag
 extern dig_reset, dig_tick, drops_reset, drops_tick, g_world_mode, g_world_day
 extern craft_reset, craft_window, craft_recipe, craft_tick, furnace_tick
 extern cont_reset, save_load_containers, g_block_flags
-extern combat_load, combat_reset, combat_tick, combat_attack
+extern combat_load, combat_reset, combat_tick, combat_attack, combat_dodge
 extern ents_reset, ents_tick, store_reset, store_open, store_update
 extern behave_interact, racks_load, racks_tick, graves_load
 extern timer_elapsed_us, g_frame_us, g_time_of_day, g_day_length
@@ -183,6 +183,12 @@ PROC sim_tick, 16, rbx, rsi, rdi
     call survival_spectate              ; (milestone 20: Hardcore)
     jmp .packet
 .not_spectate:
+    cmp eax, PKT_C_DODGE
+    jne .not_dodge
+    lea rcx, [rel g_pkt + PKT.data]
+    call combat_dodge                   ; (milestone 21 part 2)
+    jmp .packet
+.not_dodge:
     cmp dword [rel g_world_mode], MODE_SPECTATOR
     je .packet                          ; (a spectator only looks)
     cmp eax, PKT_C_BREAK

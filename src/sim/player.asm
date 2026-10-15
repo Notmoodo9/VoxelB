@@ -38,7 +38,7 @@ global player_load, player_spawn, player_tick, player_toggle_fly, player_fill
 global g_pl_pos, g_pl_vel, g_pl_flags, g_pl_eye, g_pl_reach, g_pl_width, g_pl_height
 
 extern str_ieq, str_parse_float, sincosf, g_gravity, g_world_mode
-extern g_sv_eating, g_sv_eat_speed
+extern g_sv_eating, g_sv_eat_speed, g_armor_speed, g_cb_blocking, g_roll, g_roll_vel
 
 %define TICK_DT     0.05
 %define MAX_FALL_Y  -512.0              ; below the world: stop falling here
@@ -618,6 +618,11 @@ PROC player_tick, 112, rbx, rsi, rdi, r12
     je .land_acc
     mulss xmm0, [rel g_sv_eat_speed]    ; (eating: slow, milestone 20)
 .land_acc:
+    mulss xmm0, [rel g_armor_speed]     ; (armor: milestone 21 part 2)
+    cmp dword [rel g_cb_blocking], 0
+    je .land_acc2
+    minss xmm0, [rel s_sneak]           ; (a raised shield)
+.land_acc2:
     cvtss2sd xmm1, [rel s_air_acc]
     cmp dword [LOCAL(T_ONGROUND)], 0
     je .air
@@ -669,6 +674,14 @@ PROC player_tick, 112, rbx, rsi, rdi, r12
     movsd xmm2, [LOCAL(T_ACC)]
     APPROACH
     movsd [rel g_pl_vel + 16], xmm0
+    ; a dodge roll holds its speed (milestone 21 part 2)
+    cmp dword [rel g_roll], 0
+    je .no_roll
+    movsd xmm0, [rel g_roll_vel]
+    movsd [rel g_pl_vel], xmm0
+    movsd xmm0, [rel g_roll_vel + 8]
+    movsd [rel g_pl_vel + 16], xmm0
+.no_roll:
 
     ; ---- vertical velocity ------------------------------------------------------------
     mov eax, [LOCAL(T_BUTTONS)]

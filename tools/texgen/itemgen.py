@@ -282,6 +282,187 @@ def weapon(kind, tier):
     return outline(img, (0.1, 0.07, 0.06))
 
 
+# ---- armor (milestone 21 part 2): four pieces in four looks — leather,
+# leather trimmed with the tier's metal (light), chainmail (medium), plate
+# (heavy) — plus shields, chain links and plates.
+ARMOR_SHAPES = {
+    "helmet": [
+        "................",
+        "................",
+        "................",
+        ".....######.....",
+        "...##########...",
+        "..############..",
+        "..############..",
+        "..############..",
+        "..####....####..",
+        "..###......###..",
+        "..###......###..",
+        "..##........##..",
+        "................",
+        "................",
+        "................",
+        "................"],
+    "chestplate": [
+        "................",
+        "..####....####..",
+        ".######..######.",
+        ".##############.",
+        ".##############.",
+        ".##############.",
+        "..############..",
+        "...##########...",
+        "...##########...",
+        "...##########...",
+        "...##########...",
+        "...##########...",
+        "....########....",
+        "................",
+        "................",
+        "................"],
+    "leggings": [
+        "................",
+        "...##########...",
+        "...##########...",
+        "...##########...",
+        "...####..####...",
+        "...####..####...",
+        "...###....###...",
+        "...###....###...",
+        "...###....###...",
+        "...###....###...",
+        "...###....###...",
+        "...###....###...",
+        "...###....###...",
+        "................",
+        "................",
+        "................"],
+    "boots": [
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "...###....###...",
+        "...###....###...",
+        "...###....###...",
+        "...###....###...",
+        "...###....###...",
+        "..####...####...",
+        ".#####..#####...",
+        ".#####..#####...",
+        "................",
+        "................",
+        "................"],
+}
+
+
+def armor(piece, look, tier):
+    rows = ARMOR_SHAPES[piece]
+    m = np.array([[c == "#" for c in r] for r in rows])
+    leather = ramp("9a5a2e", n=6, spread=0.2)
+    metal = ramp(TIER_COLOURS[tier], n=6, spread=0.22) if tier else None
+    img = np.zeros((N, N, 4))
+    ys, xs = np.nonzero(m)
+    y0, y1, x0, x1 = ys.min(), ys.max(), xs.min(), xs.max()
+    for y in range(N):
+        for x in range(N):
+            if not m[y, x]:
+                continue
+            # light from the top left: brighter there, darker at the bottom right
+            lit = 1.0 - ((y - y0) / max(1, y1 - y0)) * 0.55 - ((x - x0) / max(1, x1 - x0)) * 0.25
+            edge = not (m[max(y - 1, 0), x] and m[min(y + 1, N - 1), x] and m[y, max(x - 1, 0)] and m[y, min(x + 1, N - 1)])
+            if look == "leather":
+                k = int(np.clip(lit * 4.6, 0, 5))
+                col = leather[k]
+                if (x * 3 + y * 5) % 11 == 0:
+                    col = leather[max(k - 1, 0)]     # stitching
+            elif look == "light":
+                k = int(np.clip(lit * 4.6, 0, 5))
+                col = metal[min(k + 1, 5)] if edge else leather[k]
+            elif look == "chain":
+                k = int(np.clip(lit * 4.4, 0, 5))
+                col = metal[k] if (x + y) % 2 == 0 else metal[max(k - 2, 0)]
+            else:  # plate
+                k = int(np.clip(lit * 5.2, 0, 5))
+                col = metal[k]
+                if edge:
+                    col = metal[max(k - 1, 0)]
+            img[y, x, :3] = col
+            img[y, x, 3] = 1.0
+    if look == "plate":
+        # a shine streak and rivets
+        for y in range(N):
+            for x in range(N):
+                if m[y, x] and x - y == x0 - y0 + 2 and y < (y0 + y1) // 2 + 1:
+                    img[y, x, :3] = np.minimum(img[y, x, :3] * 1.25 + 0.1, 1.0)
+        for (y, x) in ((y0 + 1, x0 + 1), (y0 + 1, x1 - 1)):
+            if m[y, x]:
+                img[y, x, :3] = metal[0]
+    if tier == "star_crystal":
+        for y in range(N):
+            for x in range(N):
+                if img[y, x, 3] > 0 and (x * 2 + y) % 7 == 0 and look != "leather":
+                    img[y, x, :3] = (1.0, 0.98, 0.9)
+    return outline(img, (0.1, 0.07, 0.06))
+
+
+def shield(tier):
+    wood = ramp("9a6a38", n=6, spread=0.18)
+    rim = ramp(TIER_COLOURS[tier] if tier != "wooden" else "6a4424", n=6, spread=0.2)
+    img = np.zeros((N, N, 4))
+    for y in range(1, 15):
+        for x in range(2, 14):
+            # a heater shield: straight top, rounded to a point at the bottom
+            w = 6.0 if y < 8 else 6.0 * (1.0 - ((y - 8) / 7.0) ** 1.6)
+            if abs(x + 0.5 - 8) > w:
+                continue
+            border = abs(x + 0.5 - 8) > w - 1.2 or y < 2
+            if border:
+                img[y, x, :3] = rim[4 if y < 8 else 2]
+            else:
+                plank = (x - 2) // 3
+                k = 3 + (plank % 2) - (1 if y > 9 else 0)
+                img[y, x, :3] = wood[k]
+            img[y, x, 3] = 1.0
+    for (y, x) in ((6, 7), (6, 8), (7, 7), (7, 8)):     # the boss
+        img[y, x, :3] = rim[5]
+    img[6, 7, :3] = np.minimum(rim[5] * 1.2 + 0.1, 1.0)
+    return outline(img, (0.1, 0.07, 0.06))
+
+
+def chain_links(tier):
+    metal = ramp(TIER_COLOURS[tier], n=6, spread=0.22)
+    img = np.zeros((N, N, 4))
+    for i, (cx, cy) in enumerate(((5, 5), (8, 8), (11, 11), (5, 11), (11, 5))):
+        for y in range(N):
+            for x in range(N):
+                d = ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2) ** 0.5
+                if 1.4 <= d <= 2.6:
+                    img[y, x, :3] = metal[4 if y < cy else 2]
+                    img[y, x, 3] = 1.0
+    return outline(img, (0.1, 0.07, 0.06))
+
+
+def plate(tier):
+    metal = ramp(TIER_COLOURS[tier], n=6, spread=0.22)
+    img = np.zeros((N, N, 4))
+    for y in range(4, 13):
+        for x in range(2, 14):
+            if (y - 4) + (13 - x) < 2 or (12 - y) + (x - 2) < 2:
+                continue                       # clipped corners
+            k = 4 if y < 8 else 3
+            if y == 4 or x == 2:
+                k = 5
+            if y == 12 or x == 13:
+                k = 1
+            img[y, x, :3] = metal[k]
+            img[y, x, 3] = 1.0
+    for x in range(4, 9):
+        img[6, x, :3] = np.minimum(metal[5] * 1.2 + 0.1, 1.0)
+    return outline(img, (0.1, 0.07, 0.06))
+
+
 def bar(base):
     # an ingot seen at an angle: a lit top face and a darker front
     pal = ramp(base, n=6, spread=0.22)
@@ -974,6 +1155,17 @@ for _tier in TIER_COLOURS:
         ITEMS[f"{_tier}_{_kind}"] = (lambda k=_kind, t=_tier: tool(k, t))
     for _kind in ("sword", "spear", "mace"):
         ITEMS[f"{_tier}_{_kind}"] = (lambda k=_kind, t=_tier: weapon(k, t))
+    if _tier != "stone":
+        ITEMS[f"{_tier}_shield"] = (lambda t=_tier: shield(t))
+    if _tier not in ("wooden", "stone"):
+        ITEMS[f"{_tier}_chain_links"] = (lambda t=_tier: chain_links(t))
+        ITEMS[f"{_tier}_plate"] = (lambda t=_tier: plate(t))
+        for _piece in ARMOR_SHAPES:
+            ITEMS[f"{_tier}_light_{_piece}"] = (lambda p=_piece, t=_tier: armor(p, "light", t))
+            ITEMS[f"{_tier}_chain_{_piece}"] = (lambda p=_piece, t=_tier: armor(p, "chain", t))
+            ITEMS[f"{_tier}_plate_{_piece}"] = (lambda p=_piece, t=_tier: armor(p, "plate", t))
+for _piece in ARMOR_SHAPES:
+    ITEMS[f"leather_{_piece}"] = (lambda p=_piece: armor(p, "leather", None))
 
 
 def main(argv):

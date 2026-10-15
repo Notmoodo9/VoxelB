@@ -46,7 +46,10 @@
 %define SKIN_FOOD_SICK_HALF  28
 %define SKIN_BUBBLE          29
 %define SKIN_BUBBLE_POP      30
-%define SKIN_COUNT      31
+%define SKIN_ARMOR           31      ; milestone 21 part 2: the armor row
+%define SKIN_ARMOR_HALF      32
+%define SKIN_ARMOR_EMPTY     33
+%define SKIN_COUNT      34
 
 ; ui_text flags
 %define UI_CENTER       1

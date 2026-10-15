@@ -1,17 +1,87 @@
 # Progress
 
 ## Current state
-**Milestone 21, part 1** — melee: the swing meter, swords, axes, spears
-and maces in 8 tiers, crits, sweeps, hit feel (v0.21.1, Windows CI
-green: run #122)
+**Milestone 21, part 2** — armor: light / medium / heavy sets, the paper
+doll, protection and mobility, the HUD shield row, shields and
+blocking, the dodge roll, charm slots (v0.21.2, Windows CI pending)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
 
-Next: **Milestone 21, part 2** — armor: the paper doll page, light /
-medium / heavy sets, protection and mobility, the HUD shield row,
-shields and blocking, the dodge roll, accessory slots
+Next: **Milestone 21, part 3** — ranged: projectiles (flight, sticking,
+pick-up), bows, crossbows, slings, throwing knives, rocks, snowballs,
+spear throws, arrows / bolts / pebbles, fire arrows
 (design/combat/combat.md).
+
+---
+
+## Milestone 21, part 2 — done (2026-10-15): armor, shields, the dodge roll (D106)
+
+Design interview: design/combat/combat.md (approved 2026-10-15).
+
+### What was built
+* **95 new items**: a leather set; light (leather trimmed with metal),
+  chain and plate sets in copper, iron, diamond, mythril, adamantite and
+  star crystal; chain links and plates as materials; 7 shields (wood →
+  star crystal). Each has its own picture and a recipe (links: 1 bar → 4
+  at the workbench; plates: 2 bars at the Tinker's table).
+* **The paper doll**: the inventory's right page now has an ink-sketch
+  figure with the 4 armor slots, the off hand (shield) and 2 charm slots
+  (empty for now). Empty slots show a faint outline of what goes there;
+  shift-click puts armor on (and a shield in an empty off hand).
+* **Protection**: rams, fire, lava and cactus hurt less: × (1 − 0.04 ×
+  points), up to 20 points (80 %). Every worn piece wears 1 per such hit.
+* **Mobility**: medium armor slows walking up to 5 %, heavy up to 12 %
+  and adds up to 25 % hunger from moving (by how much of the body it
+  covers).
+* **The HUD shield row**: 10 shields over the hearts while armor is worn
+  (one shield = 2 points, halves shown).
+* **Shields**: hold right click with a shield in the off hand (and a
+  weapon, tool or nothing in the main hand): after a quarter second it
+  comes up in the lower left, you walk at sneak speed, and rams from the
+  front 90° do no damage and push you a third as far; the shield wears
+  by the damage it took.
+* **Dodge roll**: double-tap A, D or S (or press V): 3 blocks in 0.35 s,
+  no damage for the first 0.2 s, 1.5 s before the next; medium armor
+  rolls shorter (down to 2 blocks), heavy armor (half the body or more)
+  cannot roll.
+* All the numbers are in data/combat/combat.cfg; armor stats in
+  data/items/30_armor.items.
+
+### Try it
+* Creative → Combat tab: armor and shields; E opens the doll page.
+* Survival: wear a set and stand near a boar; hold right click with a
+  shield in the off hand facing it.
+
+### Verified (scripted; Survival test world)
+* Iron plate helmet + chestplate, iron chain leggings, diamond light
+  boots = 12.5 points: the HUD showed 6 full shields, a half and 3 empty
+  (screen). Standing in lava (4 a hit) took 2 a hit (12 hits), and each
+  piece's wear went to 1 after a hit.
+* With that heavy set (55 % heavy) neither V nor a double tap rolled.
+  With a light/chain set (30 % medium): V rolled 3.0 blocks back (z
+  −39.93 → −36.93), a double-tapped A 3.0 blocks left and a double S
+  back again (the 1 FPS test VM sees two taps in one frame, so the tap
+  window was widened for that run, then restored).
+* A raised shield blocked a 4-point hit from the front and 40° to the
+  side, not from behind or 50° off, and wore by 8 (a temporary hook in
+  the simulation, then removed). The shield is drawn raised in the lower
+  left (screen).
+* Debug and release headless tests pass.
+
+### Performance (llvmpipe test VM)
+* Simulation tick 129 µs average, 288 µs max (debug build, shield up,
+  100 animals): armor is a 4-slot sum per tick; blocking and rolling
+  are a few comparisons.
+* Release: 3.4 FPS on the software renderer as before (no new draw
+  calls; the shield row is 10 more UI quads).
+
+### Deferred
+* An axe or mace knocking a shield down: when mobs carry weapons (M22).
+* Items for the charm slots (magic, bosses, trading); armor drawn on the
+  player (no third-person view yet).
+* Bows, crossbows, slings, throwables: part 3. Runes, named weapons:
+  part 4.
 
 ---
 

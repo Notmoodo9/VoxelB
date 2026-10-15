@@ -253,7 +253,9 @@ extern str_append_dec
 ; -----------------------------------------------------------------------------
 ; survival_rows — ten hearts left and ten food icons right just above the
 ; strip at (ecx, edx), air bubbles over the food while under water, and
-; the red flash after a hit (milestone 20, design/survival/survival.md).
+; the red flash after a hit (milestone 20, design/survival/survival.md),
+; and a row of ten shields over the hearts while armor is worn (milestone
+; 21: one shield = 2 protection points, so 20 points fill the row).
 ; Hearts shake when health is low, food icons jitter while starving and
 ; turn green with food poisoning. Nothing in Creative or Spectator.
 ;   clobbers: volatile registers
@@ -324,6 +326,39 @@ PROC survival_rows, 32, rbx, rsi, rdi
     inc dword [LOCAL(R_I)]
     jmp .heart
 .food_row:
+    ; ---- armor (milestone 21): ten shields over the hearts while worn ----
+    movzx eax, word [rel g_csv + SURV_PKT.armor]
+    test eax, eax
+    jz .food_start
+    add dword [rel g_rows_h], ROW_H
+    mov dword [LOCAL(R_I)], 0
+.shield:
+    mov esi, [LOCAL(R_I)]
+    cmp esi, 10
+    jae .food_start
+    ; 2 points a shield: armor is in half points, so 4 per icon
+    movzx eax, word [rel g_csv + SURV_PKT.armor]
+    lea ecx, [esi * 4]
+    mov ebx, SKIN_ARMOR_EMPTY
+    cmp eax, ecx
+    jle .shield_draw
+    mov ebx, SKIN_ARMOR_HALF
+    add ecx, 2
+    cmp eax, ecx
+    jle .shield_draw
+    mov ebx, SKIN_ARMOR
+.shield_draw:
+    imul edi, esi, ICON_STEP
+    add edi, [LOCAL(R_X0)]
+    add edi, PAD
+    mov edx, [LOCAL(R_Y)]
+    sub edx, ROW_H
+    mov dword [rsp + 40], 0xFFFFFFFF
+    mov [rsp + 32], rbx
+    INVOKE ui_skin, rdi, rdx, ROW_ICON, ROW_ICON
+    inc dword [LOCAL(R_I)]
+    jmp .shield
+.food_start:
     ; ---- food, right to left ----
     mov dword [LOCAL(R_I)], 0
 .food:

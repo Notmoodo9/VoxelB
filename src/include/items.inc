@@ -14,6 +14,18 @@
 %define WEAPON_SPEAR    3
 %define WEAPON_MACE     4
 %define WEAPON_COUNT    5
+%define ARMOR_NONE      0               ; M21 part 2: g_item_armor (where it is worn)
+%define ARMOR_HEAD      1
+%define ARMOR_CHEST     2
+%define ARMOR_LEGS      3
+%define ARMOR_FEET      4
+%define ARMOR_SHIELD    5               ; held in the off hand
+%define ARMOR_TRINKET   6               ; an accessory slot
+%define ARMOR_COUNT     7
+%define WEIGHT_LIGHT    0               ; g_item_weight
+%define WEIGHT_MEDIUM   1
+%define WEIGHT_HEAVY    2
+%define WEIGHT_COUNT    3
 ; tool types and tiers (item settings `tool`, `tier`; mining.cfg)
 %define TOOL_NONE       0
 %define TOOL_PICKAXE    1
@@ -42,5 +54,6 @@ extern g_item_repair, g_item_binding
 extern item_tool_index, item_tier_index, items_match_list
 extern g_item_leaves, item_fill
 extern g_item_weapon, g_item_damage, g_item_swing, g_item_kb, g_item_reach
+extern g_item_armor, g_item_prot, g_item_weight
 %endif
 %endif

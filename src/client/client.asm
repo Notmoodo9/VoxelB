@@ -44,7 +44,7 @@ extern interact_init, interact_update, stream_block_changed
 extern g_held_block, g_item_block, g_dig_want, g_target_valid, g_target
 extern drops_view_packet, drops_view_reset, ents_view_packet, ents_view_reset
 extern ents_view_name, graves_view_reset, graves_view_packet
-extern combat_view_reset, combat_view_hit
+extern combat_view_reset, combat_view_hit, combat_view_dodge
 
 %define DOUBLE_TAP_US   300000          ; move_up twice within this: fly
 
@@ -317,6 +317,7 @@ PROC client_input, 0, rbx
     lea rcx, [rel g_to_sim]
     lea r8, [rel g_cl_input]
     INVOKE pkt_send, rcx, PKT_C_INPUT, r8, INPUT_PKT_size
+    call combat_view_dodge              ; (milestone 21 part 2)
 
     ; double tap of move_up: start / stop flying
     mov ecx, ACT_MOVE_UP

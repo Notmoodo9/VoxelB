@@ -74,10 +74,11 @@ an_24: db "hotbar_8", 0
 an_25: db "hotbar_9", 0
 an_26: db "recipe_book", 0
 an_27: db "swap_hands", 0
+an_28: db "dodge", 0
 align 8
 action_name_table:  dq an_0, an_1, an_2, an_3, an_4, an_5, an_6, an_7, an_8, an_9, an_10, an_11, an_12
                     dq an_13, an_14, an_15, an_16, an_17, an_18, an_19, an_20
-                    dq an_21, an_22, an_23, an_24, an_25, an_26, an_27
+                    dq an_21, an_22, an_23, an_24, an_25, an_26, an_27, an_28
 %if ($ - action_name_table) / 8 != ACT_COUNT
     %error "action_name_table does not match ACT_COUNT"
 %endif

@@ -56,7 +56,7 @@ global g_herd_count, g_regrow_count, g_breed_test, g_mob_gallery, g_gallery_name
 extern path_find, g_pf_start, g_pf_goal, g_pf_height, g_pf_out, g_pf_climb, g_pf_fall
 extern phys_block, inv_turn_slot, g_block_eat
 extern atan2f, edit_apply, block_find, inv_used_selected, inv_wear_selected
-extern drops_spawn, ent_new, str_ieq, inv_mark, survival_damage
+extern drops_spawn, ent_new, str_ieq, inv_mark, survival_damage, combat_block
 extern g_pl_pos, g_pl_vel, g_pl_reach, g_inv, g_inv_sel, g_sim_time
 
 %define PATHS_PER_TICK  3
@@ -1289,7 +1289,21 @@ ENDPROC
 ; (g_dx, g_dz: animal - player; g_d2).
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC ram, 0
+PROC ram, 16
+    ; a raised shield in front takes it (milestone 21 part 2)
+    call mob_of
+    cvtsi2ss xmm2, dword [rax + MOB.ram_damage]
+    cvtsd2ss xmm0, [rel g_dx]
+    cvtsd2ss xmm1, [rel g_dz]
+    call combat_block
+    mov [LOCAL(0)], eax
+    movss xmm3, [rel c_one_ram]
+    test eax, eax
+    jz .push
+    movss xmm3, xmm0
+.push:
+    cvtss2sd xmm3, xmm3
+    movsd [LOCAL(8)], xmm3
     movsd xmm2, [rel g_d2]
     sqrtsd xmm2, xmm2
     addsd xmm2, [rel c_tiny]
@@ -1299,6 +1313,8 @@ PROC ram, 0
     divsd xmm1, xmm2
     mulsd xmm0, [rel c_ram_push]
     mulsd xmm1, [rel c_ram_push]
+    mulsd xmm0, [LOCAL(8)]
+    mulsd xmm1, [LOCAL(8)]
     xorpd xmm0, [rel c_sign_d]          ; (away from the animal)
     xorpd xmm1, [rel c_sign_d]
     movsd [rel g_pl_vel], xmm0
@@ -1307,14 +1323,22 @@ PROC ram, 0
     maxsd xmm0, [rel c_ram_up]
     movsd [rel g_pl_vel + 8], xmm0
     LOG_DEBUG "entities: a fierce animal rammed the player"
+    cmp dword [LOCAL(0)], 0
+    jne .done                           ; (blocked: no damage)
     ; it hurts (milestone 20)
     call mob_of
     mov ecx, [rax + MOB.ram_damage]
     mov edx, CAUSE_RAM
     movzx r8d, word [rbx + EntT.mob]
     call survival_damage
+.done:
     RETURN
 ENDPROC
+
+section .rdata
+align 4
+c_one_ram:      dd 1.0
+section .text
 
 ; -----------------------------------------------------------------------------
 ; find_food — a block entity rbx (mob rdi) eats within 4 blocks around its

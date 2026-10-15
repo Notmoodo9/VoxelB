@@ -2,7 +2,7 @@
 ; graves.asm — gravestones (milestone 20 part 2, design/survival/survival.md).
 ;
 ; In a world whose death rule is `grave` (world.dat death = grave), what the
-; player carries (the 36 slots and the off hand) goes into a gravestone
+; player carries (the 36 slots, the off hand, armor and accessories) goes into a gravestone
 ; where they died instead of dropping: a block (data/recipes [grave]: the
 ; `gravestone` block, shape headstone) placed in the first free cell at or
 ; above the death spot, settled down onto the ground. It shows the player's
@@ -50,7 +50,8 @@ extern str_copy, str_append_sdec, str_append_dec, str_parse_u64, str_ieq
 IMPORT GetEnvironmentVariableA
 
 %define SLOT_SIZE       8
-%define GRAVE_ITEMS     (INV_SLOTS + 1) ; the 36 slots and the off hand
+%define GRAVE_ITEMS     (INV_SLOTS + INV_ALL - INV_OFFHAND) ; the 36 slots, the off
+                                        ; hand, armor and accessories (43)
 %define NAME_LEN        24              ; GRAVE_PKT.name
 %define SEARCH_UP       8               ; cells looked at above the death spot
 %define SETTLE_DOWN     16              ; cells it may sink to reach the ground
@@ -304,10 +305,20 @@ PROC graves_make, 64, rbx, rsi, rdi
     inc ecx
     jmp .any
 .offhand:
+    ; the off hand, armor, accessories
+    cmp ecx, INV_OFFHAND
+    jae .gear
+    mov ecx, INV_OFFHAND
+.gear:
+    cmp ecx, INV_ALL
+    jae .counted
     lea rax, [rel g_inv]
-    cmp word [rax + INV_OFFHAND * SLOT_SIZE], 0
-    je .counted
+    cmp word [rax + rcx * SLOT_SIZE], 0
+    je .gear_next
     inc esi
+.gear_next:
+    inc ecx
+    jmp .gear
 .counted:
     test esi, esi
     jz .no
@@ -426,14 +437,14 @@ PROC graves_make, 64, rbx, rsi, rdi
     call player_name
     xor esi, esi
 .take:
-    cmp esi, INV_SLOTS
-    jbe .slot
+    cmp esi, GRAVE_ITEMS
+    jb .slot
     jmp .taken
 .slot:
     mov edi, esi
     cmp esi, INV_SLOTS
     jb .have_slot
-    mov edi, INV_OFFHAND                ; (the last one: the off hand)
+    lea edi, [esi + INV_OFFHAND - INV_SLOTS]   ; (then the off hand, armor, accessories)
 .have_slot:
     lea rax, [rel g_inv]
     lea rdx, [rax + rdi * SLOT_SIZE]

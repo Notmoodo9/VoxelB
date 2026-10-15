@@ -85,6 +85,14 @@ s_recipes:      db "Recipes", 0
 s_show_all:     db "Show all", 0
 s_book_tip:     db "Recipe book", 0
 s_off_hand:     db "Off hand", 0
+s_charm:        db "charm", 0
+gh_0:           db "leather_helmet", 0
+gh_1:           db "leather_chestplate", 0
+gh_2:           db "leather_leggings", 0
+gh_3:           db "leather_boots", 0
+gh_4:           db "wooden_shield", 0
+align 8
+ghost_names:    dq gh_0, gh_1, gh_2, gh_3, gh_4
 s_no_recipes:   db "Nothing to make", 0
 s_no_recipes2:  db "with what you have", 0
 
@@ -93,6 +101,8 @@ align 4
 g_slot_tint:    dd 0xFFFFFFFF           ; draw_slot: the next icon's colour
 
 section .bss
+alignb 4
+g_ghost:        resd 5                  ; items drawn faintly in empty gear slots
 alignb 4
 g_tab:          resd 1
 g_scroll:       resd 1
@@ -140,7 +150,22 @@ PROC send, 0
 ENDPROC
 
 ; inv_screen_open — a fresh look (the tab and search are kept)
-PROC inv_screen_open, 0
+PROC inv_screen_open, 0, rbx
+    ; the faint pictures in empty armor slots (milestone 21 part 2)
+    xor ebx, ebx
+.ghost:
+    lea rax, [rel ghost_names]
+    mov rcx, [rax + rbx * 8]
+    call item_find
+    test eax, eax
+    jg .ghost_ok
+    xor eax, eax
+.ghost_ok:
+    lea rcx, [rel g_ghost]
+    mov [rcx + rbx * 4], eax
+    inc ebx
+    cmp ebx, 5
+    jb .ghost
     mov dword [rel g_hover_item], 0
     mov dword [rel g_drag_on], 0
     mov dword [rel g_book_ver], -1
@@ -789,37 +814,107 @@ PROC slot_at, 0, rbx
     RETURN
 ENDPROC
 
-; off_hand_slot — the off hand's slot at ecx, edx with its caption above
-; (or beside it when there is no room above)   clobbers: volatile registers
-PROC off_hand_slot, 0, rbx, rsi
+; -----------------------------------------------------------------------------
+; gear_area — the paper doll (milestone 21 part 2): at ecx, edx (the top of
+; the right page's crafting band, 4 rows): column 0 the armor slots (head,
+; chest, legs, feet), columns 1-2 an ink sketch of the player, and on the
+; band's bottom row from column 3 the off hand and the two accessory
+; slots. Empty gear slots show a faint picture of what goes there.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define G_X     0
+%define G_Y     4
+PROC gear_area, 16, rbx, rsi
+    mov [LOCAL(G_X)], ecx
+    mov [LOCAL(G_Y)], edx
+    ; the sketch: head, body, arms, legs in faded ink
+    mov ebx, [LOCAL(G_X)]
+    add ebx, STEP + (2 * STEP - 4) / 2  ; its middle
+    mov esi, [LOCAL(G_Y)]
+%macro SKETCH 4                         ; dx (from the middle), dy, w, h
+    mov dword [rsp + 32], 0x58284A6A
+    mov dword [rsp + 40], 0x40284A6A
+    mov qword [rsp + 48], 6
+    mov qword [rsp + 56], 0
+    lea ecx, [ebx + %1]
+    lea edx, [esi + %2]
+    INVOKE ui_rect, rcx, rdx, %3, %4
+%endmacro
+    SKETCH -18, 6, 36, 36                ; head
+    SKETCH -26, 46, 52, 70               ; body
+    SKETCH -42, 48, 14, 62               ; arms
+    SKETCH 28, 48, 14, 62
+    SKETCH -24, 118, 22, 78              ; legs
+    SKETCH 2, 118, 22, 78
+    ; the armor slots
+    xor ebx, ebx
+.armor:
+    mov ecx, [LOCAL(G_X)]
+    imul edx, ebx, STEP
+    add edx, [LOCAL(G_Y)]
+    lea r8d, [ebx + INV_ARMOR]
+    lea r9d, [ebx]
+    call gear_slot
+    inc ebx
+    cmp ebx, 4
+    jb .armor
+    ; the off hand and the accessory slots
+    mov ecx, [LOCAL(G_X)]
+    add ecx, 3 * STEP
+    mov edx, [LOCAL(G_Y)]
+    add edx, 3 * STEP
+    mov r8d, INV_OFFHAND
+    mov r9d, 4
+    call gear_slot
+    xor ebx, ebx
+.charm:
+    lea ecx, [ebx + 4]
+    imul ecx, ecx, STEP
+    add ecx, [LOCAL(G_X)]
+    mov edx, [LOCAL(G_Y)]
+    add edx, 3 * STEP
+    lea r8d, [ebx + INV_TRINKET]
+    mov r9d, -1
+    call gear_slot
+    inc ebx
+    cmp ebx, 2
+    jb .charm
+    RETURN
+ENDPROC
+
+; gear_slot — slot r8d at ecx, edx; empty: the ghost picture r9d (0..4) or
+; (-1) the word "charm"   clobbers: volatile registers
+PROC gear_slot, 16, rbx, rsi, rdi
     mov ebx, ecx
     mov esi, edx
-    lea edx, [ebx + STEP + 2]
-    lea r8d, [esi + 15]
-    cmp dword [rel g_creative], 0
-    jne .beside                         ; (the catalog's page: no grid)
-    mov eax, [rel g_cwin + WIN_PKT.grid]
-    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_CRAFTING
-    je .caption
-    xor eax, eax
-    cmp dword [rel g_cwin + WIN_PKT.kind], WIN_INVENTORY
-    jne .caption
-    mov eax, 2
-.caption:
-    cmp eax, 2
-    jb .beside
-    mov edx, ebx                        ; (above it: the grid row is free)
-    lea r8d, [esi - 22]
-.beside:
-    mov dword [rsp + 32], COL_TEXT_DIM
-    mov qword [rsp + 40], 0
-    lea rcx, [rel s_off_hand]
-    mov r9d, 16
-    call ui_label
-    mov ecx, ebx
-    mov edx, esi
-    mov r8d, INV_OFFHAND
+    mov edi, r9d
+    mov [LOCAL(0)], r8d
     call slot_at
+    mov eax, [LOCAL(0)]
+    lea rcx, [rel g_cinv]
+    cmp word [rcx + rax * 8], 0
+    jne .done
+    cmp edi, -1
+    je .word
+    lea rax, [rel g_ghost]
+    mov ecx, [rax + rdi * 4]
+    test ecx, ecx
+    jz .done
+    lea edx, [ebx + (SLOT_PX - ICON) / 2]
+    lea r8d, [esi + (SLOT_PX - ICON) / 2]
+    mov dword [rsp + 32], 0x38FFFFFF
+    mov r9d, ICON
+    call ui_icon
+    RETURN
+.word:
+    lea edx, [ebx + SLOT_PX / 2]
+    lea r8d, [esi + 15]
+    mov dword [rsp + 32], COL_TEXT_OFF
+    mov qword [rsp + 40], UI_CENTER
+    lea rcx, [rel s_charm]
+    mov r9d, 14
+    call ui_label
+.done:
     RETURN
 ENDPROC
 
@@ -1466,14 +1561,9 @@ PROC inv_screen_frame, 48, rbx, rsi, rdi, r12
     je .left_known
     mov dword [LOCAL(F_LEFT)], LEFT_RECIPES
 .left_known:
-    ; the right page: title, the crafting area (at least a row: the off
-    ; hand's), the slots
-    mov eax, [LOCAL(F_GRID)]
-    cmp eax, 1
-    jge .area
-    mov eax, 1
-.area:
-    imul eax, eax, STEP
+    ; the right page: title, the band with the paper doll and the crafting
+    ; grid (4 rows: the armor slots), the slots
+    mov eax, 4 * STEP
     mov [LOCAL(F_AREA)], eax
     add eax, 52 + 16 + 3 * STEP + 10 + STEP - 4 + PAD
     mov [rel g_ph], eax
@@ -1565,15 +1655,15 @@ PROC inv_screen_frame, 48, rbx, rsi, rdi, r12
     call book_toggle
     mov edx, [LOCAL(F_PY)]
     add edx, 52
-    INVOKE craft_area, [LOCAL(F_IX)], rdx, [LOCAL(F_GRID)]
+    mov ecx, [LOCAL(F_IX)]
+    add ecx, 2 * STEP                   ; (right of the paper doll)
+    INVOKE craft_area, rcx, rdx, [LOCAL(F_GRID)]
 .no_grid:
-    ; the off hand: the crafting area's bottom-left slot
+    ; the paper doll: armor, the off hand, the accessories
     mov ecx, [LOCAL(F_IX)]
     mov edx, [LOCAL(F_PY)]
     add edx, 52
-    add edx, [LOCAL(F_AREA)]
-    sub edx, STEP
-    call off_hand_slot
+    call gear_area
     ; ---- the left page ----
     mov eax, [LOCAL(F_LEFT)]
     cmp eax, LEFT_RECIPES

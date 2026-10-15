@@ -1,0 +1,1059 @@
+# Armor and shields (milestone 21 part 2, design/combat/combat.md).
+# `armor` = where it is worn (head, chest, legs, feet; shield: held in the
+# off hand); `protection` = points (a set's points split 15 / 40 / 30 /
+# 15 %; 20 points in all block 80 % of the damage armor stops); `weight` =
+# light (no slowdown), medium (slightly slower) or heavy (slower, hungrier,
+# no dodge roll). Durability: hits taken. Light = leather trimmed with the
+# tier's metal, medium = chainmail, heavy = plate. Repaired at the
+# Tinker's table with the tier's material and binding.
+# Pictures: assets/textures/items/<name>.png (tools/texgen/itemgen.py).
+
+# ---- leather (light) ----
+[item leather_helmet]
+title = Leather cap
+texture = leather_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 1
+weight = light
+durability = 44
+repair = leather
+binding = fibre_binding
+
+[item leather_chestplate]
+title = Leather tunic
+texture = leather_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 2
+weight = light
+durability = 64
+repair = leather
+binding = fibre_binding
+
+[item leather_leggings]
+title = Leather trousers
+texture = leather_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 1.5
+weight = light
+durability = 60
+repair = leather
+binding = fibre_binding
+
+[item leather_boots]
+title = Leather boots
+texture = leather_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 1
+weight = light
+durability = 52
+repair = leather
+binding = fibre_binding
+
+# ---- copper ----
+[item copper_chain_links]
+title = Copper chain links
+texture = copper_chain_links
+tab = items
+
+[item copper_plate]
+title = Copper plate
+texture = copper_plate
+tab = items
+
+[item copper_light_helmet]
+title = Copper-trimmed leather cap
+texture = copper_light_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 1
+weight = light
+durability = 88
+repair = copper_bar
+binding = fibre_binding
+
+[item copper_chain_helmet]
+title = Copper chain coif
+texture = copper_chain_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 1.5
+weight = medium
+durability = 110
+repair = copper_bar
+binding = fibre_binding
+
+[item copper_plate_helmet]
+title = Copper plate helmet
+texture = copper_plate_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 2
+weight = heavy
+durability = 143
+repair = copper_bar
+binding = fibre_binding
+
+[item copper_light_chestplate]
+title = Copper-trimmed leather tunic
+texture = copper_light_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 2.5
+weight = light
+durability = 128
+repair = copper_bar
+binding = fibre_binding
+
+[item copper_chain_chestplate]
+title = Copper chain shirt
+texture = copper_chain_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 3.5
+weight = medium
+durability = 160
+repair = copper_bar
+binding = fibre_binding
+
+[item copper_plate_chestplate]
+title = Copper plate chestplate
+texture = copper_plate_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 5
+weight = heavy
+durability = 208
+repair = copper_bar
+binding = fibre_binding
+
+[item copper_light_leggings]
+title = Copper-trimmed leather trousers
+texture = copper_light_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 2
+weight = light
+durability = 120
+repair = copper_bar
+binding = fibre_binding
+
+[item copper_chain_leggings]
+title = Copper chain leggings
+texture = copper_chain_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 2.5
+weight = medium
+durability = 150
+repair = copper_bar
+binding = fibre_binding
+
+[item copper_plate_leggings]
+title = Copper plate leggings
+texture = copper_plate_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 3.5
+weight = heavy
+durability = 195
+repair = copper_bar
+binding = fibre_binding
+
+[item copper_light_boots]
+title = Copper-trimmed leather boots
+texture = copper_light_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 1
+weight = light
+durability = 104
+repair = copper_bar
+binding = fibre_binding
+
+[item copper_chain_boots]
+title = Copper chain boots
+texture = copper_chain_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 1.5
+weight = medium
+durability = 130
+repair = copper_bar
+binding = fibre_binding
+
+[item copper_plate_boots]
+title = Copper plate boots
+texture = copper_plate_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 2
+weight = heavy
+durability = 169
+repair = copper_bar
+binding = fibre_binding
+
+# ---- iron ----
+[item iron_chain_links]
+title = Iron chain links
+texture = iron_chain_links
+tab = items
+
+[item iron_plate]
+title = Iron plate
+texture = iron_plate
+tab = items
+
+[item iron_light_helmet]
+title = Iron-trimmed leather cap
+texture = iron_light_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 1
+weight = light
+durability = 132
+repair = iron_bar
+binding = flux
+
+[item iron_chain_helmet]
+title = Iron chain coif
+texture = iron_chain_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 1.5
+weight = medium
+durability = 165
+repair = iron_bar
+binding = flux
+
+[item iron_plate_helmet]
+title = Iron plate helmet
+texture = iron_plate_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 2
+weight = heavy
+durability = 214
+repair = iron_bar
+binding = flux
+
+[item iron_light_chestplate]
+title = Iron-trimmed leather tunic
+texture = iron_light_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 3
+weight = light
+durability = 192
+repair = iron_bar
+binding = flux
+
+[item iron_chain_chestplate]
+title = Iron chain shirt
+texture = iron_chain_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 4.5
+weight = medium
+durability = 240
+repair = iron_bar
+binding = flux
+
+[item iron_plate_chestplate]
+title = Iron plate chestplate
+texture = iron_plate_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 5.5
+weight = heavy
+durability = 312
+repair = iron_bar
+binding = flux
+
+[item iron_light_leggings]
+title = Iron-trimmed leather trousers
+texture = iron_light_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 2
+weight = light
+durability = 180
+repair = iron_bar
+binding = flux
+
+[item iron_chain_leggings]
+title = Iron chain leggings
+texture = iron_chain_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 3.5
+weight = medium
+durability = 225
+repair = iron_bar
+binding = flux
+
+[item iron_plate_leggings]
+title = Iron plate leggings
+texture = iron_plate_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 4
+weight = heavy
+durability = 292
+repair = iron_bar
+binding = flux
+
+[item iron_light_boots]
+title = Iron-trimmed leather boots
+texture = iron_light_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 1
+weight = light
+durability = 156
+repair = iron_bar
+binding = flux
+
+[item iron_chain_boots]
+title = Iron chain boots
+texture = iron_chain_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 1.5
+weight = medium
+durability = 195
+repair = iron_bar
+binding = flux
+
+[item iron_plate_boots]
+title = Iron plate boots
+texture = iron_plate_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 2
+weight = heavy
+durability = 253
+repair = iron_bar
+binding = flux
+
+# ---- diamond ----
+[item diamond_chain_links]
+title = Diamond chain links
+texture = diamond_chain_links
+tab = items
+
+[item diamond_plate]
+title = Diamond plate
+texture = diamond_plate
+tab = items
+
+[item diamond_light_helmet]
+title = Diamond-trimmed leather cap
+texture = diamond_light_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 1.5
+weight = light
+durability = 290
+repair = diamond
+binding = flux
+
+[item diamond_chain_helmet]
+title = Diamond chain coif
+texture = diamond_chain_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 2
+weight = medium
+durability = 363
+repair = diamond
+binding = flux
+
+[item diamond_plate_helmet]
+title = Diamond plate helmet
+texture = diamond_plate_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 2.5
+weight = heavy
+durability = 471
+repair = diamond
+binding = flux
+
+[item diamond_light_chestplate]
+title = Diamond-trimmed leather tunic
+texture = diamond_light_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 3.5
+weight = light
+durability = 422
+repair = diamond
+binding = flux
+
+[item diamond_chain_chestplate]
+title = Diamond chain shirt
+texture = diamond_chain_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 5
+weight = medium
+durability = 528
+repair = diamond
+binding = flux
+
+[item diamond_plate_chestplate]
+title = Diamond plate chestplate
+texture = diamond_plate_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 6.5
+weight = heavy
+durability = 686
+repair = diamond
+binding = flux
+
+[item diamond_light_leggings]
+title = Diamond-trimmed leather trousers
+texture = diamond_light_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 2.5
+weight = light
+durability = 396
+repair = diamond
+binding = flux
+
+[item diamond_chain_leggings]
+title = Diamond chain leggings
+texture = diamond_chain_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 4
+weight = medium
+durability = 495
+repair = diamond
+binding = flux
+
+[item diamond_plate_leggings]
+title = Diamond plate leggings
+texture = diamond_plate_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 5
+weight = heavy
+durability = 643
+repair = diamond
+binding = flux
+
+[item diamond_light_boots]
+title = Diamond-trimmed leather boots
+texture = diamond_light_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 1.5
+weight = light
+durability = 343
+repair = diamond
+binding = flux
+
+[item diamond_chain_boots]
+title = Diamond chain boots
+texture = diamond_chain_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 2
+weight = medium
+durability = 429
+repair = diamond
+binding = flux
+
+[item diamond_plate_boots]
+title = Diamond plate boots
+texture = diamond_plate_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 2.5
+weight = heavy
+durability = 557
+repair = diamond
+binding = flux
+
+# ---- mythril ----
+[item mythril_chain_links]
+title = Mythril chain links
+texture = mythril_chain_links
+tab = items
+
+[item mythril_plate]
+title = Mythril plate
+texture = mythril_plate
+tab = items
+
+[item mythril_light_helmet]
+title = Mythril-trimmed leather cap
+texture = mythril_light_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 1.5
+weight = light
+durability = 352
+repair = mythril_bar
+binding = star_essence
+
+[item mythril_chain_helmet]
+title = Mythril chain coif
+texture = mythril_chain_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 2
+weight = medium
+durability = 440
+repair = mythril_bar
+binding = star_essence
+
+[item mythril_plate_helmet]
+title = Mythril plate helmet
+texture = mythril_plate_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 2.5
+weight = heavy
+durability = 572
+repair = mythril_bar
+binding = star_essence
+
+[item mythril_light_chestplate]
+title = Mythril-trimmed leather tunic
+texture = mythril_light_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 4
+weight = light
+durability = 512
+repair = mythril_bar
+binding = star_essence
+
+[item mythril_chain_chestplate]
+title = Mythril chain shirt
+texture = mythril_chain_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 5.5
+weight = medium
+durability = 640
+repair = mythril_bar
+binding = star_essence
+
+[item mythril_plate_chestplate]
+title = Mythril plate chestplate
+texture = mythril_plate_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 7
+weight = heavy
+durability = 832
+repair = mythril_bar
+binding = star_essence
+
+[item mythril_light_leggings]
+title = Mythril-trimmed leather trousers
+texture = mythril_light_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 3
+weight = light
+durability = 480
+repair = mythril_bar
+binding = star_essence
+
+[item mythril_chain_leggings]
+title = Mythril chain leggings
+texture = mythril_chain_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 4
+weight = medium
+durability = 600
+repair = mythril_bar
+binding = star_essence
+
+[item mythril_plate_leggings]
+title = Mythril plate leggings
+texture = mythril_plate_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 5.5
+weight = heavy
+durability = 780
+repair = mythril_bar
+binding = star_essence
+
+[item mythril_light_boots]
+title = Mythril-trimmed leather boots
+texture = mythril_light_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 1.5
+weight = light
+durability = 416
+repair = mythril_bar
+binding = star_essence
+
+[item mythril_chain_boots]
+title = Mythril chain boots
+texture = mythril_chain_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 2
+weight = medium
+durability = 520
+repair = mythril_bar
+binding = star_essence
+
+[item mythril_plate_boots]
+title = Mythril plate boots
+texture = mythril_plate_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 2.5
+weight = heavy
+durability = 676
+repair = mythril_bar
+binding = star_essence
+
+# ---- adamantite ----
+[item adamantite_chain_links]
+title = Adamantite chain links
+texture = adamantite_chain_links
+tab = items
+
+[item adamantite_plate]
+title = Adamantite plate
+texture = adamantite_plate
+tab = items
+
+[item adamantite_light_helmet]
+title = Adamantite-trimmed leather cap
+texture = adamantite_light_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 1.5
+weight = light
+durability = 440
+repair = adamantite_bar
+binding = star_essence
+
+[item adamantite_chain_helmet]
+title = Adamantite chain coif
+texture = adamantite_chain_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 2.5
+weight = medium
+durability = 550
+repair = adamantite_bar
+binding = star_essence
+
+[item adamantite_plate_helmet]
+title = Adamantite plate helmet
+texture = adamantite_plate_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 3
+weight = heavy
+durability = 715
+repair = adamantite_bar
+binding = star_essence
+
+[item adamantite_light_chestplate]
+title = Adamantite-trimmed leather tunic
+texture = adamantite_light_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 4.5
+weight = light
+durability = 640
+repair = adamantite_bar
+binding = star_essence
+
+[item adamantite_chain_chestplate]
+title = Adamantite chain shirt
+texture = adamantite_chain_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 6.5
+weight = medium
+durability = 800
+repair = adamantite_bar
+binding = star_essence
+
+[item adamantite_plate_chestplate]
+title = Adamantite plate chestplate
+texture = adamantite_plate_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 7.5
+weight = heavy
+durability = 1040
+repair = adamantite_bar
+binding = star_essence
+
+[item adamantite_light_leggings]
+title = Adamantite-trimmed leather trousers
+texture = adamantite_light_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 3.5
+weight = light
+durability = 600
+repair = adamantite_bar
+binding = star_essence
+
+[item adamantite_chain_leggings]
+title = Adamantite chain leggings
+texture = adamantite_chain_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 5
+weight = medium
+durability = 750
+repair = adamantite_bar
+binding = star_essence
+
+[item adamantite_plate_leggings]
+title = Adamantite plate leggings
+texture = adamantite_plate_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 5.5
+weight = heavy
+durability = 975
+repair = adamantite_bar
+binding = star_essence
+
+[item adamantite_light_boots]
+title = Adamantite-trimmed leather boots
+texture = adamantite_light_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 1.5
+weight = light
+durability = 520
+repair = adamantite_bar
+binding = star_essence
+
+[item adamantite_chain_boots]
+title = Adamantite chain boots
+texture = adamantite_chain_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 2.5
+weight = medium
+durability = 650
+repair = adamantite_bar
+binding = star_essence
+
+[item adamantite_plate_boots]
+title = Adamantite plate boots
+texture = adamantite_plate_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 3
+weight = heavy
+durability = 845
+repair = adamantite_bar
+binding = star_essence
+
+# ---- star crystal ----
+[item star_crystal_chain_links]
+title = Star crystal chain links
+texture = star_crystal_chain_links
+tab = items
+
+[item star_crystal_plate]
+title = Star crystal plate
+texture = star_crystal_plate
+tab = items
+
+[item star_crystal_light_helmet]
+title = Star crystal-trimmed leather cap
+texture = star_crystal_light_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 2
+weight = light
+durability = 528
+repair = star_crystal
+binding = star_essence
+
+[item star_crystal_chain_helmet]
+title = Star crystal chain coif
+texture = star_crystal_chain_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 2.5
+weight = medium
+durability = 660
+repair = star_crystal
+binding = star_essence
+
+[item star_crystal_plate_helmet]
+title = Star crystal plate helmet
+texture = star_crystal_plate_helmet
+tab = combat
+stack = 1
+armor = head
+protection = 3
+weight = heavy
+durability = 858
+repair = star_crystal
+binding = star_essence
+
+[item star_crystal_light_chestplate]
+title = Star crystal-trimmed leather tunic
+texture = star_crystal_light_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 5
+weight = light
+durability = 768
+repair = star_crystal
+binding = star_essence
+
+[item star_crystal_chain_chestplate]
+title = Star crystal chain shirt
+texture = star_crystal_chain_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 7
+weight = medium
+durability = 960
+repair = star_crystal
+binding = star_essence
+
+[item star_crystal_plate_chestplate]
+title = Star crystal plate chestplate
+texture = star_crystal_plate_chestplate
+tab = combat
+stack = 1
+armor = chest
+protection = 8
+weight = heavy
+durability = 1248
+repair = star_crystal
+binding = star_essence
+
+[item star_crystal_light_leggings]
+title = Star crystal-trimmed leather trousers
+texture = star_crystal_light_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 3.5
+weight = light
+durability = 720
+repair = star_crystal
+binding = star_essence
+
+[item star_crystal_chain_leggings]
+title = Star crystal chain leggings
+texture = star_crystal_chain_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 5
+weight = medium
+durability = 900
+repair = star_crystal
+binding = star_essence
+
+[item star_crystal_plate_leggings]
+title = Star crystal plate leggings
+texture = star_crystal_plate_leggings
+tab = combat
+stack = 1
+armor = legs
+protection = 6
+weight = heavy
+durability = 1170
+repair = star_crystal
+binding = star_essence
+
+[item star_crystal_light_boots]
+title = Star crystal-trimmed leather boots
+texture = star_crystal_light_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 2
+weight = light
+durability = 624
+repair = star_crystal
+binding = star_essence
+
+[item star_crystal_chain_boots]
+title = Star crystal chain boots
+texture = star_crystal_chain_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 2.5
+weight = medium
+durability = 780
+repair = star_crystal
+binding = star_essence
+
+[item star_crystal_plate_boots]
+title = Star crystal plate boots
+texture = star_crystal_plate_boots
+tab = combat
+stack = 1
+armor = feet
+protection = 3
+weight = heavy
+durability = 1014
+repair = star_crystal
+binding = star_essence
+
+# ---- shields: hold right click with one in the off hand to block ----
+[item wooden_shield]
+title = Wooden shield
+texture = wooden_shield
+tab = combat
+stack = 1
+armor = shield
+durability = 120
+repair = *_planks
+binding = fibre_binding
+
+[item copper_shield]
+title = Copper shield
+texture = copper_shield
+tab = combat
+stack = 1
+armor = shield
+durability = 200
+repair = copper_bar
+binding = fibre_binding
+
+[item iron_shield]
+title = Iron shield
+texture = iron_shield
+tab = combat
+stack = 1
+armor = shield
+durability = 336
+repair = iron_bar
+binding = flux
+
+[item diamond_shield]
+title = Diamond shield
+texture = diamond_shield
+tab = combat
+stack = 1
+armor = shield
+durability = 600
+repair = diamond
+binding = flux
+
+[item mythril_shield]
+title = Mythril shield
+texture = mythril_shield
+tab = combat
+stack = 1
+armor = shield
+durability = 900
+repair = mythril_bar
+binding = star_essence
+
+[item adamantite_shield]
+title = Adamantite shield
+texture = adamantite_shield
+tab = combat
+stack = 1
+armor = shield
+durability = 1300
+repair = adamantite_bar
+binding = star_essence
+
+[item star_crystal_shield]
+title = Star crystal shield
+texture = star_crystal_shield
+tab = combat
+stack = 1
+armor = shield
+durability = 1800
+repair = star_crystal
+binding = star_essence

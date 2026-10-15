@@ -2137,3 +2137,36 @@ ranged weapons and runes are parts 2–4.
 * **Test switch** `--attack-test`: whenever the meter is full, a hit on
   the nearest grown-up animal within 5.5 blocks (with `--lead-test` the
   animals stay close; with jump held, crits).
+
+## D106 — Armor, shields, the dodge roll (M21 part 2)
+Owner's interview (design/combat/combat.md): 4 armor pieces in light /
+medium / heavy per tier, a shield in the off hand, 2 accessory slots,
+protection vs mobility, a HUD shield row, a dodge roll on a double tap.
+* **Gear slots are inventory slots** 102–105 (head, chest, legs, feet) and
+  106–107 (charms), after the off hand (101): click rules, saving
+  (player.dat), gravestones (43 items) and the slot packets needed no new
+  mechanism. A slot only takes items whose `armor` key names it.
+* **Item keys** `armor`, `protection`, `weight`; the rules are combat.cfg.
+  Every tick combat.asm sums the worn pieces into g_armor_points /
+  speed / hunger, read by survival.asm (damage), player.asm (walking
+  speed) and the HUD (SURV_PKT.armor, half points).
+* **What armor covers**: rams, fire, lava and cactus (the hits that come
+  from outside); not falls, drowning, suffocation, starving or the void.
+  Health stays whole points, so what gets through is rounded by chance
+  (like D105), and armor softens even 1-point hits; a hit armor stops
+  entirely does nothing else (no red flash, no invulnerability).
+* **The paper doll is on the right page's top band** (the owner chose the
+  left page; it holds the recipe book, catalog and chests, so the doll
+  went where the old off-hand slot was, next to the crafting grid).
+* **Shield blocking is decided by the simulation**: the use button
+  (place_block) held with a shield in the off hand and nothing that eats
+  or places in the main hand, for `shield_raise` s. A hit is blocked when
+  the attacker is within ±arc/2 of the look direction (the input's yaw).
+  The client only shows it (SVF_BLOCKING raises the off hand's picture in
+  shaders/held.vert). Rams are the only attacks so far; the axe / mace
+  shield knock-down waits for attackers with weapons (M22).
+* **The dodge roll is a client request** (PKT_C_DODGE with a world
+  direction) that the simulation may refuse (cooldown, air, water, heavy
+  armor, blocking). A roll holds a fixed horizontal speed for `roll_time`
+  in player_tick and gives `roll_safe` of no damage. The double tap is
+  250 ms; a `dodge` key (V) does the same toward the keys held.

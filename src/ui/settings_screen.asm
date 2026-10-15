@@ -180,13 +180,14 @@ a_24:           db "Hotbar 8", 0
 a_25:           db "Hotbar 9", 0
 a_26:           db "Recipe book", 0
 a_27:           db "Swap hands", 0
+a_28:           db "Dodge roll", 0
 
 align 8
 tab_names:      dq s_tab0, s_tab1, s_tab2
 preset_names:   dq s_p0, s_p1, s_p2, s_p3
 action_names:   dq a_0, a_1, a_2, a_3, a_4, a_5, a_6, a_7, a_8, a_9, a_10
                 dq a_11, a_12, a_13, a_14, a_15, a_16, a_17, a_18, a_19, a_20
-                dq a_21, a_22, a_23, a_24, a_25, a_26, a_27
+                dq a_21, a_22, a_23, a_24, a_25, a_26, a_27, a_28
 %if ($ - action_names) / 8 != ACT_COUNT
     %error "action_names does not match ACT_COUNT"
 %endif

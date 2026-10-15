@@ -308,6 +308,15 @@ BUBBLE = ["..ooooo..",
           "obbbbbbbo",
           ".obbbbbo.",
           "..ooooo.."]
+ARMOR = ["oooooooo.",
+         "oHHSSSSo.",
+         "oHSSSSSo.",
+         "oSSSSSdo.",
+         "oSSSSSdo.",
+         ".oSSSdo..",
+         ".oSSSdo..",
+         "..oSdo...",
+         "...oo...."]
 POP = [".........",
        "..o...o..",
        "...o.o...",
@@ -348,6 +357,8 @@ FOOD_PAL = {"o": hexc("2a140c"), "M": hexc("b0602c"), "H": hexc("e0a060"),
             "d": hexc("7a3a18"), "B": hexc("f2e8d4"), "e": hexc("4a3428")}
 SICK_PAL = {"o": hexc("1c2a10"), "M": hexc("6a8a2c"), "H": hexc("a8c860"),
             "d": hexc("3e5a18"), "B": hexc("d8e4b8"), "e": hexc("34402a")}
+ARMOR_PAL = {"o": hexc("1e1a1c"), "S": hexc("b8bec8"), "H": hexc("f0f4fa"),
+             "d": hexc("70767e"), "e": hexc("3a3436")}
 BUBBLE_PAL = {"o": hexc("1c3a5a"), "W": hexc("f4fbff"), "b": hexc("7cc4f0"),
               "e": hexc("1c3a5a")}
 
@@ -386,7 +397,11 @@ def main():
            ("food_sick", icon(FOOD, SICK_PAL)),
            ("food_sick_half", icon(FOOD, SICK_PAL, half=True)),
            ("bubble", icon(BUBBLE, BUBBLE_PAL)),
-           ("bubble_pop", icon(POP, BUBBLE_PAL))]
+           ("bubble_pop", icon(POP, BUBBLE_PAL)),
+           # milestone 21 part 2: the armor row
+           ("armor", icon(ARMOR, ARMOR_PAL)),
+           ("armor_half", icon(ARMOR, ARMOR_PAL, half=True)),
+           ("armor_empty", icon(ARMOR, ARMOR_PAL, empty=True))]
     for i, (name, img) in enumerate(hud):
         a.put(name, 120 + (i % 13) * 10, 96, img, 0)
     os.makedirs(OUT, exist_ok=True)

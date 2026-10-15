@@ -32,7 +32,7 @@ armor and tools. Crits, sweeps, shield blocking and a dodge roll.
 | Mechanics | critical hits (falling), shield blocking (axes and maces can knock the shield down), sweep attacks (full sword swing), dodge roll |
 | Hit feedback | a tiny hit pause and camera shake; sparks on crits, dust on knock-back; no damage numbers or health bars |
 | Armor HUD | a row of 10 shield icons above the hearts while armor is worn (journal ink) |
-| Inventory | a paper doll on the journal's left page: 4 armor slots down its side, the off hand (shield) and 2 trinket slots below |
+| Inventory | a paper doll on the journal's left page: 4 armor slots down its side, the off hand (shield) and 2 trinket slots below (built on the right page: see Built) |
 | Dodge key | double-tap A / D / S (W stays sprint); rebindable to one key |
 
 ## My choices (numbers, to check)
@@ -165,6 +165,15 @@ boss that drops it.
   sweeps, knock-back, wear, the hit pause, camera shake, sparks and dust
   (data/combat/combat.cfg). Try it: hit a cow with a sword, wait for the
   bar; jump and hit as you fall.
+* **Part 2 (v0.21.2)**: the leather set and light / chain / plate sets
+  in 6 metal tiers, 7 shields, chain links and plates; the paper doll
+  with 4 armor slots, the off hand and 2 charm slots (on the **right**
+  page's top band next to the crafting grid: the left page already holds
+  the recipe book, the catalog and chests); protection, wear, mobility
+  and hunger; the HUD shield row; shield blocking (the front 90°, sneak
+  speed); the dodge roll (double-tap A / D / S, or V). Try it: put on a
+  set in Survival (E), hold right click with a shield in the off hand
+  facing a boar; double-tap A.
 
 ## Still open
 * What the armor looks like on the player (no third-person view yet).

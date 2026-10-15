@@ -21,6 +21,10 @@
 ;   combat_view_update()                once a frame, after client_view: the
 ;                                       shake on g_cam_pos, particles, pause
 ;   combat_view_draw(ecx = w, edx = h)  the particles and the meter (HUD)
+;   combat_view_dodge()                 once a frame while playing: a
+;                                       double-tap of move_left / move_right /
+;                                       move_back or the dodge key sends
+;                                       PKT_C_DODGE (the sim decides)
 ;   g_cv_paused                         1 during a hit pause (ents_view)
 ;   combat_view_test()                  --attack-test: once a frame; whenever
 ;                                       the meter is full, the nearest grown-up
@@ -32,18 +36,21 @@
 %include "packet.inc"
 %include "save.inc"
 %include "ents_view.inc"
+%include "input.inc"
 
 global combat_view_reset, combat_view_swing, combat_view_hit
 global combat_view_update, combat_view_draw, g_cv_paused
-global combat_view_test, g_attack_test
+global combat_view_test, g_attack_test, combat_view_dodge
 
 extern ui_draw_begin, ui_draw_flush, ui_rect, timer_elapsed_us
 extern combat_swing_ticks, g_cb_hit_pause, g_cb_crit_pause, g_cb_heavy_pause
 extern g_cb_shake, g_cinv, g_csel, g_cam_pos, g_cam_viewproj, g_ui_vw, g_ui_vh
 extern g_frame_us, g_swing_t0, g_world_mode, g_vlist, g_vents, g_ents_shown
-extern pkt_send, g_to_sim, held_swing
+extern pkt_send, g_to_sim, held_swing, input_pressed, input_down, sincosf
+extern g_cam_yaw
 
 %define SLOT_SIZE       8
+%define DODGE_TAP_US    250000          ; two presses within this: a roll
 %define MAX_PARTS       160
 %define BAR_W           36
 %define BAR_H           4
@@ -616,3 +623,115 @@ alignb 4
 g_attack_test:  resd 1                  ; --attack-test: hits left (0: off)
 g_test_pkt:     resb ENT_PKT_size
 
+
+section .bss
+alignb 8
+g_tap_us:       resq 4                  ; the last press of ACT_MOVE_BACK .. RIGHT (us; by action)
+g_dodge:        resb DODGE_PKT_size
+
+section .text
+; -----------------------------------------------------------------------------
+; combat_view_dodge — see the header. The way: (forward, strafe) in the
+; view turned into the world: forward (sin yaw, -cos yaw), right (cos yaw,
+; sin yaw), like player_tick.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+%define D_FWD   0                       ; f32
+%define D_STR   4                       ; f32
+%define D_ACT   8
+PROC combat_view_dodge, 16, rbx
+    ; double taps
+    mov dword [LOCAL(D_ACT)], ACT_MOVE_BACK
+.tap:
+    mov ecx, [LOCAL(D_ACT)]
+    call input_pressed
+    test eax, eax
+    jz .tap_next
+    call timer_elapsed_us
+    mov ecx, [LOCAL(D_ACT)]
+    lea rdx, [rel g_tap_us]
+    mov r8, rax
+    sub r8, [rdx + rcx * 8]
+    mov [rdx + rcx * 8], rax
+    cmp r8, DODGE_TAP_US
+    jae .tap_next
+    mov qword [rdx + rcx * 8], 0        ; (a third tap starts a new pair)
+    xorps xmm0, xmm0
+    movss [LOCAL(D_FWD)], xmm0
+    movss [LOCAL(D_STR)], xmm0
+    movss xmm1, [rel c_one]
+    cmp ecx, ACT_MOVE_BACK
+    jne .tap_side
+    xorps xmm1, [rel c_sign_f]
+    movss [LOCAL(D_FWD)], xmm1
+    jmp .send
+.tap_side:
+    cmp ecx, ACT_MOVE_LEFT
+    jne .tap_right
+    xorps xmm1, [rel c_sign_f]
+.tap_right:
+    movss [LOCAL(D_STR)], xmm1
+    jmp .send
+.tap_next:
+    inc dword [LOCAL(D_ACT)]
+    cmp dword [LOCAL(D_ACT)], ACT_MOVE_RIGHT
+    jbe .tap
+    ; the dodge key: the way the keys held point (back when none)
+    mov ecx, ACT_DODGE
+    call input_pressed
+    test eax, eax
+    jz .done
+    mov ecx, ACT_MOVE_FORWARD
+    call input_down
+    neg eax
+    sbb ebx, ebx
+    neg ebx                             ; forward held: 1
+    mov ecx, ACT_MOVE_BACK
+    call input_down
+    neg eax
+    sbb eax, eax                        ; back held: -1
+    add ebx, eax
+    mov [LOCAL(D_ACT)], ebx
+    cvtsi2ss xmm0, ebx
+    movss [LOCAL(D_FWD)], xmm0
+    mov ecx, ACT_MOVE_RIGHT
+    call input_down
+    neg eax
+    sbb ebx, ebx
+    neg ebx
+    mov ecx, ACT_MOVE_LEFT
+    call input_down
+    neg eax
+    sbb eax, eax
+    add ebx, eax
+    cvtsi2ss xmm0, ebx
+    movss [LOCAL(D_STR)], xmm0
+    or ebx, [LOCAL(D_ACT)]
+    jnz .send
+    mov dword [LOCAL(D_FWD)], 0xBF800000 ; (-1: back)
+.send:
+    movss xmm0, [rel g_cam_yaw]
+    call sincosf                        ; xmm0 = sin, xmm1 = cos
+    ; x = fwd sin + str cos, z = -fwd cos + str sin
+    movss xmm2, [LOCAL(D_FWD)]
+    mulss xmm2, xmm0
+    movss xmm3, [LOCAL(D_STR)]
+    mulss xmm3, xmm1
+    addss xmm2, xmm3
+    movss [rel g_dodge + DODGE_PKT.dx], xmm2
+    movss xmm2, [LOCAL(D_STR)]
+    mulss xmm2, xmm0
+    movss xmm3, [LOCAL(D_FWD)]
+    mulss xmm3, xmm1
+    subss xmm2, xmm3
+    movss [rel g_dodge + DODGE_PKT.dz], xmm2
+    lea rcx, [rel g_to_sim]
+    lea r8, [rel g_dodge]
+    INVOKE pkt_send, rcx, PKT_C_DODGE, r8, DODGE_PKT_size
+.done:
+    RETURN
+ENDPROC
+
+section .rdata
+align 16
+c_sign_f:       dd 0x80000000, 0, 0, 0
