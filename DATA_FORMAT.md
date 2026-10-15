@@ -177,6 +177,7 @@ every setting applies to all states):
 | `fluid` | levels 1–7, falling | flowing liquid: a box as high as its level (14/16 down to 2/16; falling and liquid-covered: full), with the sides drawn where neighbouring liquid is lower. Needs `source` |
 | `axis` | upright, east-west, north-south | a cube log: the `end` texture faces along its axis (logs lying in fallen trees and branches) |
 | `facing` | front north, east, south, west | a cube whose `north` texture is its front; placing turns the front towards the player (chests) |
+| `headstone` | front north, east, south, west | a gravestone (Milestone 20): a plinth (x 4–12, z 4–12), the stone (4–12 wide, 2–12 high) with a cap, and a satchel at its foot (x 6–10, z 0–4); the side textures turn with the front like `facing` |
 
 Faces of a shape take the block's textures by direction, projected like
 a cube's (so a slab shows the lower half of its texture).
@@ -590,6 +591,7 @@ only name a station defined before it).
 | `[rack <name>]` | `block` | a drying rack (Milestone 19 part 3): the empty rack block. Right click with a `hang` input puts it up; when it is dry, right click takes the result |
 | | `hang` | `<input item>, <wet block>, <result item>, <dry block>` — what can hang: the rack shows the wet block while it dries, the dry block when done (up to 16 lines in all racks) |
 | | `seconds` | drying time (default 10). Breaking a full rack drops what `mining.cfg` says (the hide and the rack) |
+| `[grave <name>]` | `block` | a gravestone (Milestone 20 part 2): the block the game places where a player died with the `grave` death rule; right click gives back everything it holds (each item into the slot it came from if that is empty, else wherever it fits; the rest drops) and the block crumbles |
 | `[recipe <name>]` | `shape` | rows split by `/`, up to 3 × 3; one character per cell: a key letter, or `.` for an empty cell. A shape matches anywhere in the grid, mirrored too |
 | | `A` … `Z` | a key: item name patterns (`*` = anything; a comma list = any of them) |
 | | `ingredients` | instead of a shape: up to 9 patterns, one item each, in any cells (shapeless) |
@@ -715,7 +717,10 @@ Text in the format above (the game rewrites them on every save, via a
 | | `name`, `seed`, `generator` | the world; `seed` and `generator` override world.cfg and `--seed` |
 | | `game_mode` | `creative`, `survival`, `adventure` or `spectator` (creative and survival are playable so far) |
 | | `difficulty` | `peaceful`, `normal`, `hard`, `extreme` or `ultra` (default `normal`) |
-| | `hardcore` | `0`/`1` |
+| | `hardcore` | `0`/`1` (only offered on Hard and above) |
+| | `death` | (Milestone 20) what happens to the items when the player dies: `drop` (default; they fall where the player died), `grave` (a gravestone keeps them: `graves.dat`) or `keep` (they stay; below Hard only: on Hard and above it acts as `grave`) |
+| | `day` | (Milestone 20) the day counter, from 1; the clock passing midnight adds one |
+| | `hardcore_dead` | (Milestone 20) `1`: a Hardcore world whose player died; it only opens in spectator mode (written with `game_mode = spectator` once the player chose to spectate) |
 | | `last_played` | local date and time of the last save, `YYYY-MM-DD HH:MM` (the world list sorts by it) |
 | | `time` | time of day, 0–1 (0 = midnight); `--time` overrides it |
 | player.dat | `eye_position` | x, y, z of the eyes (blocks, 4 decimals) |
@@ -736,6 +741,11 @@ smelting while you are away; 20 ticks a second).
 `racks.dat` (Milestone 19 part 3) lists the drying racks with a hide
 drying: `rack = x, y, z, <ticks left>, <input item of the hang line>`. A
 rack whose block changed meanwhile is forgotten.
+
+`graves.dat` (Milestone 20 part 2) lists the gravestones still holding
+items: `grave = x, y, z, <day>, <name>` (the block, the day its owner
+died, their name), then its items, `item = <slot>, <item>, <count>,
+<durability>` (the slot it was in: 0–35, 101 the off hand). Up to 64.
 
 `thumb.png` (256 × 144 RGB) in the world folder is the picture shown in
 the world list; the game rewrites it on every save.

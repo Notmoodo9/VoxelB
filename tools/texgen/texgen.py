@@ -2508,7 +2508,56 @@ def build_all():
     make_furnaces(out)
     make_tinkers_table(out)
     make_animals(out)
+    make_gravestone(out)
     return out
+
+
+def make_gravestone(out):
+    """The gravestone (milestone 20 part 2): weathered grey stone with moss
+    creeping up from the ground, a carved cross on the front, and a small
+    leather satchel at its foot (the headstone shape's boxes sample these
+    faces: the satchel sits in front of the stone, x 6-10, z 0-4, y 0-5)."""
+    pal = ramp("8e9298", 6, spread=0.16)
+    def weathered(name):
+        r = rng(name)
+        img = shade(0.3 + 0.45 * noise(r, 4, 3), pal)
+        img = mossy(rgba(img), rng(name + "_moss"), amount=0.30)[..., :3].copy()
+        # moss mostly low down: clear it from the upper half again, keep tufts
+        base = shade(0.3 + 0.45 * noise(r, 4, 3), pal)
+        for y in range(0, 8):
+            for x in range(N):
+                if r.random() > 0.15:
+                    img[y, x] = base[y, x]
+        return img
+    leather = ramp("8a5a2e", 5, spread=0.22)
+    def satchel(img, cols, rows):
+        for y in rows:
+            for x in cols:
+                img[y, x] = leather[2 + ((x + y) % 2)]
+    front = weathered("gravestone_front")
+    carve = ramp("4a4e56", 3, spread=0.1)
+    for y in range(5, 12):                       # the cross
+        front[y, 7:9] = carve[0]
+        front[y, 9] = carve[2]
+    front[7, 5:11] = carve[0]
+    front[8, 5:11] = carve[2]
+    for x in (5, 6, 9, 10):                      # name lines under it
+        front[13, x] = carve[1]
+    satchel(front, range(6, 10), range(11, 16))  # the satchel's front
+    front[11, 6:10] = leather[0]                 # its flap
+    front[12, 7:9] = hexrgb("c8a050")            # the buckle
+    out["gravestone_front"] = rgba(front)
+    # the satchel's sides (either end: the faces may be mirrored) and its
+    # top wherever it sits as the stone turns; the stone and its plinth
+    # (x 4-12) never show these pixels
+    side = weathered("gravestone_side")
+    satchel(side, list(range(0, 4)) + list(range(12, 16)), range(11, 16))
+    out["gravestone"] = rgba(side)
+    out["gravestone_back"] = rgba(weathered("gravestone_back"))
+    top = weathered("gravestone_top")
+    satchel(top, range(6, 10), list(range(0, 4)) + list(range(12, 16)))
+    satchel(top, list(range(0, 4)) + list(range(12, 16)), range(6, 10))
+    out["gravestone_top"] = rgba(top)
 
 
 def make_animals(out):

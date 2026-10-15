@@ -1,0 +1,9 @@
+# The gravestone (milestone 20 part 2, design/survival/survival.md): placed
+# by the game where a player died in a world whose death rule is `grave`
+# (world.dat death = grave). It holds what they carried; right click gives
+# it all back and the stone crumbles (data/recipes/00_stations.recipes,
+# [grave]). It cannot be mined (data/items/mining.cfg) and is not in the
+# inventory (data/items/00_tabs.items, [hidden]).
+[block gravestone]
+shape    = headstone
+textures = side: gravestone, top: gravestone_top, bottom: gravestone_top, north: gravestone_front, south: gravestone_back

@@ -130,13 +130,14 @@ s_plant:        db "plant", 0
 s_tall_plant:   db "tall_plant", 0
 s_stalk:        db "stalk", 0
 s_fluid:        db "fluid", 0
+s_headstone:    db "headstone", 0
 s_axis:         db "axis", 0
 s_facing:       db "facing", 0
 align 8
 shape_names:    dq s_cube, s_slab, s_stairs, s_fence, s_gate, s_door, s_trapdoor
                 dq s_ladder, s_sign, s_wall_sign, s_plate, s_wall, s_pillar, s_pane, s_spike
-                dq s_plant, s_tall_plant, s_stalk, s_fluid, s_axis, s_facing
-shape_states:   db 1, 2, 8, 1, 8, 32, 16, 4, 4, 4, 2, 1, 1, 1, 2, 1, 2, 1, 8, 3, 4
+                dq s_plant, s_tall_plant, s_stalk, s_fluid, s_headstone, s_axis, s_facing
+shape_states:   db 1, 2, 8, 1, 8, 32, 16, 4, 4, 4, 2, 1, 1, 1, 2, 1, 2, 1, 8, 4, 3, 4
 %define SHAPE_AXIS_NAME SHAPE_COUNT     ; "axis": cube-shaped log states (BLOCKF_AXIS)
 %define SHAPE_FACING_NAME (SHAPE_COUNT + 1) ; "facing": a cube turned 4 ways (BLOCKF_FACING)
 ; the horizontal faces clockwise seen from above: north (-Z), east, south, west
@@ -624,10 +625,15 @@ PROC sync_states, 0, rbx, rsi, rdi
     mov eax, [r10 + 8]
     mov [r9 + 8], eax
     ; facing: state s turns the side faces s quarter turns clockwise (the
-    ; north face's texture, the front, ends up east, south, west)
+    ; north face's texture, the front, ends up east, south, west); so does
+    ; a headstone's (milestone 20: its states are its facings)
     lea rax, [rel g_block_flags]
     test byte [rax + rbx], BLOCKF_FACING
-    jz .not_facing
+    jnz .facing
+    lea rax, [rel g_block_shape]
+    cmp byte [rax + rbx], SHAPE_HEADSTONE
+    jne .not_facing
+.facing:
     xor ecx, ecx                        ; ring position i
 .ring:
     lea rax, [rel facing_ring]

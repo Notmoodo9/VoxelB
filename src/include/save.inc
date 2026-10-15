@@ -20,6 +20,13 @@
 %define DIFF_ULTRA          4
 %define DIFF_COUNT          5
 
+; what happens to the items when the player dies (world.dat death =
+; drop / grave / keep; milestone 20)
+%define DEATH_DROP          0
+%define DEATH_GRAVE         1
+%define DEATH_KEEP          2           ; (only below Hard)
+%define DEATH_COUNT         3
+
 ; what the world list shows about a saved world (save_peek + menu.asm)
 struc WORLD_INFO
     .name       resb 64                 ; the folder name
@@ -30,6 +37,7 @@ struc WORLD_INFO
     .thumb      resd 1                  ; 1 + atlas slot, 0 = no picture
     .size       resq 1                  ; bytes on disk
     .seed       resd 1
-    .pad        resb 12
+    .hc_dead    resd 1                  ; a Hardcore world whose player died (M20)
+    .pad        resb 8
 endstruc
 %endif

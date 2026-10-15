@@ -53,7 +53,8 @@
 %define SHAPE_TALL_PLANT    16          ; bit 0: upper half (upper_textures)
 %define SHAPE_STALK         17          ; a thin upright post that joins nothing (bamboo)
 %define SHAPE_FLUID         18          ; flowing liquid: states 0-6 level 1-7, 7 falling
-%define SHAPE_COUNT         19
+%define SHAPE_HEADSTONE     19          ; M20: a gravestone, bits 0-1 facing
+%define SHAPE_COUNT         20
 %define FLUID_FALLING       7           ; the falling state
 ; facings: 0 north (-Z), 1 east (+X), 2 south (+Z), 3 west (-X)
 

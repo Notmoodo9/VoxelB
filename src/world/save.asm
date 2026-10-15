@@ -43,6 +43,9 @@
 ;       was read: the world list's details (save.inc)
 ;   g_world_mode, g_world_difficulty, g_world_hardcore (MODE_*, DIFF_*):
 ;       the world's rules, from world.dat (defaults: creative, normal, off)
+;   g_world_death (DEATH_*: what happens to the items on death), g_world_day
+;       (the day counter, from 1), g_world_hc_dead (a Hardcore world whose
+;       player died: only spectated) — milestone 20
 ;   g_save_enabled (0 with --nosave), g_save_exists, g_save_player_flags,
 ;   g_save_held (block id, 0 = none), statistics g_save_*
 ; =============================================================================
@@ -67,6 +70,7 @@ global g_save_columns, g_save_bytes, g_save_loaded, g_save_last_ms
 global g_world_name, g_autosave_minutes, save_peek, g_dir
 global save_text_load, save_text_release, save_text_write
 global g_world_mode, g_world_difficulty, g_world_hardcore
+global g_world_death, g_world_day, g_world_hc_dead
 
 extern str_copy, str_append_dec, str_append_sdec, str_ieq, str_parse_u64
 extern str_parse_float, str_len
@@ -76,7 +80,7 @@ extern g_seed_override, g_seed_override_set, g_force_flat, g_generator
 extern g_world_seed, g_time_override, g_sim_time
 extern g_cam_pos, g_cam_yaw, g_cam_pitch, g_held_block, g_block_names
 extern g_inv, g_inv_sel, craft_sync, station_find, g_station_names, store_save_all
-extern racks_save
+extern racks_save, graves_save
 extern g_sv_health, g_sv_hunger, g_sv_sat, g_sv_exh, g_sv_air, g_sv_burn, g_sv_poison, g_sv_dead
 extern g_pl_pos, g_pl_eye, g_pl_flags, g_loaded, g_loaded_count
 
@@ -161,6 +165,9 @@ k_slot:         db "slot", 0
 k_survival:     db "survival", 0
 k_difficulty:   db "difficulty", 0
 k_hardcore:     db "hardcore", 0
+k_death:        db "death", 0
+k_day:          db "day", 0
+k_hc_dead:      db "hardcore_dead", 0
 k_played:       db "last_played", 0
 v_terrain:      db "terrain", 0
 v_flat:         db "flat_test", 0
@@ -173,9 +180,13 @@ diff_1:         db "normal", 0
 diff_2:         db "hard", 0
 diff_3:         db "extreme", 0
 diff_4:         db "ultra", 0
+death_0:        db "drop", 0
+death_1:        db "grave", 0
+death_2:        db "keep", 0
 align 8
 mode_names:     dq mode_0, mode_1, mode_2, mode_3
 diff_names:     dq diff_0, diff_1, diff_2, diff_3, diff_4
+death_names:    dq death_0, death_1, death_2
 ; text pieces
 t_head_world:   db "# VoxelB world (written by the game; DATA_FORMAT.md)", 10, 0
 t_head_player:  db "# VoxelB player (written by the game; DATA_FORMAT.md)", 10, 0
@@ -186,6 +197,9 @@ t_gen:          db 10, "generator = ", 0
 t_mode:         db 10, "game_mode = ", 0
 t_difficulty:   db 10, "difficulty = ", 0
 t_hardcore:     db 10, "hardcore = ", 0
+t_death:        db 10, "death = ", 0
+t_day:          db 10, "day = ", 0
+t_hc_dead:      db 10, "hardcore_dead = ", 0
 t_played:       db 10, "last_played = ", 0
 t_time:         db 10, "time = ", 0
 t_eye:          db 10, "eye_position = ", 0
@@ -221,6 +235,9 @@ g_autosave_minutes: dd 5
 g_world_mode:       dd MODE_CREATIVE
 g_world_difficulty: dd DIFF_NORMAL
 g_world_hardcore:   dd 0
+g_world_death:      dd DEATH_DROP
+g_world_day:        dd 1
+g_world_hc_dead:    dd 0
 
 section .bss
 alignb 8
@@ -502,6 +519,9 @@ PROC save_open, 0, rbx
     mov dword [rel g_world_mode], MODE_CREATIVE
     mov dword [rel g_world_difficulty], DIFF_NORMAL
     mov dword [rel g_world_hardcore], 0
+    mov dword [rel g_world_death], DEATH_DROP
+    mov dword [rel g_world_day], 1
+    mov dword [rel g_world_hc_dead], 0
     lea rdx, [rel str_world_dat]
     call load_dat
     test rax, rax
@@ -511,6 +531,9 @@ PROC save_open, 0, rbx
     lea r9, [rel str_world_lbl]
     INVOKE cfg_parse, rax, rdx, 0, r9
     call release_dat
+    cmp dword [rel g_world_hc_dead], 0
+    je .new
+    mov dword [rel g_world_mode], MODE_SPECTATOR    ; (Hardcore, after the death)
 .new:
     mov ecx, LOG_LEVEL_INFO
     call log_begin
@@ -636,6 +659,40 @@ PROC world_pair, 0, rbx, rsi
     INVOKE rules_pair, rbx, rsi
     test eax, eax
     jnz .done
+    lea rdx, [rel k_death]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_death
+    lea rdx, [rel death_names]
+    INVOKE name_index, rsi, rdx, DEATH_COUNT
+    test eax, eax
+    js .done
+    mov [rel g_world_death], eax
+    RETURN
+.not_death:
+    lea rdx, [rel k_day]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_day
+    mov rcx, rsi
+    call str_parse_u64
+    test eax, eax
+    jz .done
+    mov [rel g_world_day], eax
+    RETURN
+.not_day:
+    lea rdx, [rel k_hc_dead]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_hc_dead
+    mov rcx, rsi
+    call str_parse_u64
+    xor ecx, ecx
+    test rax, rax
+    setnz cl
+    mov [rel g_world_hc_dead], ecx
+    RETURN
+.not_hc_dead:
     lea rdx, [rel k_time]
     INVOKE str_ieq, rbx, rdx
     test eax, eax
@@ -1521,6 +1578,30 @@ PROC write_world_dat, 16, rbx
     call str_copy
     mov edx, [rel g_world_hardcore]
     INVOKE str_append_dec, rax, rdx, 0
+    lea rdx, [rel t_death]
+    mov rcx, rax
+    call str_copy
+    mov edx, [rel g_world_death]
+    cmp edx, DEATH_COUNT
+    jb .death
+    xor edx, edx
+.death:
+    lea rcx, [rel death_names]
+    mov rdx, [rcx + rdx * 8]
+    mov rcx, rax
+    call str_copy
+    lea rdx, [rel t_day]
+    mov rcx, rax
+    call str_copy
+    mov edx, [rel g_world_day]
+    INVOKE str_append_dec, rax, rdx, 0
+    cmp dword [rel g_world_hc_dead], 0
+    je .alive
+    lea rdx, [rel t_hc_dead]
+    mov rcx, rax
+    call str_copy
+    INVOKE str_append_dec, rax, 1, 0
+.alive:
     lea rdx, [rel t_played]
     mov rcx, rax
     call str_copy
@@ -2030,6 +2111,7 @@ PROC save_all, 16, rbx, rsi, rdi
     call write_containers
     call store_save_all                 ; the animals (milestone 19)
     call racks_save                     ; hides drying on racks
+    call graves_save                    ; gravestones (milestone 20)
     mov dword [rel g_save_exists], 1
     lea rcx, [rel g_path]
     lea rdx, [rel g_dir]
@@ -2253,6 +2335,7 @@ PROC save_peek, 16, rbx, rsi
     mov dword [rbx + WORLD_INFO.mode], MODE_CREATIVE
     mov dword [rbx + WORLD_INFO.difficulty], DIFF_NORMAL
     mov dword [rbx + WORLD_INFO.hardcore], 0
+    mov dword [rbx + WORLD_INFO.hc_dead], 0
     mov dword [rbx + WORLD_INFO.seed], 0
     mov byte [rbx + WORLD_INFO.played], 0
     lea rcx, [rel g_peek_path]
@@ -2306,6 +2389,18 @@ PROC peek_pair, 0, rbx, rsi, rdi
     mov [rdi + WORLD_INFO.seed], eax
     jmp .done
 .not_seed:
+    lea rdx, [rel k_hc_dead]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jz .not_hc_dead
+    mov rcx, rsi
+    call str_parse_u64
+    xor ecx, ecx
+    test rax, rax
+    setnz cl
+    mov [rdi + WORLD_INFO.hc_dead], ecx
+    jmp .done
+.not_hc_dead:
     lea rdx, [rel k_played]
     INVOKE str_ieq, rbx, rdx
     test eax, eax

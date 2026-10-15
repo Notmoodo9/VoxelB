@@ -18,6 +18,8 @@
 ;   edit_apply(ecx=x, edx=y, r8d=z, r9d=id) -> eax as world_set_block:
 ;       change a block now, tell the client, and wake the liquids around it
 ;       (fluid.asm uses it too)
+;   edit_queue(ecx=x, edx=y, r8d=z, r9d=id)   change a block as soon as its
+;       column is free (retried up to RETRY_TICKS; graves.asm)
 ;   g_edit_applied, g_edit_rejected     counters (overlay)
 ; =============================================================================
 %include "macros.inc"
@@ -27,10 +29,11 @@
 %include "packet.inc"
 %include "physics.inc"
 
-global edit_reset, edit_request, edit_tick, edit_apply, g_edit_applied, g_edit_rejected
+global edit_reset, edit_request, edit_tick, edit_apply, edit_queue
+global g_edit_applied, g_edit_rejected
 
 extern g_pl_pos, g_pl_eye, g_pl_reach, g_pl_width, g_pl_height
-extern fluid_schedule_around, craft_block_broken
+extern fluid_schedule_around, craft_block_broken, graves_broken
 
 %define QUEUE_SLOTS     64              ; power of two
 %define RETRY_TICKS     100             ; 5 s
@@ -72,6 +75,7 @@ edit_reset:
 ;   in:  ecx = x, edx = y, r8d = z, r9d = id
 ;   clobbers: rax, r10, r11
 ; -----------------------------------------------------------------------------
+edit_queue:
 queue_edit:
     mov eax, [rel g_edit_head]
     mov r10d, eax
@@ -302,6 +306,10 @@ PROC edit_request, 16, rbx, rsi, rdi, r12, r13, r14
     mov edx, esi
     mov r8d, edi
     call craft_block_broken
+    mov ecx, ebx                        ; a gravestone's items drop (milestone 20)
+    mov edx, esi
+    mov r8d, edi
+    call graves_broken
     mov eax, 1
     RETURN
 

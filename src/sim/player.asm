@@ -219,6 +219,10 @@ ENDPROC
 ; -----------------------------------------------------------------------------
 player_spawn:
     and edx, PF_FLYING | PF_NOCLIP
+    cmp dword [rel g_world_mode], MODE_SPECTATOR
+    jne .not_spectator
+    mov edx, PF_FLYING | PF_NOCLIP      ; (a spectator flies through everything)
+.not_spectator:
     cmp dword [rel g_world_mode], MODE_CREATIVE
     je .flags
     test edx, PF_NOCLIP
@@ -278,6 +282,9 @@ player_fill:
     mov [rcx + PLAYER_PKT.flags], eax
     mov eax, GAMEMODE_CREATIVE
     cmp dword [rel g_world_mode], MODE_CREATIVE
+    je .mode
+    mov eax, GAMEMODE_SPECTATOR
+    cmp dword [rel g_world_mode], MODE_SPECTATOR
     je .mode
     mov eax, GAMEMODE_SURVIVAL
 .mode:

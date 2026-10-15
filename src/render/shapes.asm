@@ -75,6 +75,10 @@ b_pillar_cap:   db 0, 13, 0, 16, 16, 16
 b_pane_post:    db 7, 0, 7, 9, 16, 9
 b_pane_arm:     db 7, 0, 0, 9, 16, 7
 b_stalk:        db 6, 0, 6, 10, 16, 10
+b_grave_base:   db 4, 0, 4, 12, 2, 12      ; M20: a headstone on a plinth
+b_grave_stone:  db 4, 2, 6, 12, 12, 10
+b_grave_cap:    db 5, 12, 6, 11, 14, 10
+b_grave_bag:    db 6, 0, 0, 10, 5, 4        ;     and the satchel at its foot
 
 align 8
 shape_jump:     dq shapes_emit.s_none, shapes_emit.s_slab, shapes_emit.s_stairs
@@ -83,7 +87,7 @@ shape_jump:     dq shapes_emit.s_none, shapes_emit.s_slab, shapes_emit.s_stairs
                 dq shapes_emit.s_wall_sign, shapes_emit.s_plate, shapes_emit.s_wall
                 dq shapes_emit.s_pillar, shapes_emit.s_pane, shapes_emit.s_spike
                 dq shapes_emit.s_plant, shapes_emit.s_tall_plant, shapes_emit.s_stalk
-                dq shapes_emit.s_fluid
+                dq shapes_emit.s_fluid, shapes_emit.s_headstone
 
 ; fluids: the 4 sides (-X, +X, -Z, +Z): face, neighbour offset, and the
 ; thin strip box on that side (x0, x1, z0, z1)
@@ -406,6 +410,21 @@ PROC shapes_emit, S_LOCALS, rbx, rsi, rdi, r12, r13, r14, r15
     mov edx, [LOCAL(S_STATE)]
     call add_box
     lea rcx, [rel b_sign_board]
+    mov edx, [LOCAL(S_STATE)]
+    call add_box
+    jmp .emit
+
+.s_headstone:
+    lea rcx, [rel b_grave_base]
+    mov edx, [LOCAL(S_STATE)]
+    call add_box
+    lea rcx, [rel b_grave_stone]
+    mov edx, [LOCAL(S_STATE)]
+    call add_box
+    lea rcx, [rel b_grave_cap]
+    mov edx, [LOCAL(S_STATE)]
+    call add_box
+    lea rcx, [rel b_grave_bag]
     mov edx, [LOCAL(S_STATE)]
     call add_box
     jmp .emit

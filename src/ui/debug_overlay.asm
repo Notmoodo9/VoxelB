@@ -141,6 +141,7 @@ s_held_off:     db " us   held light off", 10, 0
 s_player:       db "player  ", 0
 s_m_creative:   db "creative  ", 0
 s_m_survival:   db "survival  ", 0
+s_m_spectator:  db "spectator ", 0
 s_p_noclip:     db "noclip", 0
 s_p_flying:     db "flying", 0
 s_p_walking:    db "walking", 0
@@ -532,6 +533,11 @@ PROC build_text, 0, rbx, rsi, rdi, r12, r13
     ; the player and the simulation (milestone 16)
     PUT s_player
     lea rdx, [rel s_m_creative]
+    cmp dword [rel g_cl_player + PLAYER_PKT.mode], GAMEMODE_SPECTATOR
+    jne .not_spectator
+    lea rdx, [rel s_m_spectator]
+    jmp .mode_named
+.not_spectator:
     cmp dword [rel g_cl_player + PLAYER_PKT.mode], GAMEMODE_SURVIVAL
     jne .mode_named
     lea rdx, [rel s_m_survival]

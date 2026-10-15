@@ -37,3 +37,10 @@ blast = 1
 block = tinkers_table
 grid = 3
 repair = 1
+
+# Gravestones (milestone 20 part 2): right click gives back everything the
+# player had when they died (each item into the slot it came from if that
+# is empty), and the stone crumbles. The game places them (world.dat
+# death = grave).
+[grave gravestone]
+block = gravestone

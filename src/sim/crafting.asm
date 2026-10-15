@@ -37,10 +37,11 @@
 %include "world.inc"
 
 global craft_reset, craft_window, craft_recipe, craft_update, craft_take
+global craft_close
 global craft_tick, g_win_kind, g_win_grid, g_win_slots, g_win_station
 global craft_block_broken, craft_sync, g_win_cont
 
-extern racks_use
+extern racks_use, graves_use
 extern g_inv, inv_mark, inv_stack_of, inv_room, inv_add, inv_add_dur, inv_cursor_back
 extern recipe_match, recipe_cell_ok, g_recipe_count, g_rec_result
 extern g_rec_amount, g_rec_station, g_rec_w, g_rec_h, g_rec_n, g_rec_ok
@@ -181,6 +182,15 @@ ENDPROC
 ; close_window — the carried stack and the grid back to the player.
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
+; craft_close — close the window and tell the client (survival.asm: the
+; player died; the grid and a chest's slots go back first)
+;   clobbers: volatile registers
+PROC craft_close, 0
+    call close_window
+    call send_window
+    RETURN
+ENDPROC
+
 PROC close_window, 0, rbx, rsi
     ; a container: its slots go back into its store and leave the window
     cmp dword [rel g_win_kind], WIN_CHEST
@@ -282,6 +292,16 @@ PROC craft_window, 16, rbx, rsi, rdi
     call racks_use
     RETURN
 .not_rack:
+    ; a gravestone: right click gives the items back (graves.asm)
+    lea rcx, [rel g_station_kind]
+    cmp byte [rcx + rax - 1], STATION_GRAVE
+    jne .not_grave
+    mov ecx, esi
+    mov edx, edi
+    mov r8d, [LOCAL(0)]
+    call graves_use
+    RETURN
+.not_grave:
     lea rcx, [rel g_station_slots]
     cmp byte [rcx + rax - 1], 0
     je .station

@@ -1,16 +1,83 @@
 # Progress
 
 ## Current state
-**Milestone 20, part 1** — survival: health, hunger, damage, eating, death
-(v0.20.1, Windows CI green: run #117)
+**Milestone 20, part 2** — the death rule, gravestones, Hardcore
+(v0.20.2, Windows CI: pending)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
 
-Next: **Milestone 20, part 2** — the death rule on the create-world page
-(drop everything / gravestone / keep inventory below Hard), the mossy
-gravestone, Hardcore deaths (spectate or delete the world)
-(design/survival/survival.md).
+Next: **Milestone 21** — 🎨 DESIGN: combat (melee, ranged, armor): the
+design interview first.
+
+---
+
+## Milestone 20, part 2 — done (2026-10-15): the death rule, gravestones, Hardcore (D104)
+
+Design interview: design/survival/survival.md (approved in part 1).
+
+### What was built
+* **The create-world page** now has every difficulty (Peaceful … Ultra),
+  a **Hardcore** check box (Hard and above) and a **"When you die"** row:
+  Drop everything (default), Gravestone, Keep inventory (greyed out on
+  Hard and above), each with a line saying what it does.
+* **Gravestone**: where you die, a small mossy headstone with a carved
+  cross and a leather satchel at its foot takes everything you carried
+  (the 36 slots and the off hand). "Here lies <name>, day <n>" floats
+  over it. **Right click** puts each item back in the slot it came from
+  (or wherever it fits; what does not fit drops) and the stone crumbles.
+  It faces the world spawn, sits on the ground below the death spot, and
+  cannot be mined. Saved in graves.dat.
+* **Keep inventory** (below Hard): you respawn with everything.
+* **Days**: worlds count days (midnight adds one; world.dat `day`). The
+  death page now says "on day N, at x, y, z" and what became of your
+  things (scattered / in a gravestone at x, y, z / kept).
+* **Hardcore**: a death ends the world. The page offers **Spectate the
+  world** (fly through everything where you fell, nothing to touch, no
+  HUD) or **Delete the world** (click twice). The world list marks it
+  "Hardcore, ended" and opens it only in Spectator mode.
+* An open chest or crafting grid closes properly when you die (its items
+  go back where they belong first).
+* The simulation-to-client packet queue no longer overflows on slow
+  frames (2048 slots): block changes could get lost before.
+
+### Try it
+* New world → Survival, "When you die: Gravestone"; die (or
+  `--world <name> --test-block lava` / `stone`), Respawn, walk back to
+  the stone and right click it.
+* Hard + Hardcore: die → Spectate or Delete; the world list shows it.
+
+### Verified (scripted with xdotool; Survival test world)
+* Create page: all difficulties, Keep inventory greyed and Hardcore
+  enabled at Hard (screens).
+* Gravestone rule, lava death: the stone waited ~1.5 s for the busy
+  column, then took shears, wheat ×64, seeds ×64, carrot ×64 (graves.dat);
+  stone death: stone on the pillar, front west towards the spawn, label
+  "Here lies root, day 1" (screens). Right click: all four back in slots
+  0–3, the stone gone (screen; the region file no longer has it).
+* Keep inventory: "You kept your things." and the hotbar full after
+  Respawn (player.dat).
+* Hardcore: the page with Spectate / Delete (screen); Spectate → no HUD,
+  noclip flight, the inventory key does nothing, world.dat
+  `game_mode = spectator`, `hardcore_dead = 1`; reopened as a spectator.
+  Delete (twice) → back at the menu, the folder gone; the list shows
+  "Hardcore, ended" (screen).
+* Day counter: started at 23:57, day 2 after midnight (world.dat).
+* Debug and release headless tests pass.
+
+### Performance (llvmpipe test VM, release)
+* Simulation tick 68 µs average, 162 µs max (the gravestone code only
+  runs at a death or a right click); 0 packets dropped (was ~2000 per
+  minute at 1 FPS before the bigger queue). Queues: 2 × 128 KB.
+
+### Deferred
+* Beds and other respawn points (furniture, later); a choice of player
+  name (profiles, with multiplayer).
+* Changing the death rule after creation (the owner chose "at creation";
+  a pause-menu option stays open in the design doc).
+* Crumbs while eating.
+* Armor, weapons and mob damage (M21–22); temperature and thirst (M28);
+  potions (M27).
 
 ---
 

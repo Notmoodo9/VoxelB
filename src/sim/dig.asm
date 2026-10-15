@@ -120,6 +120,8 @@ PROC dig_tick, 16, rbx, rsi
 .cooled:
     cmp dword [rel g_world_mode], MODE_CREATIVE
     je .stop
+    cmp dword [rel g_world_mode], MODE_SPECTATOR
+    je .stop
     test dword [rbx + INPUT_PKT.buttons], INB_DIG
     jz .stop
     ; a new block: start over

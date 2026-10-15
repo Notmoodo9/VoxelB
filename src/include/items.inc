@@ -22,6 +22,7 @@
 %define STATION_CONTAINER   1
 %define STATION_FURNACE     2               ; diamond 5, mythril 6, adamantite 7, star_crystal 8
 %define STATION_RACK        3               ; a drying rack (milestone 19 part 3)
+%define STATION_GRAVE       4               ; a gravestone (milestone 20 part 2)
 %define MAX_HANGS           16              ; [rack] hang lines
 %define MAX_FILLS           16              ; item `fill` lines (buckets)
 %ifndef ITEMS_IMPL

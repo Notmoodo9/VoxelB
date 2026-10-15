@@ -33,6 +33,8 @@
 ;   survival_damage(ecx = health points, edx = CAUSE_*, r8d = mob)
 ;   survival_exhaust(xmm0 = f32 exhaustion), survival_mined()   (a block broken)
 ;   survival_respawn()                  PKT_C_RESPAWN
+;   survival_spectate()                 PKT_C_SPECTATE: a dead Hardcore player
+;                                       watches on as a spectator
 ;   survival_fill(rcx = SURV_PKT*)      the state for the client
 ;   g_sv_health, g_sv_hunger, g_sv_sat, g_sv_exh, g_sv_air, g_sv_burn,
 ;   g_sv_poison, g_sv_dead (saved in player.dat), g_sv_eating, g_sv_eat_speed
@@ -51,6 +53,7 @@
 
 global survival_load, survival_reset, survival_tick, survival_damage
 global survival_exhaust, survival_respawn, survival_fill, survival_mined
+global survival_spectate
 global g_sv_health, g_sv_hunger, g_sv_sat, g_sv_exh, g_sv_air, g_sv_burn
 global g_sv_poison, g_sv_dead, g_sv_eating, g_sv_eat_speed, g_test_block
 
@@ -59,7 +62,8 @@ extern inv_used_selected, inv_mark, player_spawn, world_spawn, edit_apply
 extern timer_elapsed_us
 extern g_pl_pos, g_pl_vel, g_pl_flags, g_pl_eye, g_pl_width, g_pl_height
 extern g_world_mode, g_world_difficulty, g_inv, g_inv_sel
-extern g_save_sv, g_save_sv_loaded
+extern g_save_sv, g_save_sv_loaded, g_world_death, g_world_day
+extern craft_close, graves_make, g_grave_pos, g_world_hardcore, g_world_hc_dead
 
 %define SLOT_SIZE       8
 %define DIFFS           5               ; peaceful .. ultra
@@ -69,6 +73,7 @@ extern g_save_sv, g_save_sv_loaded
 %define REGEN_NONE      3
 %define HALF_S          10              ; ticks: lava, suffocation, cactus, void
 %define SECOND          20
+%define GRAVE_WAIT      100             ; ticks a gravestone may wait for a busy column
 
 section .rdata
 str_file:       db "data/survival/survival.cfg", 0
@@ -226,6 +231,9 @@ g_refill_t:     resd 1
 g_hurt_count:   resd 1                  ; hits taken (the client flashes on a change)
 g_cause:        resd 1
 g_cause_mob:    resd 1
+g_sv_kept:      resd 1                  ; the last death kept the items (keep inventory)
+g_sv_grave:     resd 1                  ; the last death's items are in a gravestone
+g_grave_wait:   resd 1                  ; ticks left to place the gravestone
 g_rng:          resd 1
 g_grace:        resd 1                  ; 1: the next landing does no harm (a respawn)
 g_test_block:   resb 32                 ; --test-block <name> (tests)
@@ -680,10 +688,12 @@ PROC survival_damage, 0, rbx
 ENDPROC
 
 ; -----------------------------------------------------------------------------
-; die — the player died: everything they carry drops where they are.
+; die — the player died: by the world's death rule (world.dat death) what
+; they carry drops where they are, goes into a gravestone (graves.asm), or
+; stays with them.
 ;   clobbers: volatile registers
 ; -----------------------------------------------------------------------------
-PROC die, 0, rbx, rsi
+PROC die, 0, rbx
     mov dword [rel g_sv_dead], 1
     mov dword [rel g_sv_eating], 0
     mov ecx, LOG_LEVEL_INFO
@@ -705,6 +715,53 @@ PROC die, 0, rbx, rsi
     inc ebx
     cmp ebx, 3
     jb .pos
+    mov dword [rel g_sv_kept], 0
+    mov dword [rel g_sv_grave], 0
+    ; Hardcore: one life; the world ends (spectate or delete it)
+    cmp dword [rel g_world_hardcore], 0
+    je .one_of_many
+    mov dword [rel g_world_hc_dead], 1
+.one_of_many:
+    ; an open window closes first: its grid and carried stack back into the
+    ; slots, a chest's slots back into the chest
+    call craft_close
+    ; the world's death rule (keep inventory only below Hard: a gravestone
+    ; there instead)
+    mov eax, [rel g_world_death]
+    cmp eax, DEATH_KEEP
+    jne .rule
+    cmp dword [rel g_world_difficulty], DIFF_HARD
+    jb .rule
+    mov eax, DEATH_GRAVE
+.rule:
+    cmp eax, DEATH_KEEP
+    jne .not_keep
+    mov dword [rel g_sv_kept], 1
+    RETURN
+.not_keep:
+    cmp eax, DEATH_GRAVE
+    jne .drop
+    call graves_make
+    cmp eax, 1
+    je .in_grave
+    cmp eax, 2
+    jne .drop                           ; (no room for a stone: they drop)
+    ; the column is busy: try again each tick (survival_tick), for a while
+    mov dword [rel g_grave_wait], GRAVE_WAIT
+    RETURN
+.in_grave:
+    mov dword [rel g_sv_grave], 1
+    RETURN
+.drop:
+    call drop_all
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; drop_all — everything the player carries drops where they are.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC drop_all, 0, rbx, rsi
     ; the items: the slots, the carried stack, the grid, the off hand
     mov rax, [rel g_pl_pos]
     mov [rel g_spot], rax
@@ -743,6 +800,13 @@ ENDPROC
 PROC survival_respawn, 0
     cmp dword [rel g_sv_dead], 0
     je .done
+    cmp dword [rel g_world_hc_dead], 0
+    jne .done                           ; (Hardcore: no coming back)
+    cmp dword [rel g_grave_wait], 0
+    je .no_wait
+    mov dword [rel g_grave_wait], 0     ; (still no stone: the items drop)
+    call drop_all
+.no_wait:
     call full
     lea rcx, [rel g_spot]
     call world_spawn
@@ -828,6 +892,32 @@ survival_fill:
     mov [rcx + SURV_PKT.death + 4], eax
     mov eax, [rel g_death_pos + 8]
     mov [rcx + SURV_PKT.death + 8], eax
+    mov eax, [rel g_world_day]
+    mov [rcx + SURV_PKT.day], eax
+    mov eax, [rel g_grave_pos]
+    mov [rcx + SURV_PKT.grave], eax
+    mov eax, [rel g_grave_pos + 4]
+    mov [rcx + SURV_PKT.grave + 4], eax
+    mov eax, [rel g_grave_pos + 8]
+    mov [rcx + SURV_PKT.grave + 8], eax
+    movzx eax, word [rcx + SURV_PKT.flags]
+    cmp dword [rel g_sv_grave], 0
+    je .f5
+    or eax, SVF_GRAVE
+.f5:
+    cmp dword [rel g_sv_kept], 0
+    je .f6
+    or eax, SVF_KEPT
+.f6:
+    cmp dword [rel g_grave_wait], 0
+    je .f7
+    or eax, SVF_KEPT | SVF_GRAVE        ; (both: the stone is still to come)
+.f7:
+    cmp dword [rel g_world_hc_dead], 0
+    je .f8
+    or eax, SVF_SPECTATE
+.f8:
+    mov [rcx + SURV_PKT.flags], ax
     ret
 
 ; -----------------------------------------------------------------------------
@@ -934,6 +1024,11 @@ ENDPROC
 PROC survival_tick, 32, rbx, rsi, rdi
     mov [LOCAL(S_IN)], rcx
     call test_block
+    ; a gravestone that could not be placed at once (a busy column)
+    cmp dword [rel g_grave_wait], 0
+    je .no_wait
+    call grave_retry
+.no_wait:
     call active
     test eax, eax
     jz .inactive
@@ -1409,4 +1504,60 @@ PROC survival_tick, 32, rbx, rsi, rdi
     mov rax, [rel g_pl_pos + 8]
     mov [rel g_fall_top], rax
     jmp .remember
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; grave_retry — another try at the gravestone; when the time is up the items
+; drop instead.
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC grave_retry, 0
+    call graves_make
+    cmp eax, 1
+    je .placed
+    dec dword [rel g_grave_wait]
+    jz .give_up
+    cmp eax, 2
+    je .done
+.give_up:
+    mov dword [rel g_grave_wait], 0
+    call drop_all
+    RETURN
+.placed:
+    mov dword [rel g_grave_wait], 0
+    mov dword [rel g_sv_grave], 1
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; survival_spectate — PKT_C_SPECTATE: a Hardcore world's player died; they
+; stay as a spectator (flying through everything, touching nothing) where
+; they died. The world stays that way (world.dat game_mode = spectator,
+; hardcore_dead = 1).
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC survival_spectate, 0
+    cmp dword [rel g_sv_dead], 0
+    je .done
+    cmp dword [rel g_world_hc_dead], 0
+    je .done
+    mov dword [rel g_world_mode], MODE_SPECTATOR
+    mov dword [rel g_grave_wait], 0
+    call full
+    ; the eyes a little above where they fell
+    mov rax, [rel g_pl_pos]
+    mov [rel g_spot], rax
+    cvtss2sd xmm0, [rel g_pl_eye]
+    addsd xmm0, [rel g_pl_pos + 8]
+    addsd xmm0, [rel c_mid]
+    movsd [rel g_spot + 8], xmm0
+    mov rax, [rel g_pl_pos + 16]
+    mov [rel g_spot + 16], rax
+    lea rcx, [rel g_spot]
+    mov edx, PF_FLYING | PF_NOCLIP
+    call player_spawn
+    LOG_INFO "survival: Hardcore over; the player spectates"
+.done:
+    RETURN
 ENDPROC

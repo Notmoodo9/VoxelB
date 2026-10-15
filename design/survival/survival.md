@@ -94,9 +94,18 @@ world spawn. Hardcore deaths leave the world to spectate or delete.
   with the journal death page and respawn at the world spawn.
   Try it: a Survival world, eat with the right button held; `--test-block
   water` (or `lava`, `stone`, `cactus`) next to the player.
-* Part 2 (next): the death rule on the create-world page (drop /
-  gravestone / keep inventory), the gravestone, Hardcore spectate or
-  delete.
+* **Part 2 (v0.20.2)**: the death rule on the create-world page (Drop
+  everything / Gravestone / Keep inventory, the last greyed out on Hard
+  and above), every difficulty and the Hardcore check box (Hard+); the
+  mossy gravestone with a carved cross and a satchel at its foot, "Here
+  lies <name>, day <n>" over it, right click puts everything back in its
+  slots and the stone crumbles; worlds count days; the death page says
+  the day and where the things went; Hardcore deaths: Spectate the world
+  or Delete it, the world list marks it and opens it only as a spectator.
+  Try it: a new Survival world with "Gravestone", die, Respawn, walk back
+  and right click the stone. Choices I made: the stone faces the world
+  spawn (where you come back from); the name is the Windows user name
+  until there are player profiles; Delete asks twice.
 
 ## Still open
 * The death rule is changeable later from the pause menu (my

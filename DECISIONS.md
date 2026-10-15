@@ -2057,3 +2057,50 @@ rule option (gravestone, keep inventory) and Hardcore.
 * **Saved** as one `survival` line in player.dat; older saves start full.
 * **Test switches**: `--test-block <block>` fills the cells from under the
   player's feet to the eyes (drowning, lava, suffocation, cactus).
+
+## D104 — The death rule, gravestones, Hardcore (M20 part 2)
+Owner's interview (design/survival/survival.md): a world option "when you
+die" (drop everything by default; a gravestone; keep inventory below
+Hard), a small mossy headstone with your name and the day, right click to
+take everything back; Hardcore deaths spectate or delete the world.
+* **The rules live in world.dat** (`death`, `day`, `hardcore_dead`), set
+  on the create-world page (all five difficulties, a Hardcore check box
+  only on Hard and above, three death-rule buttons with Keep inventory
+  greyed out on Hard+). The simulation reads them at death; a world
+  raised to Hard with `death = keep` acts as `grave`.
+* **The day counter** counts the simulation clock's midnights (sim.asm)
+  and rides in SURV_PKT (now 52 bytes, with the gravestone's position and
+  the SVF_GRAVE / SVF_KEPT / SVF_SPECTATE flags).
+* **Gravestones are a station kind** (`[grave <name>]` in data/recipes),
+  so right click reaches the simulation like a rack's (crafting.asm
+  hands STATION_GRAVE to graves.asm) and the block stays data. The
+  module keeps up to 64 records {block, day, name, up to 37 items with
+  the slot each came from}, saved in graves.dat; restoring puts an item
+  back in its own slot when that is empty, else wherever it fits, and
+  drops the rest. The stone is placed in the first free cell (air, liquid
+  or plant) at or up to 8 above the feet, settled down onto the ground
+  (up to 16 cells), front turned towards the world spawn. A column busy
+  meshing makes the placement wait (up to 5 s, the items held); no room or
+  an ungenerated column drops the items as `drop` does. Emptying it goes
+  through the edit queue (retried while the column is busy). It cannot be
+  mined (mining.cfg unbreakable); removed any other way, its items drop.
+* **The headstone is a shape** (`shape = headstone`, 4 facings as its
+  states) whose side textures turn with the front like `facing` cubes
+  (block.asm). Its boxes keep the satchel's painted pixels on faces no
+  other box samples, so one set of textures works in every facing.
+* **The name** is the Windows user name (USERNAME), "a traveller" without
+  one — single player has no profile yet; the floating label "Here lies
+  <name>, day <n>" reuses the name-tag drawing (PKT_S_GRAVE keeps the
+  client's list).
+* **An open window closes first at death** (craft_close): the grid and
+  the carried stack go back to the slots and a chest's slots back to the
+  chest, so a death never empties or duplicates a chest.
+* **Hardcore**: the death marks the world (`hardcore_dead`) and saves at
+  once; the page offers Spectate (PKT_C_SPECTATE: Spectator mode where
+  they fell — noclip flight, no HUD, no hand; the simulation ignores every
+  action packet, mining and pickups) or Delete (two clicks; the game leaves
+  the world without saving and removes its folder). Such a world opens
+  only in Spectator mode; the world list says "Hardcore, ended".
+* **The packet queues grew to 2048** (from 256): at up to 10 simulation
+  ticks per slow frame the client queue overflowed and dropped packets —
+  a dropped block change left the client showing a block that was gone.

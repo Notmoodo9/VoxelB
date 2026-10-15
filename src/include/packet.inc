@@ -13,7 +13,7 @@
 
 %define PKT_SIZE            64
 %define PKT_PAYLOAD_MAX     56
-%define PKT_QUEUE_SLOTS     256         ; power of two
+%define PKT_QUEUE_SLOTS     2048        ; power of two (up to 10 ticks of packets a frame, M20)
 
 struc PKT
     .type       resw 1
@@ -47,6 +47,7 @@ endstruc
 %define PKT_C_TIE           16          ; BLOCK_PKT: tie the animals the player leads to this fence
 %define PKT_C_NAME          17          ; NAME_PKT: the name tag in hand names this animal
 %define PKT_C_RESPAWN       18          ; a dead player comes back (milestone 20; no payload)
+%define PKT_C_SPECTATE      19          ; a dead Hardcore player watches on as a spectator (no payload)
 
 ; inventory (milestone 18): slots 0-8 are the hotbar, 9-35 the inventory
 struc INV_PKT
@@ -135,6 +136,17 @@ endstruc
 %define PKT_S_ENTITY_GONE   75          ; ENT_PKT .id: out of sight, dead or unloaded
 %define PKT_S_ENTITY_NAME   76          ; NAME_PKT: an animal's name tag (after its PKT_S_ENTITY)
 %define PKT_S_SURVIVAL      77          ; SURV_PKT: health, hunger, air ... every tick (milestone 20)
+%define PKT_S_GRAVE         78          ; GRAVE_PKT: a gravestone appeared / was emptied (milestone 20)
+
+; a gravestone (milestone 20 part 2): the client keeps a list by .index
+struc GRAVE_PKT
+    .index      resw 1                  ; 0 .. MAX_GRAVES - 1
+    .used       resw 1                  ; 0: emptied (gone)
+    .pos        resd 3                  ; i32 its block
+    .day        resd 1                  ; the day its owner died
+    .name       resb 24                 ; whose (zero-terminated; ENT_NAME_MAX)
+endstruc
+%define MAX_GRAVES          64
 
 ; the player's survival state (milestone 20)
 struc SURV_PKT
@@ -150,11 +162,16 @@ struc SURV_PKT
     .eat        resw 1                  ; ticks into eating (0: not eating)
     .eat_total  resw 1                  ; ticks the food takes
     .death      resd 3                  ; i32 where the player died
+    .day        resd 1                  ; the day (from 1; part 2)
+    .grave      resd 3                  ; i32 the gravestone with the items (SVF_GRAVE)
 endstruc
 %define SVF_POISON          1           ; food poisoning
 %define SVF_BURNING         2
 %define SVF_DEAD            4
 %define SVF_ACTIVE          8           ; Survival / Adventure (health and hunger shown)
+%define SVF_GRAVE           16          ; the items wait in a gravestone (.grave)
+%define SVF_KEPT            32          ; the player kept the items (keep inventory)
+%define SVF_SPECTATE        64          ; a Hardcore death: only spectating is left
 %define CAUSE_NONE          0
 %define CAUSE_FALL          1
 %define CAUSE_DROWN         2
@@ -235,6 +252,7 @@ endstruc
 
 %define GAMEMODE_CREATIVE   1
 %define GAMEMODE_SURVIVAL   2
+%define GAMEMODE_SPECTATOR  3           ; (milestone 20: a Hardcore world after its death)
 
 struc TIME_PKT
     .time       resd 1                  ; f32 time of day 0..1 (0 midnight)

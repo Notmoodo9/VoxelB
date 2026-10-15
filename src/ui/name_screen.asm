@@ -17,6 +17,10 @@
 ;   name_screen_frame(ecx = w, edx = h) -> eax 1 once the page closed
 ;   names_draw(ecx = w, edx = h)        the floating names (with the HUD)
 ;   g_name_request                      interact.asm: animal id + 1 (0 none)
+;   graves_view_reset(), graves_view_packet(rcx = GRAVE_PKT*)
+;                                       the gravestones (milestone 20 part 2):
+;                                       "Here lies <name>, day <n>" floats over
+;                                       each one within NAME_RANGE (names_draw)
 ;   use_test_frame()                    --use-test: g_use_test frames in, a right
 ;                                       click on the nearest grown-up (once one
 ;                                       is within 4 blocks) with what is in hand
@@ -28,12 +32,12 @@
 %include "ents_view.inc"
 
 global name_screen_open, name_screen_frame, names_draw, g_name_request
-global use_test_frame, g_use_test
+global use_test_frame, g_use_test, graves_view_reset, graves_view_packet
 
 extern ui_frame, ui_end, ui_button, ui_panel, ui_label, ui_rect, ui_text
 extern ui_text_width, ui_textfield, ui_focus, ui_draw_begin, ui_draw_flush
 extern pkt_send, g_to_sim, g_ui_vw, g_ui_vh, g_cam_pos, g_cam_viewproj
-extern use_on_animal
+extern use_on_animal, str_copy, str_append_dec
 
 %define FIELD_ID        0
 %define PAGE_W          560
@@ -46,6 +50,8 @@ s_ask:          db "What shall this animal be called?", 0
 s_hint:         db "a name", 0
 s_ok:           db "Name it", 0
 s_cancel:       db "Cancel", 0
+s_here_lies:    db "Here lies ", 0
+s_day:          db ", day ", 0
 align 4
 c_range2:       dd 576.0                ; NAME_RANGE squared
 c_above:        dd 0.45                 ; blocks over the head
@@ -57,6 +63,8 @@ c_size_min:     dd 12.0
 c_size_max:     dd 26.0
 align 8
 c_far:          dq 1.0e30
+c_half_d:       dq 0.5
+c_grave_above:  dq 1.35                 ; the label over a gravestone's block
 c_close2:       dq 16.0                 ; --use-test: an animal within 4 blocks
 
 section .bss
@@ -67,6 +75,14 @@ g_name_id:      resd 1
 g_name_buf:     resb ENT_NAME_MAX
 g_name_pkt:     resb NAME_PKT_size
 g_proj:         resd 4                  ; names_draw: x, y, w, distance
+; the gravestones the simulation told about (PKT_S_GRAVE)
+struc CGRAVE
+    .used   resd 1
+    .pos    resd 3
+    .text   resb 64                     ; "Here lies <name>, day <n>"
+endstruc
+alignb 8
+g_cgraves:      resb MAX_GRAVES * CGRAVE_size
 
 section .text
 
@@ -212,14 +228,17 @@ ENDPROC
 %define D_I     20
 %define D_W     24                      ; the frame's size (for the flush)
 %define D_H     28
-PROC names_draw, 32, rbx, rsi, rdi
+%define D_TEXT  32                      ; the label's text
+%define D_GRAVE 40                      ; -1 animals, else the gravestone looked at next
+PROC names_draw, 48, rbx, rsi, rdi
     mov [LOCAL(D_W)], ecx
     mov [LOCAL(D_H)], edx
+    mov dword [LOCAL(D_GRAVE)], -1
     call ui_draw_begin
     xor esi, esi
 .ent:
     cmp esi, [rel g_ents_shown]
-    jae .flush
+    jae .graves
     lea rax, [rel g_vlist]
     movzx eax, word [rax + rsi * 2]
     inc esi
@@ -258,6 +277,9 @@ PROC names_draw, 32, rbx, rsi, rdi
     subsd xmm2, [rel g_cam_pos + 16]
     cvtsd2ss xmm2, xmm2
     movss [LOCAL(D_REL + 8)], xmm2
+    lea rax, [rbx + VENT.name]
+    mov [LOCAL(D_TEXT)], rax
+.label:
     ; near enough?
     movss xmm4, xmm0
     mulss xmm4, xmm4
@@ -268,7 +290,7 @@ PROC names_draw, 32, rbx, rsi, rdi
     mulss xmm5, xmm5
     addss xmm4, xmm5
     comiss xmm4, [rel c_range2]
-    ja .ent
+    ja .next
     sqrtss xmm4, xmm4
     movss [rel g_proj + 12], xmm4
     ; clip = M * (rel, 1) (column-major): x, y, w
@@ -299,7 +321,7 @@ PROC names_draw, 32, rbx, rsi, rdi
     jb .row
     movss xmm5, [rel g_proj + 8]
     comiss xmm5, [rel c_near_w]
-    jb .ent                             ; (behind the camera)
+    jb .next                            ; (behind the camera)
     ; screen units: x = (ndc x / 2 + 1/2) vw, y = (1/2 - ndc y / 2) vh
     movss xmm0, [rel g_proj]
     divss xmm0, xmm5
@@ -324,7 +346,7 @@ PROC names_draw, 32, rbx, rsi, rdi
     minss xmm0, [rel c_size_max]
     cvttss2si eax, xmm0
     mov [LOCAL(D_SIZE)], eax
-    lea rcx, [rbx + VENT.name]
+    mov rcx, [LOCAL(D_TEXT)]
     mov edx, eax
     call ui_text_width
     mov [LOCAL(D_TW)], eax
@@ -354,9 +376,46 @@ PROC names_draw, 32, rbx, rsi, rdi
     mov dword [rsp + 32], COL_LIGHT
     mov dword [rsp + 40], COL_LIGHT
     mov qword [rsp + 48], UI_CENTER | UI_SHADOW
-    lea rcx, [rbx + VENT.name]
+    mov rcx, [LOCAL(D_TEXT)]
     INVOKE ui_text, rcx, rdi, r8, [LOCAL(D_SIZE)]
-    jmp .ent
+.next:
+    cmp dword [LOCAL(D_GRAVE)], -1
+    je .ent
+    ; ---- the gravestones: the label a little over the stone ----
+.grave:
+    inc dword [LOCAL(D_GRAVE)]
+.graves:
+    mov eax, [LOCAL(D_GRAVE)]
+    cmp eax, -1
+    jne .grave_at
+    xor eax, eax
+    mov [LOCAL(D_GRAVE)], eax
+.grave_at:
+    cmp eax, MAX_GRAVES
+    jae .flush
+    imul eax, eax, CGRAVE_size
+    lea rbx, [rel g_cgraves]
+    add rbx, rax
+    cmp dword [rbx + CGRAVE.used], 0
+    je .grave
+    cvtsi2sd xmm0, dword [rbx + CGRAVE.pos]
+    addsd xmm0, [rel c_half_d]
+    subsd xmm0, [rel g_cam_pos]
+    cvtsd2ss xmm0, xmm0
+    movss [LOCAL(D_REL)], xmm0
+    cvtsi2sd xmm1, dword [rbx + CGRAVE.pos + 4]
+    addsd xmm1, [rel c_grave_above]
+    subsd xmm1, [rel g_cam_pos + 8]
+    cvtsd2ss xmm1, xmm1
+    movss [LOCAL(D_REL + 4)], xmm1
+    cvtsi2sd xmm2, dword [rbx + CGRAVE.pos + 8]
+    addsd xmm2, [rel c_half_d]
+    subsd xmm2, [rel g_cam_pos + 16]
+    cvtsd2ss xmm2, xmm2
+    movss [LOCAL(D_REL + 8)], xmm2
+    lea rax, [rbx + CGRAVE.text]
+    mov [LOCAL(D_TEXT)], rax
+    jmp .label
 .flush:
     mov ecx, [LOCAL(D_W)]
     mov edx, [LOCAL(D_H)]
@@ -412,6 +471,56 @@ PROC use_test_frame, 0, rbx, rsi, rdi
 .wait:
     mov dword [rel g_use_test], 2     ; (tries again next frame)
     RETURN
+.done:
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; graves_view_reset — no gravestones known (a world starts)
+;   clobbers: rax, rcx, rdi
+; -----------------------------------------------------------------------------
+PROC graves_view_reset, 0, rdi
+    lea rdi, [rel g_cgraves]
+    xor eax, eax
+    mov ecx, MAX_GRAVES * CGRAVE_size / 8
+    rep stosq
+    RETURN
+ENDPROC
+
+; -----------------------------------------------------------------------------
+; graves_view_packet — PKT_S_GRAVE: a gravestone appeared (its label made
+; here) or was emptied.
+;   in:  rcx = GRAVE_PKT*
+;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC graves_view_packet, 0, rbx, rsi
+    mov rsi, rcx
+    movzx eax, word [rsi + GRAVE_PKT.index]
+    cmp eax, MAX_GRAVES
+    jae .done
+    imul eax, eax, CGRAVE_size
+    lea rbx, [rel g_cgraves]
+    add rbx, rax
+    movzx eax, word [rsi + GRAVE_PKT.used]
+    mov [rbx + CGRAVE.used], eax
+    mov eax, [rsi + GRAVE_PKT.pos]
+    mov [rbx + CGRAVE.pos], eax
+    mov eax, [rsi + GRAVE_PKT.pos + 4]
+    mov [rbx + CGRAVE.pos + 4], eax
+    mov eax, [rsi + GRAVE_PKT.pos + 8]
+    mov [rbx + CGRAVE.pos + 8], eax
+    mov byte [rsi + GRAVE_PKT.name + ENT_NAME_MAX - 1], 0
+    lea rcx, [rbx + CGRAVE.text]
+    lea rdx, [rel s_here_lies]
+    call str_copy
+    mov rcx, rax
+    lea rdx, [rsi + GRAVE_PKT.name]
+    call str_copy
+    mov rcx, rax
+    lea rdx, [rel s_day]
+    call str_copy
+    mov edx, [rsi + GRAVE_PKT.day]
+    INVOKE str_append_dec, rax, rdx, 0
 .done:
     RETURN
 ENDPROC

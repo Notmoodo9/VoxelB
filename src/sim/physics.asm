@@ -75,6 +75,7 @@ k_pane_post:    db 7, 0, 7, 9, 16, 9
 k_pane_arm:     db 7, 0, 0, 9, 16, 7
 k_spike:        db 4, 0, 4, 12, 16, 12
 k_stalk:        db 6, 0, 6, 10, 16, 10
+k_headstone:    db 4, 0, 4, 12, 14, 12     ; M20: a gravestone
 str_box_full:   db "physics: too many collision boxes in one move; some were skipped", 0
 
 section .bss
@@ -349,6 +350,8 @@ PROC shape_boxes, 16, rbx, rsi, rdi, r12, r13, r14, r15
     je .spike
     cmp esi, SHAPE_STALK
     je .stalk
+    cmp esi, SHAPE_HEADSTONE
+    je .headstone
     ; pillars and anything else: a full cube
     lea rcx, [rel k_full]
     jmp .one
@@ -358,6 +361,12 @@ PROC shape_boxes, 16, rbx, rsi, rdi, r12, r13, r14, r15
 .stalk:
     lea rcx, [rel k_stalk]
     jmp .one
+.headstone:
+    lea rcx, [rel k_headstone]
+    mov edx, ebx
+    and edx, 3
+    call rotate_box
+    jmp .done
 .slab:
     lea rcx, [rel k_slab_bottom]
     test ebx, 1

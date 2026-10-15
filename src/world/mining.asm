@@ -84,10 +84,11 @@ s_plant:        db "plant", 0
 s_tall_plant:   db "tall_plant", 0
 s_stalk:        db "stalk", 0
 s_fluid:        db "fluid", 0
+s_headstone:    db "headstone", 0
 align 8
 shape_names:    dq s_cube, s_slab, s_stairs, s_fence, s_gate, s_door, s_trapdoor
                 dq s_ladder, s_sign, s_wall_sign, s_plate, s_wall, s_pillar, s_pane, s_spike
-                dq s_plant, s_tall_plant, s_stalk, s_fluid
+                dq s_plant, s_tall_plant, s_stalk, s_fluid, s_headstone
 align 4
 c_one:          dd 1.0
 c_harvest:      dd 1.5

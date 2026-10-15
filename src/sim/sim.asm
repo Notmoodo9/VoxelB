@@ -33,15 +33,15 @@ global g_sim_tps_x10, g_sim_tick_us, g_sim_tick_max_us, g_sim_time
 extern player_load, player_spawn, player_tick, player_toggle_fly, player_fill
 extern edit_request, edit_tick, fluid_tick
 extern inv_init, inv_packet, inv_selected_block, inv_used_selected, inv_flush
-extern use_item, lead_tie, behave_name
+extern use_item, lead_tie, behave_name, survival_spectate
 extern survival_load, survival_reset, survival_tick, survival_respawn, survival_fill
 extern g_sv_dead
 extern inv_place_block, inv_used_slot, inv_swap_hands, inv_drag
-extern dig_reset, dig_tick, drops_reset, drops_tick, g_world_mode
+extern dig_reset, dig_tick, drops_reset, drops_tick, g_world_mode, g_world_day
 extern craft_reset, craft_window, craft_recipe, craft_tick, furnace_tick
 extern cont_reset, save_load_containers, g_block_flags
 extern ents_reset, ents_tick, ents_attack, store_reset, store_open, store_update
-extern behave_interact, racks_load, racks_tick
+extern behave_interact, racks_load, racks_tick, graves_load
 extern timer_elapsed_us, g_frame_us, g_time_of_day, g_day_length
 
 %define TICK_US             50000       ; 20 TPS
@@ -104,6 +104,7 @@ PROC sim_init, 16, rbx, rsi
     call store_reset
     call store_open
     call racks_load                     ; hides drying on racks (part 3)
+    call graves_load                    ; gravestones (milestone 20 part 2)
     call survival_load                  ; health and hunger (milestone 20)
     mov rcx, rbx
     call survival_reset
@@ -174,6 +175,13 @@ PROC sim_tick, 16, rbx, rsi, rdi
     or [rel g_pressed], eax
     jmp .packet
 .not_input:
+    cmp eax, PKT_C_SPECTATE
+    jne .not_spectate
+    call survival_spectate              ; (milestone 20: Hardcore)
+    jmp .packet
+.not_spectate:
+    cmp dword [rel g_world_mode], MODE_SPECTATOR
+    je .packet                          ; (a spectator only looks)
     cmp eax, PKT_C_BREAK
     je .break
     cmp eax, PKT_C_PLACE
@@ -310,6 +318,11 @@ PROC sim_tick, 16, rbx, rsi, rdi
     roundsd xmm1, xmm0, 9
     subsd xmm0, xmm1
     movsd [rel g_sim_time], xmm0
+    xorps xmm0, xmm0
+    comisd xmm1, xmm0
+    jbe .same_day
+    inc dword [rel g_world_day]         ; midnight: a new day (milestone 20)
+.same_day:
 
     inc qword [rel g_sim_tick]
     call send_state

@@ -25,6 +25,7 @@
 %include "file.inc"
 %include "cfg.inc"
 %include "memory.inc"
+%include "save.inc"
 
 global game_init, game_frame, game_begin_world, game_enter_menu
 global g_game_state, g_game_paused, g_menu_fade
@@ -39,7 +40,8 @@ extern name_screen_open, name_screen_frame, names_draw, g_name_request
 extern use_test_frame
 extern death_screen_open, death_screen_frame, g_csv, g_csv_have
 extern g_world_mode, g_world_difficulty, g_world_hardcore
-extern g_new_mode, g_new_difficulty, g_new_hardcore
+extern g_new_mode, g_new_difficulty, g_new_hardcore, g_new_death, g_world_death
+extern menu_delete_world, g_world_name, str_copy
 extern renderer_frame, hud_draw, overlay_draw, menu_frame, menu_open, menu_back
 extern daycycle_init, daycycle_set, world_spawn
 extern pkt_recv, g_to_sim, g_to_client
@@ -86,6 +88,7 @@ g_save_allowed: resd 1                  ; not --nosave
 g_inv_open:     resd 1                  ; the inventory screen is open
 g_name_open:    resd 1                  ; the name tag page is open (part 3b)
 g_death_open:   resd 1                  ; the death page is open (milestone 20)
+g_del_name:     resb 64                 ; a Hardcore world being deleted
 g_default_seed: resd 1
 g_menu_loaded:  resd 1
 g_fly_n:        resd 1
@@ -441,6 +444,8 @@ PROC game_begin_world, 0, rbx, rsi, rdi
     mov [rel g_world_difficulty], eax
     mov eax, [rel g_new_hardcore]
     mov [rel g_world_hardcore], eax
+    mov eax, [rel g_new_death]
+    mov [rel g_world_death], eax
 .rules:
     mov eax, [rel g_default_seed]
     cmp dword [rel g_seed_override_set], 0
@@ -522,6 +527,8 @@ PROC game_frame, 16, rbx, rsi, rdi
     call input_pressed
     test eax, eax
     jz .click_capture
+    cmp dword [rel g_world_mode], MODE_SPECTATOR
+    je .click_capture                   ; (a spectator carries nothing)
     call open_inventory
     jmp .keys_done
 .inv_keys:
@@ -632,6 +639,8 @@ PROC game_frame, 16, rbx, rsi, rdi
     mov ecx, esi
     mov edx, edi
     call names_draw                     ; named animals (part 3b)
+    cmp dword [rel g_world_mode], MODE_SPECTATOR
+    je .inventory                       ; (a spectator: no hand, no HUD)
     mov ecx, esi
     mov edx, edi
     call held_draw                      ; the item in hand
@@ -646,10 +655,25 @@ PROC game_frame, 16, rbx, rsi, rdi
     mov ecx, esi
     mov edx, edi
     call death_screen_frame
+    cmp eax, 4                          ; (DS_DELETE: Hardcore)
+    je .delete_world
     cmp eax, 2                          ; (DS_MENU)
     jne .overlay
     mov eax, 5                          ; (MA_TO_MENU, menu.inc: save, main menu)
     call do_action
+    jmp .overlay
+.delete_world:
+    ; leave it without saving, then remove its folder
+    lea rcx, [rel g_del_name]
+    lea rdx, [rel g_world_name]
+    call str_copy
+    mov dword [rel g_save_enabled], 0
+    mov eax, 5                          ; (MA_TO_MENU)
+    call do_action
+    lea rcx, [rel g_del_name]
+    call menu_delete_world
+    mov eax, [rel g_save_allowed]
+    mov [rel g_save_enabled], eax
     jmp .overlay
 .no_death_page:
     cmp dword [rel g_name_open], 0
@@ -752,8 +776,13 @@ PROC death_events, 0
     call close_inventory
 .no_inv:
     mov dword [rel g_name_open], 0
+    test word [rel g_csv + SURV_PKT.flags], SVF_SPECTATE
+    jz .page
+    call save_all                       ; (Hardcore: the death is kept at once)
+.page:
     call death_screen_open
     mov dword [rel g_death_open], 1
+    LOG_INFO "game: the death page opened"
     xor ecx, ecx
     call input_set_capture
     RETURN
@@ -761,6 +790,7 @@ PROC death_events, 0
     cmp dword [rel g_death_open], 0
     je .done
     mov dword [rel g_death_open], 0
+    LOG_INFO "game: the death page closed (alive again)"
     cmp dword [rel g_window_active], 0
     je .done
     mov ecx, 1

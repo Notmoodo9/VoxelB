@@ -386,6 +386,13 @@ ENDPROC
 ; -----------------------------------------------------------------------------
 PROC interact_update, 0, rbx
     mov dword [rel g_dig_want], 0
+    cmp dword [rel g_world_mode], MODE_SPECTATOR
+    jne .may_touch
+    ; a spectator only looks (milestone 20: a Hardcore world after its death)
+    mov dword [rel g_target_valid], 0
+    mov dword [rel g_ent_target], -1
+    RETURN
+.may_touch:
     call raycast
     call pick_animal                    ; (milestone 19)
     ; only with the mouse captured, and not on the click that captured it

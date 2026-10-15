@@ -43,7 +43,7 @@ extern daycycle_set, timer_elapsed_us, g_frame_us
 extern interact_init, interact_update, stream_block_changed
 extern g_held_block, g_item_block, g_dig_want, g_target_valid, g_target
 extern drops_view_packet, drops_view_reset, ents_view_packet, ents_view_reset
-extern ents_view_name
+extern ents_view_name, graves_view_reset, graves_view_packet
 
 %define DOUBLE_TAP_US   300000          ; move_up twice within this: fly
 
@@ -108,6 +108,7 @@ PROC client_init, 0
     mov dword [rel g_dig_before], 0xBF800000
     call drops_view_reset
     call ents_view_reset                ; animals (milestone 19)
+    call graves_view_reset              ; gravestones (milestone 20)
     xor eax, eax
     mov [rel g_cwin + WIN_PKT.kind], eax
     mov [rel g_cwin_event], eax
@@ -490,6 +491,12 @@ PROC client_view, 0, rsi, rdi
     mov dword [rel g_csv_have], 1
     jmp .packet
 .not_survival:
+    cmp eax, PKT_S_GRAVE
+    jne .not_grave
+    lea rcx, [rel g_cl_pkt + PKT.data]
+    call graves_view_packet             ; (part 2: a gravestone)
+    jmp .packet
+.not_grave:
     cmp eax, PKT_S_TIME
     jne .packet
     mov eax, [rel g_cl_pkt + PKT.data + TIME_PKT.time]

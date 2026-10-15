@@ -18,7 +18,8 @@
 ;   menu_back()                         Esc: the previous screen
 ;   menu_screen() -> eax SCREEN_*       the screen showing
 ;   menu_frame(ecx = w, edx = h) -> eax MA_*, rdx = world name, r8d = seed
-;   g_new_mode, g_new_difficulty, g_new_hardcore: the rules of the world
+;   g_new_mode, g_new_difficulty, g_new_hardcore, g_new_death (DEATH_*): the
+;   rules of the world
 ;   MA_CREATE asks for (save.inc MODE_* / DIFF_*)
 ; =============================================================================
 %include "macros.inc"
@@ -32,10 +33,10 @@
 %include "cfg.inc"
 
 global menu_open, menu_back, menu_frame, menu_screen
-global g_new_mode, g_new_difficulty, g_new_hardcore
+global g_new_mode, g_new_difficulty, g_new_hardcore, g_new_death, menu_delete_world
 
 extern ui_frame, ui_end, ui_button, ui_panel, ui_label, ui_rect, ui_text
-extern ui_image, ui_textfield, ui_focus, ui_skin
+extern ui_image, ui_textfield, ui_focus, ui_skin, ui_checkbox
 extern g_ui_vw, g_ui_vh, g_ui_alpha, g_ui_oy, g_ui_dt, g_ui_click, g_ui_mx
 extern g_ui_my, g_menu_fade, g_game_state, g_mouse_wheel, g_ui_images_tex
 extern str_copy, str_append_dec, str_ieq, str_len, str_parse_u64
@@ -47,6 +48,7 @@ IMPORT FindFirstFileA, FindNextFileA, FindClose, DeleteFileA, RemoveDirectoryA
 
 %define MAX_WORLDS      64              ; (8 x 8 pictures in the atlas)
 %define NAME_CAP        64
+%define CREATE_H        700             ; the new-world page's height
 %define NAME_TYPED      33              ; the name field: 32 characters
 %define SEED_TYPED      33
 %define DETAILS_CAP     96
@@ -90,10 +92,17 @@ s_l_name:       db "Name", 0
 s_l_seed:       db "Seed", 0
 s_seed_hint:    db "Empty: a random seed", 0
 s_l_mode:       db "Game mode", 0
-s_mode_note:    db "Survival has no health or hunger yet. Adventure and Spectator: later", 0
+s_mode_note:    db "Survival: health, hunger and dangers. Adventure and Spectator: later", 0
 s_l_diff:       db "Difficulty", 0
 s_hardcore_word: db "Hardcore", 0
-s_diff_note:    db "Difficulty and Hardcore arrive with Survival", 0
+s_diff_note:    db "One life: a death ends the world (Hard and above)", 0
+s_l_death:      db "When you die", 0
+death_0:        db "Drop everything", 0
+death_1:        db "Gravestone", 0
+death_2:        db "Keep inventory", 0
+dnote_0:        db "What you carry falls where you die (5 minutes to pick it up)", 0
+dnote_1:        db "A mossy gravestone keeps your things; right click it to take them back", 0
+dnote_2:        db "Nothing is lost (below Hard only)", 0
 s_paused:       db "Paused", 0
 s_resume:       db "Resume", 0
 s_to_menu:      db "Save & quit to menu", 0
@@ -116,6 +125,7 @@ s_sep:          db "   -   ", 0
 s_kb:           db " KB", 0
 s_mb:           db " MB", 0
 s_hardcore:     db " Hardcore", 0
+s_hc_ended:     db " Hardcore, ended", 0
 s_paren:        db " (", 0
 s_paren_end:    db ")", 0
 s_credits_file: db "data/ui/credits.txt", 0
@@ -131,6 +141,8 @@ diff_4:         db "Ultra", 0
 align 8
 mode_names:     dq mode_0, mode_1, mode_2, mode_3
 diff_names:     dq diff_0, diff_1, diff_2, diff_3, diff_4
+death_names:    dq death_0, death_1, death_2
+death_notes:    dq dnote_0, dnote_1, dnote_2
 align 4
 c_trans:        dd TRANSITION_S
 c_one:          dd 1.0
@@ -146,6 +158,7 @@ align 4
 g_new_mode:       dd MODE_CREATIVE
 g_new_difficulty: dd DIFF_NORMAL
 g_new_hardcore:   dd 0
+g_new_death:      dd DEATH_DROP
 
 section .bss
 alignb 4
@@ -202,6 +215,9 @@ PROC menu_open, 0
     call new_world_name
     mov byte [rel g_seed_text], 0
     mov dword [rel g_new_mode], MODE_CREATIVE
+    mov dword [rel g_new_difficulty], DIFF_NORMAL
+    mov dword [rel g_new_hardcore], 0
+    mov dword [rel g_new_death], DEATH_DROP
     mov ecx, FIELD_NAME + 1
     call ui_focus
     RETURN
@@ -534,6 +550,10 @@ PROC make_details, 0, rbx, rsi, rdi
     cmp dword [rbx + WORLD_INFO.hardcore], 0
     je .played
     lea rdx, [rel s_hardcore]
+    cmp dword [rbx + WORLD_INFO.hc_dead], 0
+    je .hc_mark
+    lea rdx, [rel s_hc_ended]           ; (milestone 20: only spectated now)
+.hc_mark:
     mov rcx, rax
     call str_copy
 .played:
@@ -867,6 +887,21 @@ PROC sanitize_name, 0, rbx, rsi, rdi
 ENDPROC
 
 ; -----------------------------------------------------------------------------
+; new_rules_fit — the form's rules agree with the difficulty: Hardcore only
+; on Hard and above, keep inventory only below Hard (a gravestone instead)
+;   clobbers: rax
+new_rules_fit:
+    cmp dword [rel g_new_difficulty], DIFF_HARD
+    jae .hard
+    mov dword [rel g_new_hardcore], 0
+    ret
+.hard:
+    cmp dword [rel g_new_death], DEATH_KEEP
+    jne .done
+    mov dword [rel g_new_death], DEATH_GRAVE
+.done:
+    ret
+
 ; create_world — the creation form's answer: the folder name (sanitised,
 ; "World N" if nothing is left, " (2)", " (3)".. if taken), the seed and the
 ; rules (only what is built so far: creative, normal, no hardcore).
@@ -902,9 +937,8 @@ PROC create_world, 0, rbx, rsi
     inc ebx
     jmp .unique
 .seed:
-    ; (the mode chosen on the form; difficulty and hardcore come later)
-    mov dword [rel g_new_difficulty], DIFF_NORMAL
-    mov dword [rel g_new_hardcore], 0
+    ; (the rules chosen on the form)
+    call new_rules_fit
     lea rcx, [rel g_seed_text]
     call seed_from_text
     mov edx, eax
@@ -941,6 +975,30 @@ ENDPROC
 section .rdata
 s_log_delete:   db "menu: deleted world ", 0
 section .text
+
+; -----------------------------------------------------------------------------
+; menu_delete_world — remove a world's folder (game.asm: a Hardcore world
+; deleted from its death page, after leaving it).
+;   in:  rcx = the world's folder name in saves;   clobbers: volatile registers
+; -----------------------------------------------------------------------------
+PROC menu_delete_world, 0, rbx
+    mov rbx, rcx
+    mov ecx, LOG_LEVEL_INFO
+    call log_begin
+    lea rcx, [rel s_log_delete]
+    call log_append_str
+    mov rcx, rbx
+    call log_append_str
+    call log_end
+    mov rcx, rbx                        ; (WORLD_INFO.name is at offset 0)
+    call world_folder
+    mov rcx, rax
+    mov edx, 1
+    call walk
+    lea rcx, [rel g_walk]
+    API RemoveDirectoryA, rcx
+    RETURN
+ENDPROC
 
 ; -----------------------------------------------------------------------------
 ; load_version — data/version.cfg into "v<version>  -  <title>" (once), for
@@ -1517,9 +1575,9 @@ PROC menu_frame, 48, rbx, rsi, rdi, r12, r13, r14, r15
     mov edi, [LOCAL(M_CX)]
     sub edi, 360                        ; panel left (720 wide)
     mov esi, [rel g_ui_vh]
-    sub esi, 616
-    sar esi, 1                          ; panel top (616 tall)
-    INVOKE ui_panel, rdi, rsi, 720, 616
+    sub esi, CREATE_H
+    sar esi, 1                          ; panel top
+    INVOKE ui_panel, rdi, rsi, 720, CREATE_H
     lea r8d, [esi + 22]
     mov dword [rsp + 32], COL_TEXT
     mov qword [rsp + 40], UI_CENTER | UI_BOLD
@@ -1597,7 +1655,7 @@ PROC menu_frame, 48, rbx, rsi, rdi, r12, r13, r14, r15
     mov qword [rsp + 40], 0
     lea rcx, [rel s_mode_note]
     INVOKE ui_label, rcx, r12, r8, 15
-    ; difficulty: Normal (fixed until survival exists)
+    ; difficulty (milestone 20: Survival scales by it)
     CAPTION s_l_diff, 374
     xor ebx, ebx
 .c_diff_b:
@@ -1607,10 +1665,10 @@ PROC menu_frame, 48, rbx, rsi, rdi, r12, r13, r14, r15
     mov rax, [rax + rbx * 8]
     mov [rsp + 40], rax
     mov qword [rsp + 32], 44
-    mov r10d, UIW_DISABLED
+    xor r10d, r10d
     cmp ebx, [rel g_new_difficulty]
     jne .c_diff_f
-    mov r10d, UIW_DISABLED | UIW_SELECTED
+    mov r10d, UIW_SELECTED
 .c_diff_f:
     mov [rsp + 48], r10
     imul edx, ebx, 130
@@ -1618,28 +1676,91 @@ PROC menu_frame, 48, rbx, rsi, rdi, r12, r13, r14, r15
     lea r8d, [esi + 400]
     lea ecx, [ebx + 48]
     INVOKE ui_button, rcx, rdx, r8, 120
+    test eax, eax
+    jz .c_diff_next
+    mov [rel g_new_difficulty], ebx
+    call new_rules_fit
+.c_diff_next:
     inc ebx
     jmp .c_diff_b
 .c_hardcore:
-    ; an inked check box, faded until Hardcore arrives (milestone 20)
+    ; Hardcore: one life (Hard and above; faded below)
+    cmp dword [rel g_new_difficulty], DIFF_HARD
+    jb .c_hc_off
+    lea r8d, [esi + 462]
+    mov ecx, r12d
+    mov edx, r8d
+    mov r8d, 28
+    mov r9d, [rel g_new_hardcore]
+    call ui_checkbox
+    test eax, eax
+    jz .c_hc_label
+    xor dword [rel g_new_hardcore], 1
+.c_hc_label:
+    mov eax, COL_TEXT
+    jmp .c_hc_text
+.c_hc_off:
     mov dword [rsp + 40], 0x60FFFFFF
     mov qword [rsp + 32], SKIN_CHECK_OFF
     lea r8d, [esi + 462]
     INVOKE ui_skin, r12, r8, 28, 28
+    mov eax, COL_TEXT_OFF
+.c_hc_text:
     lea edx, [r12d + 38]
     lea r8d, [esi + 464]
-    mov dword [rsp + 32], COL_TEXT_OFF
+    mov [rsp + 32], eax
     mov qword [rsp + 40], 0
     lea rcx, [rel s_hardcore_word]
     INVOKE ui_label, rcx, rdx, r8, 20
     lea r8d, [esi + 467]
-    lea edx, [r12d + 220]
+    lea edx, [r12d + 180]
     mov dword [rsp + 32], COL_TEXT_OFF
     mov qword [rsp + 40], 0
     lea rcx, [rel s_diff_note]
     INVOKE ui_label, rcx, rdx, r8, 15
+    ; when you die: drop everything / a gravestone / keep inventory (below Hard)
+    CAPTION s_l_death, 512
+    xor ebx, ebx
+.c_death_b:
+    cmp ebx, DEATH_COUNT
+    jae .c_death_note
+    lea rax, [rel death_names]
+    mov rax, [rax + rbx * 8]
+    mov [rsp + 40], rax
+    mov qword [rsp + 32], 44
+    xor r10d, r10d
+    cmp ebx, DEATH_KEEP
+    jne .c_death_on
+    cmp dword [rel g_new_difficulty], DIFF_HARD
+    jb .c_death_on
+    mov r10d, UIW_DISABLED
+.c_death_on:
+    cmp ebx, [rel g_new_death]
+    jne .c_death_f
+    or r10d, UIW_SELECTED
+.c_death_f:
+    mov [rsp + 48], r10
+    imul edx, ebx, 216
+    add edx, r12d
+    lea r8d, [esi + 538]
+    lea ecx, [ebx + 56]
+    INVOKE ui_button, rcx, rdx, r8, 208
+    test eax, eax
+    jz .c_death_next
+    mov [rel g_new_death], ebx
+.c_death_next:
+    inc ebx
+    jmp .c_death_b
+.c_death_note:
+    mov eax, [rel g_new_death]
+    lea rcx, [rel death_notes]
+    mov rcx, [rcx + rax * 8]
+    lea r8d, [esi + 590]
+    mov dword [rsp + 32], COL_TEXT_OFF
+    mov qword [rsp + 40], 0
+    INVOKE ui_label, rcx, r12, r8, 15
     ; Create world / Cancel
-    lea r13d, [esi + 616 - 24 - 52]
+    lea r13d, [esi + CREATE_H - 24 - 52]
     mov qword [rsp + 32], 52
     lea rax, [rel s_create]
     mov [rsp + 40], rax

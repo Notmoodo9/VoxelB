@@ -48,7 +48,7 @@ str_done2:      db ", ms ", 0
 shape_kind:     db KIND_CUBE, KIND_SLAB, KIND_CUBE, KIND_FLAT, KIND_FLAT ; cube slab stairs fence gate
                 db KIND_FLAT, KIND_SLAB, KIND_FLAT, KIND_FLAT, KIND_FLAT ; door trapdoor ladder sign wall_sign
                 db KIND_SLAB, KIND_CUBE, KIND_CUBE, KIND_FLAT, KIND_FLAT ; plate wall pillar pane spike
-                db KIND_FLAT, KIND_FLAT, KIND_FLAT, KIND_CUBE            ; plant tall_plant stalk fluid
+                db KIND_FLAT, KIND_FLAT, KIND_FLAT, KIND_CUBE, KIND_FLAT ; plant tall_plant stalk fluid headstone
 align 4
 c_one:          dd 1.0
 

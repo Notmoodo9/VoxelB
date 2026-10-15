@@ -93,6 +93,7 @@ k_slots:        db "slots", 0
 k_joins:        db "joins", 0
 k_furnace:      db "furnace", 0
 k_rack:         db "rack", 0
+k_grave:        db "grave", 0
 k_hang:         db "hang", 0
 k_smelt:        db "smelt", 0
 k_fuel:         db "fuel", 0
@@ -325,6 +326,10 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     INVOKE str_ieq, rbx, rdx
     test eax, eax
     jnz .rack
+    lea rdx, [rel k_grave]
+    INVOKE str_ieq, rbx, rdx
+    test eax, eax
+    jnz .grave
 .bad_header:
     lea rcx, [rel str_unknown]
     mov rdx, rbx
@@ -369,6 +374,11 @@ PROC recipes_pair, 0, rbx, rsi, rdi
     xor ecx, ecx                        ; no grid, no slots: right click hangs / takes
     xor edx, edx
     mov r9d, STATION_RACK
+    jmp .usable
+.grave:
+    xor ecx, ecx                        ; right click gives the items back (graves.asm)
+    xor edx, edx
+    mov r9d, STATION_GRAVE
 .usable:
     mov eax, [rel g_station_count]
     cmp eax, MAX_STATIONS
