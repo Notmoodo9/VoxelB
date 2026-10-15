@@ -2,8 +2,8 @@
 
 ## Current state
 **Milestone 21, part 1** — melee: the swing meter, swords, axes, spears
-and maces in 8 tiers, crits, sweeps, hit feel (v0.21.1, Windows CI:
-pending)
+and maces in 8 tiers, crits, sweeps, hit feel (v0.21.1, Windows CI
+green: run #122)
 
 Every version has its own release on GitHub ("VoxelB v<version> -
 <title>"), including the past milestones v0.1.0 – v0.16.0 (D92).
